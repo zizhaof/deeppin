@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 
@@ -15,5 +15,5 @@ class Thread(BaseModel):
     session_id: uuid.UUID
     parent_thread_id: uuid.UUID | None
     anchor_text: str | None
-    depth: int
+    depth: int = Field(ge=0)
     created_at: datetime
