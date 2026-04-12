@@ -4,6 +4,7 @@ create extension if not exists "pgcrypto";
 create table if not exists sessions (
   id uuid primary key default gen_random_uuid(),
   title text,
+  -- user_id intentionally omitted for anonymous MVP; add when auth is introduced
   created_at timestamptz default now()
 );
 
@@ -13,7 +14,7 @@ create table if not exists threads (
   parent_thread_id uuid references threads(id) on delete cascade,  -- null = main thread
   anchor_text text,
   anchor_message_id uuid,  -- FK added after messages table; see below
-  depth int not null default 0,
+  depth int not null default 0 check (depth >= 0),
   created_at timestamptz default now()
 );
 
@@ -32,6 +33,12 @@ create table if not exists thread_summaries (
   token_budget int not null,
   updated_at timestamptz default now()
 );
+
+-- 검색 성능을 위한 인덱스
+create index if not exists idx_threads_session_id        on threads(session_id);
+create index if not exists idx_threads_parent_thread_id  on threads(parent_thread_id);
+create index if not exists idx_messages_thread_id        on messages(thread_id);
+create index if not exists idx_messages_thread_created   on messages(thread_id, created_at);
 
 -- Add FK from threads.anchor_message_id → messages.id (separate because of ordering)
 DO $$ BEGIN
