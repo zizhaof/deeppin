@@ -34,8 +34,11 @@ create table if not exists thread_summaries (
 );
 
 -- Add FK from threads.anchor_message_id → messages.id (separate because of ordering)
-alter table threads
-  add constraint fk_anchor_message
-  foreign key (anchor_message_id)
-  references messages(id)
-  on delete set null;
+DO $$ BEGIN
+  ALTER TABLE threads
+    ADD CONSTRAINT fk_anchor_message
+    FOREIGN KEY (anchor_message_id)
+    REFERENCES messages(id)
+    ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
