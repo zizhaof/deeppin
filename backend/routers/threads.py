@@ -300,15 +300,16 @@ async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
     _user_id, sb = auth
 
-    # 验证线程存在 / Verify the thread exists
+    # 验证线程存在（maybe_single 在无结果时返回 None 而不是抛异常）
+    # Verify thread exists; maybe_single returns None on no match instead of raising
     thread_res = await _db(lambda: (
         sb.table("threads")
         .select("id")
         .eq("id", str(thread_id))
-        .single()
+        .maybe_single()
         .execute()
     ))
-    if not thread_res.data:
+    if not thread_res or not thread_res.data:
         raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
 
     messages_res = await _db(lambda: (
