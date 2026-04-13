@@ -1,11 +1,11 @@
-// frontend/middleware.ts
+// frontend/proxy.ts
 // 保护 /chat/* 路由，自动刷新过期 token
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
