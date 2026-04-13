@@ -141,7 +141,11 @@ async def merge(session_id: uuid.UUID, body: MergeRequest):
                     "content": "\n".join(lines),
                 }
 
-            threads_data = await asyncio.gather(*[get_thread_content(t) for t in threads])
+            # 串行获取避免 Supabase 单例 httpx 客户端并发竞争
+            # Sequential to avoid concurrent contention on the shared Supabase httpx client
+            threads_data = []
+            for t in threads:
+                threads_data.append(await get_thread_content(t))
             # 过滤掉没有任何内容的空线程
             # Filter out threads with no content at all
             threads_data = [t for t in threads_data if t["content"].strip() or t["anchor"].strip()]
