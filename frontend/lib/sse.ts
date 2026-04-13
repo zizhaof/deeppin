@@ -157,7 +157,7 @@ export async function sendMessageStream(
           fullText += event.content;
           onChunk(event.content);
         } else if (event.type === "done") {
-          onDone(fullText, event.message_id);
+          onDone(fullText, event.message_id ?? null);
         } else if (event.type === "error") {
           onError(event.message);
         } else if (event.type === "thread_title") {
