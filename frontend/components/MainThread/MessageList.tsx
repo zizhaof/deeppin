@@ -15,6 +15,7 @@ interface Props {
   anchorsByMessage: Record<string, AnchorRange[]>;
   suggestions?: string[];
   anchorText?: string | null;
+  userAvatarUrl?: string | null;
   onMessageRef?: (messageId: string, el: HTMLDivElement | null) => void;
   onTextSelect?: (text: string, messageId: string, rect: DOMRect, side: "left" | "right", startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
@@ -29,6 +30,7 @@ export default function MessageList({
   anchorsByMessage,
   suggestions = [],
   anchorText,
+  userAvatarUrl,
   onMessageRef,
   onTextSelect,
   onAnchorClick,
@@ -94,6 +96,7 @@ export default function MessageList({
               role={msg.role}
               content={msg.content}
               anchors={anchorsByMessage[msg.id] ?? []}
+              userAvatarUrl={userAvatarUrl}
               onRef={(el) => onMessageRef?.(msg.id, el)}
               onSelect={onTextSelect}
               onAnchorClick={onAnchorClick}

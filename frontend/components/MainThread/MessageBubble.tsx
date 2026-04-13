@@ -19,6 +19,7 @@ interface Props {
   content: string;
   streaming?: boolean;
   anchors?: AnchorRange[];
+  userAvatarUrl?: string | null;
   onSelect?: (text: string, messageId: string, rect: DOMRect, side: "left" | "right", startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
@@ -124,6 +125,7 @@ export default function MessageBubble({
   content,
   streaming,
   anchors = [],
+  userAvatarUrl,
   onSelect,
   onAnchorClick,
   onAnchorHover,
@@ -236,6 +238,21 @@ export default function MessageBubble({
           </button>
         )}
       </div>
+
+      {/* 用户头像 */}
+      {isUser && (
+        <div className="w-8 h-8 ml-3 mt-0.5 flex-shrink-0 rounded-full overflow-hidden border border-white/10">
+          {userAvatarUrl ? (
+            <img src={userAvatarUrl} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-full h-full bg-indigo-600 flex items-center justify-center">
+              <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+              </svg>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
