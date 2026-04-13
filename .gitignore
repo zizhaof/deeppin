@@ -48,3 +48,4 @@ logs/
 *.pem
 *.key
 *.cert
+.worktrees/
