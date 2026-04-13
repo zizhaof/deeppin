@@ -83,9 +83,9 @@ Context 向下传递时自动 compact，越深越压缩：
 数据库：Supabase（PostgreSQL + Auth）
         免费 tier，500MB
 
-AI：    Claude API（claude-sonnet-4-6）主对话 + 子线程
-        Gemini Flash 做摘要 compact（成本优化）
-        生产阶段：LiteLLM Proxy 统一调度免费 API fallback
+AI：    Groq（全部免费）+ LiteLLM Router 动态路由
+        chat 梯队：6 个模型 × N 个 key，usage-based 路由，429 自动 fallback
+        summarizer 梯队：3 个轻量模型，负责摘要/分类/格式化
 
 语言：  TypeScript（前端）+ Python（后端）
 ```
@@ -102,7 +102,7 @@ AI：    Claude API（claude-sonnet-4-6）主对话 + 子线程
 - 路由（Next.js App Router）
 
 ### 后端负责
-- Claude API 调用（API key 不暴露给前端）
+- Groq API 调用（API key 不暴露给前端）
 - Context 构建（compact 逻辑、摘要生成）
 - SSE 流式推送
 - 数据持久化（session、thread、message 存 Supabase）
@@ -256,8 +256,8 @@ async def build_context(thread_id: str) -> list[dict]:
     context = []
 
     if thread.parent_id is None:
-        # 主线：直接返回最近消息
-        return await get_recent_messages(thread_id, limit=20)
+        # 主线：历史超出窗口时注入摘要前缀，取最近 N 条消息
+        return await get_recent_messages_with_summary(thread_id)
 
     # 向上追溯祖先链
     ancestors = await get_ancestor_chain(thread_id)
@@ -268,203 +268,68 @@ async def build_context(thread_id: str) -> list[dict]:
 
     for i, ancestor in enumerate(ancestors):
         summary = await get_or_create_summary(ancestor.id, budget=budgets[i])
-        label = "主线话题背景" if i == 0 else f"第 {i} 层追问背景"
+        label = "主线对话摘要" if i == 0 else f"第 {i} 层子线程摘要"
+        context.append({"role": "system", "content": f"[{label}]\n{summary}"})
 
-        # 主线摘要加 cache_control，同 session 下所有子线程共享这段 prefix
-        # 命中 cache 后 input token 费用降低 90%
-        if i == 0:
-            context.append({
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"{label}：{summary}",
-                        "cache_control": {"type": "ephemeral"}  # Anthropic prompt cache
-                    }
-                ]
-            })
-        else:
-            context.append({"role": "system", "content": f"{label}：{summary}"})
-
-    # 锚点原文（完整保留，不 cache，每根针不同）
+    # 锚点原文（完整保留）
     context.append({
         "role": "system",
-        "content": f"用户选中的内容：\n\"{thread.anchor_text}\""
+        "content": f"用户在上述对话中选中了以下内容并提出追问，请围绕这段内容回答：\n\"{thread.anchor_text}\""
     })
 
-    # 当前子线程完整历史
-    messages = await get_all_messages(thread_id)
+    # 当前子线程历史
+    messages = await get_recent_messages(thread_id)
     context.extend([{"role": m.role, "content": m.content} for m in messages])
 
     return context
 ```
 
-### Cache 策略
-
-```
-同一 session 下的所有子线程请求：
-
-主线摘要（300 tokens）← cache_control: ephemeral ← 所有子线程共享，第一次之后命中
-  ├── 针A：[主线摘要 cached] + 锚点A + 子线程A历史
-  ├── 针B：[主线摘要 cached] + 锚点B + 子线程B历史
-  └── 针C：[主线摘要 cached] + 锚点C + 子线程C历史
-```
-
-各 provider cache 支持情况：
-
-| Provider | Cache | 说明 |
-|----------|-------|------|
-| Anthropic | ✅ | `cache_control` 显式标记，命中省 90% input cost |
-| Gemini | ✅ | Context Caching，按缓存时间收费，极便宜 |
-| DeepSeek | ✅ | 命中几乎免费 |
-| Groq | ❌ | 无 cache，但免费 |
-| Cerebras | ❌ | 无 cache，但免费 |
-
-**原则：主线摘要用支持 cache 的 provider（Anthropic/Gemini），compact 摘要生成用免费 provider（Groq/Gemini Flash）。**
-
 ---
 
 ## LiteLLM 配置
 
-### Provider 总览
+### Provider 策略：Groq 单 Provider，多 Key × 多模型叠加
 
-```
-免费层（主力）：
-  Groq          30 RPM, 14400 RPD  ← 最大日限额，主力
-  Gemini Flash  15 RPM,  1500 RPD  ← 支持 cache，质量好
-  Cerebras      30 RPM,  1000 RPD  ← 速度极快
-  Gemini Lite   30 RPM,  1500 RPD  ← 轻量任务
+全部使用 Groq，通过多账号 × 多模型叠加额度，LiteLLM Router 统一调度，零成本。
 
-付费层（fallback）：
-  DeepSeek      $0.14/M tokens     ← 极便宜，中文强
-  Claude        $3/M input tokens  ← 质量最好，支持 cache
+#### 模型分组
 
-叠加总并发：~105 RPM
-叠加总日限：~18400次/天（约 300-500 日活用户，$0 成本）
-```
+| model_name | 职责 | fallback |
+|-----------|------|----------|
+| chat | 主对话、深度推理、多轮对话 | 全部耗尽后降级到 summarizer |
+| summarizer | compact 摘要、分类、格式化 | 极端兜底接主对话 |
+| vision | 图片理解（llama-4-scout）| 无 fallback |
+| whisper | 语音转文字，走 Groq 原生 API | 无 fallback |
+| guard | 内容安全审核（可选接入）| 无 fallback |
 
-```yaml
-# litellm-config.yaml
+#### chat 梯队（RPD 1K/模型，usage-based 路由）
 
-model_list:
+| 模型 | TPM | RPM |
+|------|-----|-----|
+| openai/gpt-oss-120b | 8K | 30 |
+| moonshotai/kimi-k2-instruct | 10K | 60 |
+| moonshotai/kimi-k2-instruct-0905 | 10K | 60 |
+| llama-3.3-70b-versatile | 12K | 30 |
+| qwen/qwen3-32b | 6K | 60 |
+| meta-llama/llama-4-scout-17b-16e-instruct | 30K | 30 |
 
-  # ─── 主对话（chat）───────────────────────────────────────
-  # 免费：Groq（最大日限额，速度快）
-  - model_name: chat
-    litellm_params:
-      model: groq/llama-3.3-70b-versatile
-      api_key: os.environ/GROQ_API_KEY_1
+#### summarizer 梯队（轻量任务）
 
-  # 免费：Groq 第二账号（额度翻倍）
-  - model_name: chat
-    litellm_params:
-      model: groq/llama-3.3-70b-versatile
-      api_key: os.environ/GROQ_API_KEY_2
-
-  # 免费：Gemini Flash（支持 cache，质量好）
-  - model_name: chat
-    litellm_params:
-      model: gemini/gemini-2.0-flash
-      api_key: os.environ/GEMINI_API_KEY_1
-
-  # 免费：Gemini Flash 第二账号
-  - model_name: chat
-    litellm_params:
-      model: gemini/gemini-2.0-flash
-      api_key: os.environ/GEMINI_API_KEY_2
-
-  # 免费：Cerebras（速度极快）
-  - model_name: chat
-    litellm_params:
-      model: cerebras/llama-3.3-70b
-      api_key: os.environ/CEREBRAS_API_KEY
-
-  # 付费 fallback：DeepSeek（极便宜，$0.14/M tokens）
-  - model_name: chat
-    litellm_params:
-      model: deepseek/deepseek-chat
-      api_key: os.environ/DEEPSEEK_API_KEY
-
-  # 付费 fallback：Claude（质量最好，支持 prompt cache）
-  - model_name: chat
-    litellm_params:
-      model: anthropic/claude-sonnet-4-6
-      api_key: os.environ/ANTHROPIC_API_KEY
-
-  # ─── Compact 摘要（summarizer）────────────────────────────
-  # 不需要最强模型，优先免费，节省 chat 额度
-  - model_name: summarizer
-    litellm_params:
-      model: gemini/gemini-2.0-flash-lite
-      api_key: os.environ/GEMINI_API_KEY_1
-
-  - model_name: summarizer
-    litellm_params:
-      model: groq/llama-3.3-70b-versatile
-      api_key: os.environ/GROQ_API_KEY_1
-
-  - model_name: summarizer
-    litellm_params:
-      model: cerebras/llama-3.3-70b
-      api_key: os.environ/CEREBRAS_API_KEY
-
-  # 摘要付费 fallback：DeepSeek（极便宜）
-  - model_name: summarizer
-    litellm_params:
-      model: deepseek/deepseek-chat
-      api_key: os.environ/DEEPSEEK_API_KEY
-
-router_settings:
-  routing_strategy: usage-based-routing  # 按剩余额度选最空闲的
-  num_retries: 3
-  retry_after: 5
-  fallbacks:
-    - {"chat": ["deepseek/deepseek-chat", "anthropic/claude-sonnet-4-6"]}
-    - {"summarizer": ["deepseek/deepseek-chat"]}
-  # 429 时自动切下一个 provider
-  allowed_fails: 2
-```
-
-### 后端调用
+| 模型 | RPD | TPM |
+|------|-----|-----|
+| llama-3.1-8b-instant | 14.4K | 6K |
+| openai/gpt-oss-20b | 1K | 8K |
+| allam-2-7b | 7K | 6K |
 
 ```python
-# backend/services/llm_client.py
+# backend/services/llm_client.py 核心逻辑
 
-async def chat_stream(context: list[dict]):
-    """主对话：优先免费 provider，额度耗尽自动切付费"""
-    return await litellm.acompletion(
-        model="chat",
-        messages=context,
-        stream=True
-    )
-
-async def summarize(text: str, max_tokens: int) -> str:
-    """Compact 摘要：专用免费 provider，不占 chat 额度"""
-    response = await litellm.acompletion(
-        model="summarizer",
-        messages=[{
-            "role": "user",
-            "content": f"请将以下内容压缩为不超过 {max_tokens} tokens 的摘要，保留核心信息：\n{text}"
-        }],
-        max_tokens=max_tokens
-    )
-    return response.choices[0].message.content
-```
-
-### 扩容路径
-
-```
-阶段 1（$0/月）：
-  Groq × 2账号 + Gemini × 2账号 + Cerebras
-  → ~18000次/天，约 300-500 日活
-
-阶段 2（~$10/月）：
-  加入 DeepSeek 作为付费 fallback
-  → 免费额度耗尽后无缝接管，几乎感知不到
-
-阶段 3（~$40/月）：
-  Claude Tier 2（1000 RPM）
-  → 日活破千，需要更稳定的质量保证
+router = Router(
+    model_list=build_model_list(),          # 所有 key × 所有模型展开
+    routing_strategy="usage-based-routing", # 优先选剩余额度最多的
+    fallbacks=[{"chat": ["summarizer"]}],   # chat 全部耗尽才触发
+    allowed_fails=len(GROQ_API_KEYS) * len(CHAT_MODELS),
+)
 ```
 
 ---
@@ -478,8 +343,12 @@ GET    /api/sessions/:id              获取 session + 线程树
 POST   /api/threads                   创建线程（主线或针）
 GET    /api/threads/:id/messages      获取消息历史
 
-POST   /api/threads/:id/chat          发送消息（触发 AI）
-GET    /api/threads/:id/stream        SSE 流式输出 ⭐
+POST   /api/threads/:id/chat          发送消息（触发 AI，SSE 流式）⭐
+POST   /api/threads/:id/suggest       获取子线程追问建议
+
+POST   /api/search                    联网搜索（SearXNG + AI，SSE 流式）⭐
+
+POST   /api/sessions/:id/attachments  上传文件附件（存 Supabase + 嵌入向量）
 
 POST   /api/merge                     合并所有子线程输出
 ```
@@ -497,7 +366,7 @@ POST   /api/merge                     合并所有子线程输出
     └── HTTPS → Oracle Free Tier（后端 FastAPI）
                 域名：api.deeppin.ai
                 Nginx 反向代理 → uvicorn :8000
-                同机器跑 LiteLLM Proxy :4000
+                LiteLLM Router 内嵌在 backend 进程中
 
 Oracle Free Tier 配置：
   - 4核 ARM，24GB 内存（永久免费）
@@ -514,14 +383,7 @@ services:
       - "8000:8000"
     env_file: .env
     restart: always
-
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./litellm-config.yaml:/app/config.yaml
-    restart: always
+    # LiteLLM Router 内嵌在 backend 进程中，无需独立 litellm 服务
 ```
 
 ```nginx
@@ -598,15 +460,10 @@ npm run dev
 
 # 环境变量
 # backend/.env
-GROQ_API_KEY_1=xxx
-GROQ_API_KEY_2=xxx
-GEMINI_API_KEY_1=xxx
-GEMINI_API_KEY_2=xxx
-CEREBRAS_API_KEY=xxx
-DEEPSEEK_API_KEY=xxx
-ANTHROPIC_API_KEY=xxx       # 可选，付费 fallback
+GROQ_API_KEYS=["gsk_key1","gsk_key2"]   # 多账号叠加额度，JSON 数组，所有模型共用
 SUPABASE_URL=xxx
 SUPABASE_SERVICE_KEY=xxx
+ALLOWED_ORIGINS=["http://localhost:3000"]
 
 # frontend/.env.local
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -677,7 +534,7 @@ Day 5：部署 + 联调
 ---
 
 ## 代码规范
-
+- 注释用中文或英文，不用韩文或其他语言
 - TypeScript 严格模式（前端）
 - Python 全部 async/await，类型注解必须写（后端）
 - 组件用函数式，不用 class

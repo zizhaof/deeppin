@@ -11,9 +11,14 @@ create table if not exists sessions (
 create table if not exists threads (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references sessions(id) on delete cascade,
-  parent_thread_id uuid references threads(id) on delete cascade,  -- null = main thread
+  parent_thread_id uuid references threads(id) on delete cascade,  -- null 表示主线
   anchor_text text,
-  anchor_message_id uuid,  -- FK added after messages table; see below
+  anchor_message_id uuid,  -- FK 在 messages 表创建后补加，见下方
+  anchor_start_offset int,
+  anchor_end_offset   int,
+  side                text check (side in ('left', 'right')),
+  title               text,
+  suggestions         jsonb,
   depth int not null default 0 check (depth >= 0),
   created_at timestamptz default now()
 );
@@ -34,7 +39,7 @@ create table if not exists thread_summaries (
   updated_at timestamptz default now()
 );
 
--- 검색 성능을 위한 인덱스
+-- 查询性能索引
 create index if not exists idx_threads_session_id        on threads(session_id);
 create index if not exists idx_threads_parent_thread_id  on threads(parent_thread_id);
 create index if not exists idx_messages_thread_id        on messages(thread_id);

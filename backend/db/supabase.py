@@ -1,4 +1,12 @@
 # backend/db/supabase.py
+"""
+Supabase 客户端单例
+Supabase client singleton.
+
+使用双重检查锁保证线程安全，整个进程只创建一个连接实例。
+Uses double-checked locking for thread safety; only one client instance per process.
+"""
+
 import os
 import threading
 from supabase import create_client, Client
@@ -8,7 +16,10 @@ _lock = threading.Lock()
 
 
 def get_supabase() -> Client:
-    """Supabase 클라이언트 싱글톤 — 스레드 안전 이중 확인 잠금."""
+    """
+    获取 Supabase 客户端单例（线程安全的双重检查锁）。
+    Return the Supabase client singleton using thread-safe double-checked locking.
+    """
     global _client
     if _client is None:
         with _lock:
