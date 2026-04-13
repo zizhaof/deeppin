@@ -67,8 +67,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     // or suppress old-file RAG when the file was sent inline (no chunks in DB)
     const ragFilename = attachments.find((a) => a.kind === "file")?.label;
 
+    const finalContent = fullContent || displayContent;
+    if (!finalContent.trim()) return;
+
     onSend(
-      fullContent || displayContent,
+      finalContent,
       displayContent !== fullContent ? displayContent : undefined,
       ragFilename,
     );

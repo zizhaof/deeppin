@@ -198,6 +198,10 @@ async def stream_and_save(
     """
     yield _sse("ping", {})
 
+    if not user_content.strip():
+        yield _sse("error", {"message": "消息不能为空 / Message cannot be empty"})
+        return
+
     sb = get_supabase()
 
     # 保存用户消息 / Save the user message
