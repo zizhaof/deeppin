@@ -45,6 +45,8 @@ logging.basicConfig(
     handlers=[_file_handler, _console_handler],
 )
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from routers import sessions, threads, stream, attachments, search, merge, relevance
 
 # 从环境变量读取允许的跨域来源，同时支持本地开发和生产环境
@@ -52,7 +54,22 @@ from routers import sessions, threads, stream, attachments, search, merge, relev
 _raw_origins = os.getenv("ALLOWED_ORIGINS", '["http://localhost:3000"]')
 ALLOWED_ORIGINS: list[str] = json.loads(_raw_origins)
 
+_logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Deeppin API", version="0.1.0")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    全局异常兜底：记录未捕获异常，并将真实错误信息返回给前端。
+    Global fallback: log unhandled exceptions and return the real error message to the frontend.
+    """
+    _logger.exception("未处理异常 / Unhandled exception: %s %s", request.method, request.url)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
 
 app.add_middleware(
     CORSMiddleware,
