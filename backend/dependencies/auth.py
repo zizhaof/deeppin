@@ -47,10 +47,8 @@ async def get_current_user(
     # MVP 规模下可接受；生产规模时可考虑复用 postgrest builder。
     # A new user-scoped client is created per request (supabase-py connection init overhead).
     # Acceptable at MVP scale; consider reusing the postgrest builder in production.
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    anon_key = os.environ.get("SUPABASE_ANON_KEY", "")
-    if not supabase_url or not anon_key:
-        raise HTTPException(status_code=500, detail="Supabase configuration missing")
+    supabase_url = os.environ["SUPABASE_URL"]
+    anon_key = os.environ["SUPABASE_ANON_KEY"]
     sb_user: Client = create_client(supabase_url, anon_key)
     sb_user.postgrest.auth(token)
 

@@ -8,11 +8,26 @@ const BASE_URL = "";
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("Not authenticated");
+  if (!session) {
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Not authenticated");
+  }
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${session.access_token}`,
   };
+}
+
+/** 检查 SSE 响应状态，401 时跳转登录页。*/
+function assertSseOk(res: Response, onError: (msg: string) => void): boolean {
+  if (!res.ok || !res.body) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    onError(`HTTP ${res.status}`);
+    return false;
+  }
+  return true;
 }
 
 export type SSEEvent =
@@ -43,12 +58,9 @@ export async function sendMergeStream(
     body: JSON.stringify({ format }),
   });
 
-  if (!res.ok || !res.body) {
-    onError(`HTTP ${res.status}`);
-    return;
-  }
+  if (!assertSseOk(res, onError)) return;
 
-  const reader = res.body.getReader();
+  const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let fullText = "";
@@ -95,12 +107,9 @@ export async function sendSearchStream(
     body: JSON.stringify({ query }),
   });
 
-  if (!res.ok || !res.body) {
-    onError(`HTTP ${res.status}`);
-    return;
-  }
+  if (!assertSseOk(res, onError)) return;
 
-  const reader = res.body.getReader();
+  const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let fullText = "";
@@ -139,12 +148,9 @@ export async function sendMessageStream(
     body: JSON.stringify({ content }),
   });
 
-  if (!res.ok || !res.body) {
-    onError(`HTTP ${res.status}`);
-    return;
-  }
+  if (!assertSseOk(res, onError)) return;
 
-  const reader = res.body.getReader();
+  const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let fullText = "";

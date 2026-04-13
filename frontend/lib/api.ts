@@ -17,6 +17,19 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
+/**
+ * 检查响应状态，401 时跳转登录页（token 在长会话中过期时触发）。
+ * Check response status; redirect to login on 401 (fires when token expires during a long session).
+ */
+function assertOk(res: Response, errorMessage: string): void {
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error(`${errorMessage}: ${res.status}`);
+  }
+}
+
 export interface Session {
   id: string;
   title: string | null;
@@ -53,7 +66,7 @@ export async function listSessions(): Promise<Session[]> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
     headers: await getAuthHeaders(),
   });
-  if (!res.ok) throw new Error(`获取会话列表失败: ${res.status}`);
+  assertOk(res, "获取会话列表失败");
   return res.json();
 }
 
@@ -64,7 +77,7 @@ export async function createSession(title?: string): Promise<Session> {
     headers: await getAuthHeaders(),
     body: JSON.stringify({ title: title ?? null }),
   });
-  if (!res.ok) throw new Error(`创建 session 失败: ${res.status}`);
+  assertOk(res, "创建 session 失败");
   return res.json();
 }
 
@@ -73,7 +86,7 @@ export async function getSession(sessionId: string): Promise<Session> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}`, {
     headers: await getAuthHeaders(),
   });
-  if (!res.ok) throw new Error(`获取 session 失败: ${res.status}`);
+  assertOk(res, "获取 session 失败");
   return res.json();
 }
 
@@ -93,7 +106,7 @@ export async function createThread(params: {
     headers: await getAuthHeaders(),
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error(`创建线程失败: ${res.status}`);
+  assertOk(res, "创建线程失败");
   return res.json();
 }
 
@@ -112,7 +125,7 @@ export async function getMessages(threadId: string): Promise<Message[]> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`, {
     headers: await getAuthHeaders(),
   });
-  if (!res.ok) throw new Error(`获取消息失败: ${res.status}`);
+  assertOk(res, "获取消息失败");
   return res.json();
 }
 
@@ -121,7 +134,7 @@ export async function getAllMessages(sessionId: string): Promise<Record<string, 
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/messages`, {
     headers: await getAuthHeaders(),
   });
-  if (!res.ok) throw new Error(`批量获取消息失败: ${res.status}`);
+  assertOk(res, "批量获取消息失败");
   return res.json();
 }
 

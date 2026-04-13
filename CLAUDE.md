@@ -462,7 +462,8 @@ npm run dev
 # backend/.env
 GROQ_API_KEYS=["gsk_key1","gsk_key2"]   # 多账号叠加额度，JSON 数组，所有模型共用
 SUPABASE_URL=xxx
-SUPABASE_SERVICE_KEY=xxx
+SUPABASE_SERVICE_ROLE_KEY=xxx           # service_role key，用于管理员操作和 JWT 验证
+SUPABASE_ANON_KEY=xxx                   # anon key，用于用户身份的 RLS 查询
 ALLOWED_ORIGINS=["http://localhost:3000"]
 
 # frontend/.env.local
