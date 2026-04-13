@@ -174,48 +174,13 @@ class TestMergeGenerate:
         assert "子线程" in error_events[0]["message"] or "No sub-threads" in error_events[0]["message"]
 
     @pytest.mark.asyncio
-    async def test_uses_summary_cache_when_available(self):
-        """有缓存摘要时使用摘要而不查消息
-        Uses the cached summary instead of querying messages."""
-        db_calls = []
-
-        async def tracking_db(fn):
-            result = fn()
-            db_calls.append(result)
-            return result
-
+    async def test_uses_full_messages_for_content(self):
+        """合并时使用全部消息原文，不走摘要缓存
+        Merge uses full message history, not the summary cache."""
         sb = MagicMock()
-        # session exists
-        sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-            MagicMock(data={"id": SESSION_ID})
-        # threads query
-        sb.table.return_value.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
-            MagicMock(data=[{"id": "t1", "title": "Thread 1", "anchor_text": "anchor", "depth": 1}])
-        # summary hit
-        sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-            MagicMock(data={"summary": "cached summary text"})
-
-        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
-            yield "merged"
-
-        with patch("routers.merge._db", side_effect=tracking_db), \
-             patch("routers.merge.merge_threads", side_effect=fake_merge):
-            events = await _collect_generate(SESSION_ID, sb=sb)
-
-        chunk_events = [e for e in events if e["type"] == "chunk"]
-        assert any(e["content"] == "merged" for e in chunk_events)
-        done_events = [e for e in events if e["type"] == "done"]
-        assert len(done_events) == 1
-
-    @pytest.mark.asyncio
-    async def test_falls_back_to_messages_on_cache_miss(self):
-        """缓存缺失时回退到读取最近消息
-        Falls back to reading recent messages when the summary cache is missing."""
-        sb = MagicMock()
-
         call_count = [0]
 
-        def make_table(table_name):
+        def make_table(_name):
             m = MagicMock()
             call_count[0] += 1
             n = call_count[0]
@@ -227,18 +192,50 @@ class TestMergeGenerate:
                 # threads
                 m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
                     MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
-            elif n == 3:
-                # summary miss
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data=None)
             else:
-                # messages fallback
-                m.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = \
+                # messages (full, no limit)
+                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
                     MagicMock(data=[{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}])
             return m
 
         sb.table.side_effect = make_table
+        passed_threads_data = []
 
+        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
+            passed_threads_data.extend(threads_data)
+            yield "merged"
+
+        with patch("routers.merge.merge_threads", side_effect=fake_merge):
+            events = await _collect_generate(SESSION_ID, sb=sb)
+
+        assert any(e["type"] == "chunk" and e["content"] == "merged" for e in events)
+        assert passed_threads_data
+        assert "question" in passed_threads_data[0]["content"]
+        assert "answer" in passed_threads_data[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_messages_on_cache_miss(self):
+        """消息为主要内容来源（原缓存回退测试保留以确保消息格式正确）
+        Messages are always the content source; verify correct label format."""
+        sb = MagicMock()
+        call_count = [0]
+
+        def make_table(_name):
+            m = MagicMock()
+            call_count[0] += 1
+            n = call_count[0]
+            if n == 1:
+                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
+                    MagicMock(data={"id": SESSION_ID})
+            elif n == 2:
+                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
+                    MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
+            else:
+                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
+                    MagicMock(data=[{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}])
+            return m
+
+        sb.table.side_effect = make_table
         passed_threads_data = []
 
         async def fake_merge(threads_data, format_type="free", custom_prompt=None):
@@ -246,11 +243,11 @@ class TestMergeGenerate:
             yield "ok"
 
         with patch("routers.merge.merge_threads", side_effect=fake_merge):
-            events = await _collect_generate(SESSION_ID, sb=sb)
+            await _collect_generate(SESSION_ID, sb=sb)
 
-        # content should contain the concatenated messages
         assert passed_threads_data
-        assert "question" in passed_threads_data[0]["content"] or "answer" in passed_threads_data[0]["content"]
+        assert "用户：q" in passed_threads_data[0]["content"]
+        assert "AI：a" in passed_threads_data[0]["content"]
 
     @pytest.mark.asyncio
     async def test_all_empty_threads_yields_error(self):
@@ -269,13 +266,9 @@ class TestMergeGenerate:
             elif n == 2:
                 m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
                     MagicMock(data=[{"id": "t1", "title": "", "anchor_text": "", "depth": 1}])
-            elif n == 3:
-                # no summary
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data=None)
             else:
                 # empty messages
-                m.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = \
+                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
                     MagicMock(data=[])
             return m
 
@@ -304,8 +297,8 @@ class TestMergeGenerate:
                 m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
                     MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
             else:
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data={"summary": "some content"})
+                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
+                    MagicMock(data=[{"role": "assistant", "content": "some content"}])
             return m
 
         sb.table.side_effect = make_table

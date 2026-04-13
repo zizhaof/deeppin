@@ -109,32 +109,16 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
             async def get_thread_content(thread: dict) -> dict:
                 tid = thread["id"]
 
-                # 先查 thread_summaries 缓存 / Check thread_summaries cache first
-                summary_res = await _db(
-                    lambda: sb.table("thread_summaries")
-                    .select("summary")
-                    .eq("thread_id", tid)
-                    .maybe_single()
-                    .execute()
-                )
-                if summary_res and summary_res.data and summary_res.data.get("summary"):
-                    return {
-                        "title": thread.get("title") or "",
-                        "anchor": thread.get("anchor_text") or "",
-                        "content": summary_res.data["summary"],
-                    }
-
-                # 缓存缺失：取最近 10 条消息拼接为纯文本
-                # Cache miss: concatenate the most recent 10 messages as plain text
+                # 取全部消息原文，合并场景需要完整内容而非压缩摘要
+                # Fetch all messages verbatim — merge needs full content, not a lossy summary
                 msgs_res = await _db(
                     lambda: sb.table("messages")
                     .select("role, content")
                     .eq("thread_id", tid)
-                    .order("created_at", desc=True)
-                    .limit(10)
+                    .order("created_at")
                     .execute()
                 )
-                messages = list(reversed(msgs_res.data or []))
+                messages = msgs_res.data or []
                 lines = []
                 for m in messages:
                     label = "用户" if m["role"] == "user" else "AI"
