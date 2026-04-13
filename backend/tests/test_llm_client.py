@@ -196,3 +196,126 @@ class TestClassifySearchIntent:
         from services.llm_client import classify_search_intent
         with patch("services.llm_client._summarizer_call", new=AsyncMock(return_value="yes")):
             assert await classify_search_intent("今天天气") is True
+
+
+# ── merge_threads ─────────────────────────────────────────────────────
+
+class TestMergeThreads:
+    """merge_threads 的单元测试 / Unit tests for merge_threads."""
+
+    async def _collect(self, gen) -> str:
+        """将 AsyncGenerator 收集为字符串 / Collect an AsyncGenerator into a string."""
+        chunks = []
+        async for c in gen:
+            chunks.append(c)
+        return "".join(chunks)
+
+    @pytest.mark.asyncio
+    async def test_empty_threads_data_yields_nothing(self):
+        """空列表不产生任何 chunk / Empty list yields no chunks."""
+        from services.llm_client import merge_threads
+
+        async def fake_stream(_messages, **_kwargs):
+            return
+            yield  # make it an async generator
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            result = await self._collect(merge_threads([]))
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_calls_chat_stream_with_inject_meta_false(self):
+        """必须以 inject_meta=False 调用 chat_stream，避免注入 META 标记
+        Must call chat_stream with inject_meta=False to avoid injecting META markers."""
+        from services.llm_client import merge_threads
+        captured = {}
+
+        async def fake_stream(messages, **kwargs):
+            captured["messages"] = messages
+            captured["inject_meta"] = kwargs.get("inject_meta")
+            yield "chunk"
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            await self._collect(merge_threads([{"title": "T", "anchor": "A", "content": "C"}]))
+
+        assert captured.get("inject_meta") is False
+
+    @pytest.mark.asyncio
+    async def test_free_format_in_system_prompt(self):
+        """format_type='free' 时 system prompt 包含自由总结指令
+        format_type='free' puts the free-form instruction in the system prompt."""
+        from services.llm_client import merge_threads
+        captured = {}
+
+        async def fake_stream(messages, **kwargs):
+            captured["system"] = messages[0]["content"]
+            yield "ok"
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="free"))
+
+        assert "流畅" in captured["system"] or "叙述" in captured["system"]
+
+    @pytest.mark.asyncio
+    async def test_structured_format_in_system_prompt(self):
+        """format_type='structured' 时 system prompt 包含结构化分析指令
+        format_type='structured' puts the structured-analysis instruction in the system prompt."""
+        from services.llm_client import merge_threads
+        captured = {}
+
+        async def fake_stream(messages, **kwargs):
+            captured["system"] = messages[0]["content"]
+            yield "ok"
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="structured"))
+
+        assert "结构化" in captured["system"] or "权衡" in captured["system"]
+
+    @pytest.mark.asyncio
+    async def test_anchor_text_appears_in_user_prompt(self):
+        """锚点文字出现在发送给 LLM 的 user 消息中
+        Anchor text appears in the user message sent to the LLM."""
+        from services.llm_client import merge_threads
+        captured = {}
+
+        async def fake_stream(messages, **kwargs):
+            captured["user"] = messages[1]["content"]
+            yield "ok"
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            await self._collect(merge_threads([{"title": "My Title", "anchor": "unique_anchor_xyz", "content": "body"}]))
+
+        assert "unique_anchor_xyz" in captured["user"]
+
+    @pytest.mark.asyncio
+    async def test_streams_chunks_through(self):
+        """chat_stream 产生的 chunk 逐一 yield 出去
+        Chunks from chat_stream are yielded one by one."""
+        from services.llm_client import merge_threads
+
+        async def fake_stream(_messages, **_kwargs):
+            for w in ["hello", " ", "world"]:
+                yield w
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            result = await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}]))
+
+        assert result == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_unknown_format_falls_back_to_free(self):
+        """未知 format_type 时使用自由总结指令作为兜底
+        Unknown format_type falls back to the free-form instruction."""
+        from services.llm_client import merge_threads
+        captured = {}
+
+        async def fake_stream(messages, **kwargs):
+            captured["system"] = messages[0]["content"]
+            yield "ok"
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="nonexistent"))
+
+        # free format contains "流畅" or "叙述"
+        assert "流畅" in captured["system"] or "叙述" in captured["system"]

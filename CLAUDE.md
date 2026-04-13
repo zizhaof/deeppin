@@ -475,43 +475,47 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 ## MVP 功能范围
 
-**必须做（1 周内）：**
-- 主线 AI 对话（SSE 流式）
-- 选中文字 → 插针
-- 子线程展开（桌面三栏布局）
-- 无限嵌套 + compact context
-- 面包屑导航
-- 合并输出
-- Supabase 持久化
-- 部署到 Vercel + Oracle
+**已完成（Days 1–4）：**
+- [x] 主线 AI 对话（SSE 流式）
+- [x] 选中文字 → 插针 → 子线程
+- [x] 三栏布局（桌面端）+ 锚点高亮 + 引导线
+- [x] 无限嵌套 + compact context（depth-based token 预算）
+- [x] 面包屑导航 + 前进/后退
+- [x] 子线程建议追问（占位符 + LLM 真实结果）
+- [x] 合并输出（free / bullets / structured，Markdown 预览 + 下载）
+- [x] 联网搜索（SearXNG + AI，自动检测实时查询）
+- [x] 文件附件上传 + 向量嵌入 + RAG 检索
+- [x] Markdown 渲染（AI 消息）
+- [x] Supabase 持久化（session / thread / message / summary）
 
-**不做（MVP 阶段）：**
-- 用户账号系统（匿名 session 即可）
-- Chrome 插件
-- 移动端适配
-- LiteLLM 切换（直接用 Claude API）
+**待完成：**
+- [ ] 用户账号系统（目前匿名 session）
+- [ ] 部署到 Vercel + Oracle Cloud
+- [ ] GitHub Actions CI/CD
+- [ ] Chrome 插件（Phase 2）
+- [ ] 移动端适配（Phase 2）
 
 ---
 
 ## 开发节奏（1 周，AI 辅助）
 
 ```
-Day 1：搭架子
+Day 1：搭架子 ✅
   后端：FastAPI 骨架 + Supabase schema + /stream 端点跑通
   前端：Next.js 项目 + 三栏布局骨架 + SSE 接入
   目标：主线对话能跑起来
 
-Day 2：插针
+Day 2：插针 ✅
   后端：创建 thread API + context_builder 基础版
   前端：MessageBubble 选中逻辑 + PinMenu + 锚点高亮
   目标：能插针，子线程能问答
 
-Day 3：Compact + 嵌套
+Day 3：Compact + 嵌套 ✅
   后端：compact 摘要逻辑 + 无限嵌套 context 构建
   前端：BreadcrumbNav + 子线程里继续插针
   目标：多层嵌套能正确继承 context
 
-Day 4：合并输出 + 持久化
+Day 4：合并输出 + 持久化 ✅
   后端：/merge 端点 + Supabase 存读
   前端：MergeOutput 面板 + 格式选择 + Markdown 导出
   目标：完整功能闭环
@@ -542,3 +546,30 @@ Day 5：部署 + 联调
 - API 调用统一封装，带错误处理和 retry
 - 注释用中文
 - 提交信息：`feat:` / `fix:` / `refactor:` 前缀
+
+## 测试规范
+
+**每次新增功能必须同步写单元测试，写完立即运行。**
+
+```bash
+# 运行全部后端测试（每次功能提交前必跑）
+cd backend && pytest tests/ -q
+```
+
+测试文件位置：`backend/tests/test_*.py`
+
+当前覆盖：
+| 模块 | 测试文件 |
+|------|---------|
+| services/llm_client.py | test_llm_client.py（含 merge_threads） |
+| services/context_builder.py | test_context_builder.py |
+| services/stream_manager.py | test_stream_manager.py |
+| services/attachment_processor.py | test_attachment_processor.py |
+| services/memory_service.py | test_memory_service.py |
+| services/search_service.py | test_search_service.py |
+| routers/merge.py | test_merge_router.py |
+
+写测试的原则：
+- mock 外部依赖（Supabase、LLM API），只测本模块逻辑
+- patch 路径必须是被测模块内的名称（不是定义所在模块）
+- `asyncio.gather` 并发调用共享的 Supabase 客户端会产生 httpx 竞争，测试和生产代码中均需注意
