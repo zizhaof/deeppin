@@ -24,7 +24,7 @@ type Attachment = FileAttachment | PasteAttachment;
 
 interface Props {
   sessionId: string;
-  onSend: (content: string, display?: string) => void;
+  onSend: (content: string, display?: string, ragFilename?: string) => void;
   disabled?: boolean;
   webSearch?: boolean;
   onWebSearchToggle?: (enabled: boolean) => void;
@@ -62,9 +62,15 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     for (const a of attachments) displayParts.push(`📎 ${a.label}`);
     const displayContent = displayParts.join("  ");
 
+    // 任意文件附件的文件名（含内联和 RAG 两种模式），后端据此优先检索该文件或抑制旧文件 RAG
+    // Filename of any file attachment (inline or RAG); backend uses it to prefer this file's chunks
+    // or suppress old-file RAG when the file was sent inline (no chunks in DB)
+    const ragFilename = attachments.find((a) => a.kind === "file")?.label;
+
     onSend(
       fullContent || displayContent,
       displayContent !== fullContent ? displayContent : undefined,
+      ragFilename,
     );
     setText("");
     setAttachments([]);

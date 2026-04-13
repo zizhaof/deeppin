@@ -185,6 +185,74 @@ class TestRetrieveRagContext:
 
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_prefer_filename_filters_to_matching_chunks(self):
+        """
+        prefer_filename 设置时，只返回来自该文件的块，忽略其他文件的高分块。
+        When prefer_filename is set, only chunks from that file are returned
+        even if chunks from other files scored higher.
+        """
+        from services import memory_service
+
+        chunk_data = [
+            {"filename": "old_report.pdf", "chunk_index": 0, "content": "旧文件内容", "similarity": 0.9},
+            {"filename": "new_upload.pdf", "chunk_index": 0, "content": "新文件内容", "similarity": 0.7},
+        ]
+        memory_data: list = []
+        fake_vec = [0.1] * 384
+
+        with patch("services.embedding_service.embed_text", new=AsyncMock(return_value=fake_vec)), \
+             patch("services.embedding_service.format_vector", return_value="[0.1,...]"):
+            with patch.object(memory_service, "_db", new=AsyncMock(side_effect=[
+                MagicMock(data=chunk_data),   # 主检索 / primary search
+                MagicMock(data=memory_data),  # 对话记忆 / memory search
+            ])):
+                result = await memory_service.retrieve_rag_context(
+                    "session-1", "这份文件说了什么",
+                    prefer_filename="new_upload.pdf",
+                )
+
+        # 结果中只能包含 new_upload.pdf 的内容
+        # Result must only contain content from new_upload.pdf
+        assert len(result) >= 1
+        content_block = next(m for m in result if m["role"] == "system" and "new_upload.pdf" in m["content"])
+        assert "旧文件内容" not in content_block["content"]
+
+    @pytest.mark.asyncio
+    async def test_prefer_filename_inline_file_suppresses_old_chunks(self):
+        """
+        prefer_filename 对应文件完全没有 chunk（内联文件）时，清空 attachment RAG，
+        避免旧文件 chunk 混入 context。
+        When prefer_filename's file has no chunks at all (inline file),
+        all attachment RAG is suppressed to prevent old-file chunks from polluting context.
+        """
+        from services import memory_service
+
+        # 主检索和扩大检索都只有旧文件的 chunk
+        old_chunk = {"filename": "old.pdf", "chunk_index": 0, "content": "旧文件内容", "similarity": 0.8}
+        memory_data: list = []
+        fake_vec = [0.1] * 384
+
+        with patch("services.embedding_service.embed_text", new=AsyncMock(return_value=fake_vec)), \
+             patch("services.embedding_service.format_vector", return_value="[0.1,...]"):
+            with patch.object(memory_service, "_db", new=AsyncMock(side_effect=[
+                MagicMock(data=[old_chunk]),   # 主检索 / primary search
+                MagicMock(data=memory_data),   # 对话记忆 / memory
+                MagicMock(data=[old_chunk]),   # 扩大检索 / wider search
+            ])):
+                result = await memory_service.retrieve_rag_context(
+                    "session-1", "这份文件说了什么",
+                    prefer_filename="inline_file.pdf",  # 内联文件，DB 中无 chunk
+                )
+
+        # 内联文件无 chunk → 清空 attachment RAG，旧文件内容不应出现
+        # Inline file has no chunks → attachment RAG suppressed; old content must not appear
+        attachment_block = next(
+            (m for m in result if m["role"] == "system" and "旧文件内容" in m["content"]),
+            None,
+        )
+        assert attachment_block is None
+
 
 # ── store_long_text_chunks ────────────────────────────────────────────
 

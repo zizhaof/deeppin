@@ -141,11 +141,15 @@ export async function sendMessageStream(
   onError: (message: string) => void,
   onThreadTitle?: (threadId: string, title: string) => void,
   onStatus?: (text: string) => void,
+  attachmentFilename?: string,
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/chat`, {
     method: "POST",
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({
+      content,
+      ...(attachmentFilename ? { attachment_filename: attachmentFilename } : {}),
+    }),
   });
 
   if (!assertSseOk(res, onError)) return;

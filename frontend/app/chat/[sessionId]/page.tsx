@@ -300,7 +300,8 @@ export default function ChatPage() {
 
   // ── 发送消息 ────────────────────────────────────────────────────
   // content = AI 看到的完整内容；display = 气泡里显示的文字（含附件标签，可选）
-  const handleSend = async (content: string, display?: string) => {
+  // ragFilename = 刚上传的 RAG 文件名，后端用于优先检索该文件的块
+  const handleSend = async (content: string, display?: string, ragFilename?: string) => {
     if (!activeThreadId || isStreaming) return;
     addUserMessage(activeThreadId, display ?? content);
     setStreamStatus(activeThreadId, t.processing);
@@ -326,6 +327,7 @@ export default function ChatPage() {
         (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
         (tid, title) => updateThreadTitle(tid, title),
         (text) => setStreamStatus(threadId, text),
+        ragFilename,
       );
     }
   };

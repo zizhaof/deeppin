@@ -56,7 +56,7 @@ async def chat(thread_id: uuid.UUID, body: ChatRequest, auth=Depends(get_current
 
     # stream_and_save 内部使用 service_role 写消息（背景任务模式，绕过 RLS 是预期行为）
     return StreamingResponse(
-        stream_and_save(str(thread_id), body.content),
+        stream_and_save(str(thread_id), body.content, body.attachment_filename),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

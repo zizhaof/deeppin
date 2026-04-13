@@ -190,6 +190,7 @@ async def _save_title(
 async def stream_and_save(
     thread_id: str,
     user_content: str,
+    attachment_filename: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     核心 SSE 生成器：保存消息 → 构建 context → 流式生成 → 后台写摘要/标题/embedding。
@@ -256,7 +257,11 @@ async def stream_and_save(
     # 构建 context（含 RAG 检索，长文本块此时已入库可被检索到）
     # Build context (includes RAG; long-text chunks are now in the DB and searchable)
     try:
-        context = await build_context(thread_id, query_text=user_content)
+        context = await build_context(
+            thread_id,
+            query_text=user_content,
+            prefer_filename=attachment_filename,
+        )
     except Exception as exc:
         intent_task.cancel()
         yield _sse("error", {"message": f"构建上下文失败 / Failed to build context: {exc}"})

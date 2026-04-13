@@ -196,13 +196,20 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
     return summary_text
 
 
-async def build_context(thread_id: str, query_text: str = "") -> list[dict]:
+async def build_context(
+    thread_id: str,
+    query_text: str = "",
+    prefer_filename: str | None = None,
+) -> list[dict]:
     """
     为指定线程构建 AI messages 列表。
     Build the AI messages list for the specified thread.
 
     query_text: 最新用户消息，用于 RAG 检索（stream_manager 传入）。
     query_text: The latest user message, used for RAG retrieval (passed in by stream_manager).
+
+    prefer_filename: 优先使用来自该文件的 RAG 块（用户刚上传文件时传入）。
+    prefer_filename: Prefer RAG chunks from this file (passed when the user just uploaded it).
     """
     sb = get_supabase()
 
@@ -220,7 +227,11 @@ async def build_context(thread_id: str, query_text: str = "") -> list[dict]:
     # Exclude the current thread's own memories: already covered by its messages + summary
     from services.memory_service import retrieve_rag_context
     rag_items = (
-        await retrieve_rag_context(session_id, query_text, exclude_thread_id=thread_id)
+        await retrieve_rag_context(
+            session_id, query_text,
+            exclude_thread_id=thread_id,
+            prefer_filename=prefer_filename,
+        )
         if query_text.strip() else []
     )
 

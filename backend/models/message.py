@@ -19,6 +19,11 @@ class ChatRequest(BaseModel):
     # Message content; empty strings are rejected
     content: str = Field(min_length=1)
 
+    # 本条消息关联的 RAG 文件名（用户刚上传文件时由前端传入，指导 RAG 优先检索该文件）
+    # Filename of the RAG-indexed file associated with this message.
+    # Passed by the frontend when the user has just uploaded a file, so RAG prioritizes its chunks.
+    attachment_filename: str | None = None
+
 
 class Message(BaseModel):
     """

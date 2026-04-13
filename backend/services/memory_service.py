@@ -152,6 +152,7 @@ async def retrieve_rag_context(
     attachment_top_k: int = 4,
     memory_top_k: int = 3,
     exclude_thread_id: str | None = None,
+    prefer_filename: str | None = None,
 ) -> list[dict]:
     """
     根据 query_text 并发检索附件块和历史对话记忆，返回注入 AI context 的 system 消息列表。
@@ -164,6 +165,10 @@ async def retrieve_rag_context(
          Primary search: threshold 0.45 to reduce false negatives
       2. 若附件块命中为空，零阈值兜底：强制返回相似度最高的 top-k
          If no chunks match, zero-threshold fallback: force-return the top-k regardless of score
+
+    prefer_filename: 优先使用来自该文件的块（文件上传后首次问答时传入，避免旧文件污染）。
+    prefer_filename: When set, prefer chunks from this specific file to avoid older files
+                     polluting the context when the user has just uploaded a new file.
 
     RAG 失败不阻断正常对话，任何异常返回空列表。
     RAG failure never blocks the main conversation; any exception returns an empty list.
@@ -214,6 +219,37 @@ async def retrieve_rag_context(
                 "p_threshold": 0.0,
             }).execute())
             chunks = fallback_res.data or []
+
+        # 文件偏好过滤：刚上传/发送文件后，只返回该文件的块；找不到块说明是内联文件，清空 attachment RAG
+        # File preference filter: after uploading/sending a file, return only that file's chunks.
+        # If no chunks exist for it, the file was sent inline (already in message history) —
+        # suppress all attachment RAG to prevent old files from polluting the context.
+        if prefer_filename:
+            preferred = [c for c in chunks if c.get("filename") == prefer_filename]
+            if preferred:
+                # RAG 文件：找到了对应块，只用这些
+                # RAG file: found matching chunks — use only those
+                chunks = preferred
+            else:
+                # 该文件的块未进入 top-k，扩大搜索范围再过滤一次
+                # The preferred file's chunks didn't make top-k; widen search and filter again
+                wider_res = await _db(lambda: sb.rpc("search_attachment_chunks", {
+                    "query_embedding": vec_str,
+                    "p_session_id": session_id,
+                    "p_top_k": attachment_top_k * 4,
+                    "p_threshold": 0.0,
+                }).execute())
+                preferred = [c for c in (wider_res.data or []) if c.get("filename") == prefer_filename]
+                if preferred:
+                    # 扩大后找到了，只用这些
+                    # Found after widening — use only those
+                    chunks = preferred[:attachment_top_k]
+                else:
+                    # 完全没有 chunk：文件是内联模式，内容已在消息历史中
+                    # 清空 attachment RAG，避免旧文件 chunk 混入 context 造成混淆
+                    # No chunks at all: file was sent inline, content is already in message history.
+                    # Suppress all attachment RAG to prevent old-file chunks from polluting context.
+                    chunks = []
 
         result: list[dict] = []
 
