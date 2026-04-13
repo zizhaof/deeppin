@@ -179,18 +179,21 @@ export default function ChatPage() {
     streamingText !== undefined ||
     Object.values(messagesByThread).some((msgs) => msgs && msgs.length > 0);
 
-  // 双保险：middleware 已处理，但前端也检查一次
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) router.push("/login");
-    });
-  }, [router]);
-
-  // ── 初始化 ─────────────────────────────────────────────────────
+  // ── 初始化（含 auth 检查）────────────────────────────────────────
+  // Auth check is done inside init() so data fetches never race with auth
   useEffect(() => {
     let cancelled = false;
     async function init() {
+      // 双保险：middleware 已处理，但 init 内也验证一次，确保数据请求不会在 auth 之前发出
+      // Defense-in-depth: middleware already blocked unauthenticated access,
+      // but checking here ensures data fetches never fire before auth is confirmed
+      const supabase = createClient();
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      if (!authSession) {
+        router.push("/login");
+        return;
+      }
+
       try {
         // session（含 threads）和全部消息并行加载，1 次网络往返
         // Load session (with threads) and all messages in parallel — 1 round-trip total

@@ -122,13 +122,8 @@ export default function HomePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    listSessions()
-      .then(setSessions)
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false));
-  }, []);
-
+  // 先检查 auth，认证后再拉取 sessions（避免未登录时静默抛错）
+  // Check auth first, then fetch sessions (avoids silent errors for unauthenticated users)
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -137,6 +132,12 @@ export default function HomePage() {
           email: session.user.email,
           avatar_url: session.user.user_metadata?.avatar_url,
         });
+        listSessions()
+          .then(setSessions)
+          .catch(() => setSessions([]))
+          .finally(() => setLoading(false));
+      } else {
+        setLoading(false);
       }
     });
   }, []);
