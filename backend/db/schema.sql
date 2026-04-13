@@ -3,8 +3,8 @@ create extension if not exists "pgcrypto";
 
 create table if not exists sessions (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
   title text,
-  -- user_id intentionally omitted for anonymous MVP; add when auth is introduced
   created_at timestamptz default now()
 );
 
