@@ -296,6 +296,58 @@ async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: in
     )
 
 
+async def assess_relevance(
+    main_summary: str,
+    threads: list[dict],
+) -> list[dict]:
+    """
+    一次 LLM 调用评估各子线程与主线的相关性，返回结构化 JSON 数组。
+    Assess relevance of sub-threads to the main thread in one LLM call.
+
+    threads: [{"thread_id": str, "title": str, "summary": str}]
+    Returns: [{"thread_id": str, "selected": bool, "reason": str}]
+    Falls back to all-selected on any parse failure.
+    """
+    import re as _re
+
+    thread_lines = "\n".join(
+        f"{i + 1}. id={t['thread_id']}, 标题={t['title']}: {t['summary'][:200]}"
+        for i, t in enumerate(threads)
+    )
+
+    raw = await _summarizer_call(
+        messages=[{
+            "role": "user",
+            "content": (
+                "你是一个分析助手。以下是主线对话摘要，以及若干子问题的摘要。\n"
+                "请判断每个子问题与主线主题的相关程度，决定是否默认选中用于合并输出。\n\n"
+                f"【主线摘要】\n{main_summary}\n\n"
+                f"【子问题列表】\n{thread_lines}\n\n"
+                "请严格以 JSON 数组格式输出，不要输出其他任何内容：\n"
+                '[{"thread_id": "...", "selected": true, "reason": "一句话说明"}]'
+            ),
+        }],
+        max_tokens=500,
+        timeout=30,
+    )
+
+    # 尝试从回复中提取 JSON 数组 / Try to extract JSON array from response
+    try:
+        match = _re.search(r"\[.*\]", raw, _re.DOTALL)
+        if match:
+            result = json.loads(match.group())
+            if isinstance(result, list) and all(
+                isinstance(r, dict) and "thread_id" in r and "selected" in r
+                for r in result
+            ):
+                return result
+    except (json.JSONDecodeError, KeyError, ValueError):
+        pass
+
+    # 兜底：全部选中 / Fallback: select all
+    return [{"thread_id": t["thread_id"], "selected": True, "reason": ""} for t in threads]
+
+
 async def merge_threads(
     threads_data: list[dict],
     format_type: str = "free",

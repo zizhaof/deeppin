@@ -164,6 +164,7 @@ export default function ChatPage() {
   const messageRefs = useRef<Record<string, HTMLDivElement>>({});
   const scrollFrameRef = useRef<number | null>(null);
   const [sideMetrics, setSideMetrics] = useState({ offset: 0, height: 600, mainHeight: 600 });
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
   const mainThread = threads.find((t) => t.parent_thread_id === null);
   const activeThread = activeThreadId ? threads.find((t) => t.id === activeThreadId) : null;
@@ -193,6 +194,7 @@ export default function ChatPage() {
         router.push("/login");
         return;
       }
+      setUserAvatarUrl(authSession.user.user_metadata?.avatar_url ?? null);
 
       try {
         // session（含 threads）和全部消息并行加载，1 次网络往返
@@ -609,6 +611,7 @@ export default function ChatPage() {
               anchorsByMessage={anchorsByMessage}
               suggestions={activeSuggestions}
               anchorText={activeThread?.anchor_text}
+              userAvatarUrl={userAvatarUrl}
               onMessageRef={handleMessageRef}
               onTextSelect={handleTextSelect}
               onAnchorClick={handleAnchorClick}
@@ -629,7 +632,7 @@ export default function ChatPage() {
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowMerge(true)}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-zinc-600 hover:text-zinc-300 border border-white/6 hover:border-white/12 hover:bg-white/3 transition-all"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-400/50 transition-all"
                   title="合并输出 / Merge output"
                 >
                   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -798,6 +801,7 @@ export default function ChatPage() {
       {showMerge && (
         <MergeOutput
           sessionId={sessionId}
+          threads={threads}
           pinCount={pinCount}
           onClose={() => setShowMerge(false)}
         />

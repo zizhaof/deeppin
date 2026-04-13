@@ -48,6 +48,7 @@ async def _db(fn):
 
 class MergeRequest(BaseModel):
     format: str = "free"  # "free" | "bullets" | "structured"
+    thread_ids: list[str] | None = None  # None = 全部；有值 = 仅合并指定线程
 
     @field_validator("format")
     @classmethod
@@ -82,16 +83,18 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
         try:
             yield _sse("status", {"text": "正在整理探索内容… / Gathering threads…"})
 
-            # 2. 抓取该 session 下所有子线程（depth > 0）
-            #    Fetch all sub-threads for this session (depth > 0)
-            threads_res = await _db(
-                lambda: sb.table("threads")
+            # 2. 抓取子线程，支持按 thread_ids 过滤
+            #    Fetch sub-threads, optionally filtered by thread_ids
+            query = (
+                sb.table("threads")
                 .select("id, title, anchor_text, depth")
                 .eq("session_id", str(session_id))
                 .gt("depth", 0)
                 .order("created_at")
-                .execute()
             )
+            if body.thread_ids is not None:
+                query = query.in_("id", body.thread_ids)
+            threads_res = await _db(lambda: query.execute())
             threads = threads_res.data or []
 
             if not threads:

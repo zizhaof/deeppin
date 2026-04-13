@@ -321,3 +321,17 @@ class TestMergeGenerate:
         assert "part1" in chunk_contents
         assert "part2" in chunk_contents
         assert any(e["type"] == "done" for e in events)
+
+
+class TestMergeRequestThreadIds:
+    def test_thread_ids_defaults_to_none(self):
+        """thread_ids 默认为 None（合并全部）/ thread_ids defaults to None (merge all)."""
+        from routers.merge import MergeRequest
+        r = MergeRequest()
+        assert r.thread_ids is None
+
+    def test_thread_ids_accepts_list(self):
+        """thread_ids 接受字符串列表 / thread_ids accepts a list of strings."""
+        from routers.merge import MergeRequest
+        r = MergeRequest(thread_ids=["abc", "def"])
+        assert r.thread_ids == ["abc", "def"]

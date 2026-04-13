@@ -47,6 +47,7 @@ export type MergeFormat = "free" | "bullets" | "structured";
 export async function sendMergeStream(
   sessionId: string,
   format: MergeFormat,
+  threadIds: string[] | null,
   onChunk: (chunk: string) => void,
   onDone: (fullText: string) => void,
   onError: (message: string) => void,
@@ -55,7 +56,10 @@ export async function sendMergeStream(
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/merge`, {
     method: "POST",
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ format }),
+    body: JSON.stringify({
+      format,
+      ...(threadIds !== null ? { thread_ids: threadIds } : {}),
+    }),
   });
 
   if (!assertSseOk(res, onError)) return;

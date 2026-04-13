@@ -120,6 +120,22 @@ export async function getSuggestions(threadId: string): Promise<string[]> {
   return data.questions ?? [];
 }
 
+export interface RelevanceItem {
+  thread_id: string;
+  selected: boolean;
+  reason: string;
+}
+
+/** 获取子线程与主线的相关性评估（用于合并输出节点默认选中）*/
+export async function getRelevance(sessionId: string): Promise<RelevanceItem[]> {
+  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/relevance`, {
+    method: "POST",
+    headers: await getAuthHeaders(),
+  });
+  assertOk(res, "Failed to get relevance");
+  return res.json();
+}
+
 /** 获取线程消息历史 */
 export async function getMessages(threadId: string): Promise<Message[]> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`, {

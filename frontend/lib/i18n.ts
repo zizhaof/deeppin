@@ -64,7 +64,7 @@ const zh = {
   // 合并输出
   mergeButton: "合并",
   mergeTitle: "合并输出",
-  mergeAngles: "个探索角度",
+  mergeAngles: "个子问题",
   mergeHint: "选择格式后点击生成，将所有插针内容合并为一份报告",
   mergePreparing: "正在准备…",
   mergeCopyMd: "复制 Markdown",
@@ -149,7 +149,7 @@ const en = {
   extracting: "Extracting text…",
   mergeButton: "Merge",
   mergeTitle: "Merge Output",
-  mergeAngles: "angles",
+  mergeAngles: "sub-questions",
   mergeHint: "Choose a format and click Generate to merge all pinned content into a report",
   mergePreparing: "Preparing…",
   mergeCopyMd: "Copy Markdown",

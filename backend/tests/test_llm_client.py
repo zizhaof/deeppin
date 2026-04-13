@@ -319,3 +319,45 @@ class TestMergeThreads:
 
         # free format contains "流畅" or "叙述"
         assert "流畅" in captured["system"] or "叙述" in captured["system"]
+
+
+class TestAssessRelevance:
+    @pytest.mark.asyncio
+    async def test_returns_parsed_json(self):
+        """LLM 返回合法 JSON 时直接解析 / Parses valid JSON returned by LLM."""
+        mock_response = '[{"thread_id": "abc", "selected": true, "reason": "相关"}]'
+        with patch("services.llm_client._summarizer_call", new_callable=AsyncMock) as m:
+            m.return_value = mock_response
+            from services.llm_client import assess_relevance
+            result = await assess_relevance(
+                main_summary="主线摘要内容",
+                threads=[{"thread_id": "abc", "title": "标题", "summary": "内容"}],
+            )
+        assert result == [{"thread_id": "abc", "selected": True, "reason": "相关"}]
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_invalid_json(self):
+        """LLM 返回非法 JSON 时所有线程默认选中 / Falls back to all-selected on invalid JSON."""
+        with patch("services.llm_client._summarizer_call", new_callable=AsyncMock) as m:
+            m.return_value = "抱歉，无法解析"
+            from services.llm_client import assess_relevance
+            result = await assess_relevance(
+                main_summary="主线摘要",
+                threads=[
+                    {"thread_id": "x1", "title": "A", "summary": "aa"},
+                    {"thread_id": "x2", "title": "B", "summary": "bb"},
+                ],
+            )
+        assert len(result) == 2
+        assert all(r["selected"] is True for r in result)
+        assert {r["thread_id"] for r in result} == {"x1", "x2"}
+
+    @pytest.mark.asyncio
+    async def test_json_embedded_in_text(self):
+        """JSON 嵌在文本中也能提取 / Extracts JSON array even when surrounded by text."""
+        mock_response = '好的，分析如下：\n[{"thread_id": "y", "selected": false, "reason": "无关"}]\n完毕'
+        with patch("services.llm_client._summarizer_call", new_callable=AsyncMock) as m:
+            m.return_value = mock_response
+            from services.llm_client import assess_relevance
+            result = await assess_relevance("主线", [{"thread_id": "y", "title": "T", "summary": "S"}])
+        assert result[0]["selected"] is False

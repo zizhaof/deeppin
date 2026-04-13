@@ -114,7 +114,7 @@ export default function ThreadNav({
               }`}
             >
               {thr.parent_thread_id === null
-                ? t.mainThread
+                ? (thr.title ?? t.mainThread)
                 : (thr.title ?? thr.anchor_text?.slice(0, 20) ?? t.subThread) +
                   (thr.anchor_text && thr.anchor_text.length > 20 ? "…" : "")}
             </button>
