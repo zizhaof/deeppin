@@ -249,10 +249,6 @@ async def stream_and_save(
         n_chunks = await store_long_text_chunks(session_id, user_content)
         if n_chunks:
             yield _sse("status", {"text": f"已建立 {n_chunks} 个索引块，正在检索相关段落… / Indexed {n_chunks} chunks, retrieving relevant passages…"})
-        else:
-            yield _sse("status", {"text": "正在检索相关内容… / Retrieving relevant content…"})
-    else:
-        yield _sse("status", {"text": "正在检索相关内容… / Retrieving relevant content…"})
 
     # 构建 context（含 RAG 检索，长文本块此时已入库可被检索到）
     # Build context (includes RAG; long-text chunks are now in the DB and searchable)
