@@ -19,6 +19,7 @@ import PinRoll from "@/components/SubThread/PinRoll";
 import type { ThreadCardItem } from "@/components/SubThread/SideColumn";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
+import MergeOutput from "@/components/MergeOutput";
 
 /**
  * 检测用户输入是否需要实时联网搜索。
@@ -131,6 +132,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [webSearch, setWebSearch] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [pinDialog, setPinDialog] = useState<PinDialogInfo | null>(null);
   /** 立即传给 PinRoll，触发卡片聚焦动画（第一个悬浮线程） */
@@ -471,6 +473,9 @@ export default function ChatPage() {
     anchorsByMessage[mid].push({ text: thr.anchor_text, threadId: thr.id, side: thr.side as "left" | "right" | undefined });
   }
 
+  // 子线程（插针）数量，供 MergeOutput 面板显示
+  const pinCount = threads.filter((t) => t.depth > 0).length;
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-zinc-950">
@@ -562,6 +567,15 @@ export default function ChatPage() {
                 {t.overview}
               </h2>
               <span className="text-[9px] text-zinc-600 select-none">{threads.length}</span>
+              {pinCount > 0 && (
+                <button
+                  onClick={() => setShowMerge(true)}
+                  className="text-[10px] text-zinc-400 hover:text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
+                  title="合并输出 / Merge output"
+                >
+                  🔀
+                </button>
+              )}
             </div>
             <ThreadTree
               threads={threads}
@@ -644,6 +658,14 @@ export default function ChatPage() {
         onSend={(threadId, question) => handleSendSuggestion(threadId, question)}
         onClose={() => setPinDialog(null)}
       />
+
+      {showMerge && (
+        <MergeOutput
+          sessionId={sessionId}
+          pinCount={pinCount}
+          onClose={() => setShowMerge(false)}
+        />
+      )}
     </div>
   );
 }

@@ -296,6 +296,80 @@ async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: in
     )
 
 
+async def merge_threads(
+    threads_data: list[dict],
+    format_type: str = "free",
+) -> AsyncGenerator[str, None]:
+    """
+    将多条子线程内容合并为结构化输出，流式返回。
+    Merge multiple sub-thread contents into a structured output, streamed.
+
+    threads_data 格式 / threads_data format:
+      [{"title": str, "anchor": str, "content": str}, ...]
+
+    format_type:
+      "free"       — 自由总结（流畅叙述）/ Free-form summary (flowing prose)
+      "bullets"    — 要点列表（分主题分级）/ Bullet-point list (grouped by theme)
+      "structured" — 结构化分析（问题/方案/权衡/结论）
+                     Structured analysis (problem / solution / trade-offs / conclusion)
+    """
+    if not threads_data:
+        return
+
+    FORMAT_INSTRUCTIONS = {
+        "free": (
+            "请将以下所有探索方向综合起来，用流畅的文字写一篇完整的总结报告。"
+            "不要简单罗列，要融合各角度的洞察，输出有深度的叙述。"
+        ),
+        "bullets": (
+            "请将以下所有探索方向提炼为结构化的要点列表。"
+            "按主题分组，每组用二级标题，要点用「- 」开头，保持简洁有力。"
+        ),
+        "structured": (
+            "请将以下所有探索方向整理为结构化分析，严格按以下四部分输出：\n"
+            "## 问题与背景\n## 方案与见解\n## 权衡与对比\n## 结论与行动\n"
+            "每部分下可分条阐述，覆盖所有探索方向的关键信息。"
+        ),
+    }
+
+    instruction = FORMAT_INSTRUCTIONS.get(format_type, FORMAT_INSTRUCTIONS["free"])
+
+    # 将各子线程内容序列化为 prompt 段落
+    # Serialize each sub-thread into a prompt section
+    sections = []
+    for i, t in enumerate(threads_data, 1):
+        title = t.get("title") or f"探索 {i}"
+        anchor = t.get("anchor", "")
+        content = t.get("content", "")
+        section = f"### 针 {i}：{title}"
+        if anchor:
+            section += f"\n> 锚点：「{anchor}」"
+        if content:
+            section += f"\n\n{content}"
+        sections.append(section)
+
+    threads_text = "\n\n---\n\n".join(sections)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "你是一位帮助用户整合思考成果的助手。"
+                "用户在阅读或对话过程中对多个要点插针展开了深入探索，"
+                "现在需要你将这些探索结果合并为一篇有价值的输出。\n\n"
+                + instruction
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"以下是用户的所有探索内容：\n\n{threads_text}",
+        },
+    ]
+
+    async for chunk in chat_stream(messages, inject_meta=False):
+        yield chunk
+
+
 async def classify_search_intent(query: str) -> bool:
     """
     判断用户问题是否需要联网搜索（新闻、实时数据、近期事件等）。

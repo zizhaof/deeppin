@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from routers import sessions, threads, stream, attachments, search
+from routers import sessions, threads, stream, attachments, search, merge
 
 # 从环境变量读取允许的跨域来源，同时支持本地开发和生产环境
 # Read allowed CORS origins from env var; supports both local dev and production
@@ -37,6 +37,7 @@ app.include_router(threads.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 app.include_router(attachments.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
+app.include_router(merge.router, prefix="/api")
 
 
 @app.get("/health")
