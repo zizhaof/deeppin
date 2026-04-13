@@ -316,6 +316,45 @@ class TestMergeGenerate:
         assert any(e["type"] == "done" for e in events)
 
 
+    @pytest.mark.asyncio
+    async def test_summarizes_when_content_exceeds_budget(self):
+        """内容超出单线程字符预算时调用 summarize 压缩
+        Calls summarize when a thread's full content exceeds its char budget."""
+        sb = MagicMock()
+        call_count = [0]
+
+        # 生成超长内容（远超 per-thread 预算）/ Generate content that exceeds per-thread budget
+        long_content = "A" * 100_000
+
+        def make_table(_name):
+            m = MagicMock()
+            call_count[0] += 1
+            n = call_count[0]
+            if n == 1:
+                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
+                    MagicMock(data={"id": SESSION_ID})
+            elif n == 2:
+                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
+                    MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
+            else:
+                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
+                    MagicMock(data=[{"role": "assistant", "content": long_content}])
+            return m
+
+        sb.table.side_effect = make_table
+
+        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
+            yield "ok"
+
+        with patch("routers.merge.merge_threads", side_effect=fake_merge), \
+             patch("routers.merge.summarize", new_callable=AsyncMock, return_value="compressed") as mock_summarize:
+            events = await _collect_generate(SESSION_ID, sb=sb)
+
+        # summarize must have been called due to oversized content
+        mock_summarize.assert_called_once()
+        assert any(e["type"] == "done" for e in events)
+
+
 class TestMergeRequestThreadIds:
     def test_thread_ids_defaults_to_none(self):
         """thread_ids 默认为 None（合并全部）/ thread_ids defaults to None (merge all)."""

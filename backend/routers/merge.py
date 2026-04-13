@@ -25,7 +25,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
 from dependencies.auth import get_current_user
-from services.llm_client import merge_threads
+from services.llm_client import merge_threads, summarize
+
+# ── Token 预算常量 ────────────────────────────────────────────────────
+# chat 梯队保守上下文窗口 8 000 tokens，取 80% 用于子线程内容
+# Conservative 8 000-token context window for chat tier; use 80% for thread content
+_CONTEXT_WINDOW = 8_000
+_CONTENT_BUDGET_TOKENS = int(_CONTEXT_WINDOW * 0.8)   # 6 400 tokens
+_CHARS_PER_TOKEN = 4  # rough estimate for Chinese/English mixed text
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +113,16 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
 
             # 3. 并发获取每条子线程的摘要（优先从缓存，否则取最近消息）
             #    Concurrently fetch each sub-thread's summary (cache first, fall back to recent messages)
+            # 每个子线程的字符预算 = 总 token 预算 × chars/token ÷ 线程数
+            # Per-thread char budget = total token budget × chars/token ÷ number of threads
+            per_thread_char_budget = (
+                _CONTENT_BUDGET_TOKENS * _CHARS_PER_TOKEN // max(len(threads), 1)
+            )
+
             async def get_thread_content(thread: dict) -> dict:
                 tid = thread["id"]
 
-                # 取全部消息原文，合并场景需要完整内容而非压缩摘要
-                # Fetch all messages verbatim — merge needs full content, not a lossy summary
+                # 取全部消息原文 / Fetch all messages verbatim
                 msgs_res = await _db(
                     lambda: sb.table("messages")
                     .select("role, content")
@@ -119,14 +131,25 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
                     .execute()
                 )
                 messages = msgs_res.data or []
-                lines = []
-                for m in messages:
-                    label = "用户" if m["role"] == "user" else "AI"
-                    lines.append(f"{label}：{m['content']}")
+                lines = [
+                    f"{'用户' if m['role'] == 'user' else 'AI'}：{m['content']}"
+                    for m in messages
+                ]
+                full_content = "\n".join(lines)
+
+                if len(full_content) <= per_thread_char_budget:
+                    # 全文在预算内，直接使用 / Full content fits — use as-is
+                    content = full_content
+                else:
+                    # 超出预算，压缩为专用摘要（预算比 context compact 大得多）
+                    # Over budget — generate a merge-quality summary (larger budget than context compact)
+                    token_budget = max(200, per_thread_char_budget // _CHARS_PER_TOKEN)
+                    content = await summarize(full_content, token_budget)
+
                 return {
                     "title": thread.get("title") or "",
                     "anchor": thread.get("anchor_text") or "",
-                    "content": "\n".join(lines),
+                    "content": content,
                 }
 
             # 串行获取避免 Supabase 单例 httpx 客户端并发竞争
