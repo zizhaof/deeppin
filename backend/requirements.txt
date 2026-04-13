@@ -1,17 +1,34 @@
+# 核心依赖
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-dotenv==1.0.1
 pydantic>=2.10.4
+
+# AI / LLM
 litellm>=1.57.4
+
+# 数据库
 supabase>=2.10.0,<3.0.0
 supafunc>=0.8.0
+
+# HTTP 客户端
 httpx==0.28.1
+
+# 文件上传
+python-multipart>=0.0.9
+
+# 文件解析
+pypdf>=4.0.0
+python-docx>=1.1.0
+kreuzberg>=0.1.0
+
+# 向量嵌入
+sentence-transformers>=2.7.0
+
+# 文本分块
+langchain-text-splitters>=0.2.0
+
+# 测试
 pytest==8.3.4
 pytest-asyncio==0.25.2
 anyio==4.8.0
-python-multipart>=0.0.9
-pypdf>=4.0.0
-python-docx>=1.1.0
-sentence-transformers>=2.7.0
-langchain-text-splitters>=0.2.0
-kreuzberg>=0.1.0

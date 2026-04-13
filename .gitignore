@@ -53,3 +53,4 @@ logs/
 # Superpowers 本地插件缓存
 .superpowers/
 docs/
+.vercel
