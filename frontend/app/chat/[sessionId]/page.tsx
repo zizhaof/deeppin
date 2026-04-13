@@ -2,7 +2,8 @@
 // app/chat/[sessionId]/page.tsx
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase";
 import { getSession, getMessages, getAllMessages, createThread, getSuggestions, listSessions } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { sendMessageStream, sendSearchStream } from "@/lib/sse";
@@ -100,6 +101,7 @@ function makePlaceholders(anchorText: string): string[] {
 export default function ChatPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
+  const router = useRouter();
   const t = useT();
   const toggleLang = useLangStore((s) => s.toggle);
   const lang = useLangStore((s) => s.lang);
@@ -176,6 +178,14 @@ export default function ChatPage() {
     activeMessages.length > 0 ||
     streamingText !== undefined ||
     Object.values(messagesByThread).some((msgs) => msgs && msgs.length > 0);
+
+  // 双保险：middleware 已处理，但前端也检查一次
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) router.push("/login");
+    });
+  }, [router]);
 
   // ── 初始化 ─────────────────────────────────────────────────────
   useEffect(() => {

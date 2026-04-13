@@ -1,7 +1,19 @@
 // frontend/lib/sse.ts
 // SSE 客户端 —— 流式接收 AI 回复
 
+import { createClient } from "./supabase";
+
 const BASE_URL = "";
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session.access_token}`,
+  };
+}
 
 export type SSEEvent =
   | { type: "ping" }
@@ -27,7 +39,7 @@ export async function sendMergeStream(
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/merge`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getAuthHeaders(),
     body: JSON.stringify({ format }),
   });
 
@@ -79,7 +91,7 @@ export async function sendSearchStream(
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/search`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getAuthHeaders(),
     body: JSON.stringify({ query }),
   });
 
@@ -123,7 +135,7 @@ export async function sendMessageStream(
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getAuthHeaders(),
     body: JSON.stringify({ content }),
   });
 

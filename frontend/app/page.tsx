@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, createSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
+import { createClient } from "@/lib/supabase";
 import { useT, useLangStore } from "@/stores/useLangStore";
 import type { T } from "@/lib/i18n";
 import SessionDrawer from "@/components/SessionDrawer";
@@ -114,6 +115,7 @@ export default function HomePage() {
   const router = useRouter();
   const t = useT();
   const toggleLang = useLangStore((s) => s.toggle);
+  const [user, setUser] = useState<{ email?: string; avatar_url?: string } | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -128,18 +130,43 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          email: session.user.email,
+          avatar_url: session.user.user_metadata?.avatar_url,
+        });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     const id = setTimeout(() => setMounted(true), 40);
     return () => clearTimeout(id);
   }, []);
 
   const handleNewChat = async () => {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push("/login");
+      return;
+    }
     setCreating(true);
     try {
-      const session = await createSession();
-      router.push(`/chat/${session.id}`);
+      const s = await createSession();
+      router.push(`/chat/${s.id}`);
     } catch {
       setCreating(false);
     }
+  };
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setUser(null);
+    setSessions([]);
   };
 
   // 渐入动画 / Staggered entrance
@@ -191,6 +218,23 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {user && (
+            <>
+              {user.avatar_url && (
+                <img
+                  src={user.avatar_url}
+                  alt="avatar"
+                  className="w-7 h-7 rounded-full border border-white/10 object-cover"
+                />
+              )}
+              <button
+                onClick={handleLogout}
+                className="text-[11px] font-medium text-zinc-600 hover:text-zinc-300 px-2 py-1 rounded-lg border border-white/[0.08] hover:border-white/15 transition-colors"
+              >
+                退出
+              </button>
+            </>
+          )}
           <button
             onClick={toggleLang}
             className="text-[11px] font-medium text-zinc-600 hover:text-zinc-300 px-2 py-1 rounded-lg border border-white/8 hover:border-white/15 transition-colors"

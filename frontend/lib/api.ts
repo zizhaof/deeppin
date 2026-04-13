@@ -1,8 +1,21 @@
 // frontend/lib/api.ts
 // 后端 API 调用封装
 
+import { createClient } from "./supabase";
+
 // rewrites 在 next.config.ts 里把 /api/* 代理到后端，浏览器无需直接访问后端
 const BASE_URL = "";
+
+/** 获取带 Authorization header 的 JSON 请求头 */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session.access_token}`,
+  };
+}
 
 export interface Session {
   id: string;
@@ -37,7 +50,9 @@ export interface Message {
 
 /** 获取所有 sessions 列表（按创建时间倒序） */
 export async function listSessions(): Promise<Session[]> {
-  const res = await fetch(`${BASE_URL}/api/sessions`);
+  const res = await fetch(`${BASE_URL}/api/sessions`, {
+    headers: await getAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`获取会话列表失败: ${res.status}`);
   return res.json();
 }
@@ -46,7 +61,7 @@ export async function listSessions(): Promise<Session[]> {
 export async function createSession(title?: string): Promise<Session> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getAuthHeaders(),
     body: JSON.stringify({ title: title ?? null }),
   });
   if (!res.ok) throw new Error(`创建 session 失败: ${res.status}`);
@@ -55,7 +70,9 @@ export async function createSession(title?: string): Promise<Session> {
 
 /** 获取 session 详情（含 threads 列表） */
 export async function getSession(sessionId: string): Promise<Session> {
-  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}`);
+  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}`, {
+    headers: await getAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`获取 session 失败: ${res.status}`);
   return res.json();
 }
@@ -73,7 +90,7 @@ export async function createThread(params: {
 }): Promise<Thread> {
   const res = await fetch(`${BASE_URL}/api/threads`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await getAuthHeaders(),
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error(`创建线程失败: ${res.status}`);
@@ -82,7 +99,9 @@ export async function createThread(params: {
 
 /** 获取针对该线程锚点的追问建议 */
 export async function getSuggestions(threadId: string): Promise<string[]> {
-  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/suggest`);
+  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/suggest`, {
+    headers: await getAuthHeaders(),
+  });
   if (!res.ok) return [];
   const data = await res.json();
   return data.questions ?? [];
@@ -90,14 +109,18 @@ export async function getSuggestions(threadId: string): Promise<string[]> {
 
 /** 获取线程消息历史 */
 export async function getMessages(threadId: string): Promise<Message[]> {
-  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`);
+  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`, {
+    headers: await getAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`获取消息失败: ${res.status}`);
   return res.json();
 }
 
 /** 批量获取 session 下所有线程的消息（一次请求替代 N 次串行请求） */
 export async function getAllMessages(sessionId: string): Promise<Record<string, Message[]>> {
-  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/messages`);
+  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/messages`, {
+    headers: await getAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`批量获取消息失败: ${res.status}`);
   return res.json();
 }
@@ -109,8 +132,13 @@ export async function uploadAttachment(
 ): Promise<{ filename: string; chunk_count: number; inline_text: string | null }> {
   const form = new FormData();
   form.append("file", file);
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not authenticated");
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/upload`, {
     method: "POST",
+    // headers: 只传 Authorization，不设 Content-Type（FormData 由浏览器自动处理 multipart boundary）
+    headers: { Authorization: `Bearer ${session.access_token}` },
     body: form,
   });
   if (!res.ok) {
