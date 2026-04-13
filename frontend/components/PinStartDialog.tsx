@@ -52,20 +52,20 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
 
   return createPortal(
     <>
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-[2px] z-40" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={onClose} />
 
-      <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-zinc-950 border border-white/8 rounded-2xl shadow-2xl shadow-black/60 flex flex-col overflow-hidden">
         {/* 锚点引用 */}
         <div className="px-5 pt-5 pb-3 flex gap-3 items-start">
-          <div className="w-0.5 flex-shrink-0 self-stretch bg-indigo-500/40 rounded-full" />
-          <p className="text-sm text-zinc-400 leading-relaxed italic line-clamp-3 flex-1">
+          <div className="w-0.5 flex-shrink-0 self-stretch bg-indigo-500/30 rounded-full" />
+          <p className="text-sm text-zinc-500 leading-relaxed italic line-clamp-3 flex-1">
             {info.anchorText}
           </p>
           <button
             onClick={onClose}
-            className="flex-shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors ml-1"
+            className="flex-shrink-0 text-zinc-700 hover:text-zinc-400 transition-colors ml-1 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/5"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -74,12 +74,12 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
         {/* 推荐问题 */}
         <div className="px-5 pb-3 flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <p className="text-[11px] text-zinc-600 font-medium">{t.suggestedQuestions}</p>
+            <p className="text-[10px] text-zinc-700 font-semibold uppercase tracking-[0.1em]">{t.suggestedQuestions}</p>
             {info.loading && (
               <span className="flex gap-0.5 items-center">
-                <span className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce [animation-delay:0ms]" />
-                <span className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce [animation-delay:150ms]" />
-                <span className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce [animation-delay:300ms]" />
+                <span className="w-1 h-1 rounded-full bg-zinc-700 animate-bounce [animation-delay:0ms]" />
+                <span className="w-1 h-1 rounded-full bg-zinc-700 animate-bounce [animation-delay:150ms]" />
+                <span className="w-1 h-1 rounded-full bg-zinc-700 animate-bounce [animation-delay:300ms]" />
               </span>
             )}
           </div>
@@ -87,8 +87,8 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
             <button
               key={`${info.loading ? "ph" : "real"}-${i}`}
               onClick={() => handleSend(q)}
-              className={`text-left text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl px-4 py-2.5 leading-snug transition-colors ${
-                info.loading ? "text-zinc-500" : "text-zinc-300"
+              className={`text-left text-sm bg-zinc-900/60 hover:bg-zinc-900 border border-white/5 hover:border-white/10 rounded-xl px-4 py-2.5 leading-snug transition-all ${
+                info.loading ? "text-zinc-600" : "text-zinc-300"
               }`}
             >
               {q}
@@ -96,7 +96,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
           ))}
         </div>
 
-        <div className="mx-5 border-t border-zinc-800" />
+        <div className="mx-5 border-t border-white/5" />
 
         {/* 自定义输入 */}
         <div className="px-5 py-3 flex gap-2 items-end">
@@ -107,12 +107,12 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
             onKeyDown={handleKeyDown}
             placeholder={t.customQuestion}
             rows={2}
-            className="flex-1 resize-none text-sm text-zinc-200 placeholder-zinc-600 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 focus:outline-none focus:border-zinc-600 transition-colors leading-snug"
+            className="flex-1 resize-none text-sm text-zinc-200 placeholder-zinc-700 bg-zinc-900/60 border border-white/6 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500/25 transition-colors leading-snug"
           />
           <button
             onClick={() => handleSend(input)}
             disabled={!input.trim()}
-            className="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+            className="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors shadow-sm shadow-indigo-950/40"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />

@@ -3,6 +3,7 @@
 
 import { useRef, useState } from "react";
 import MarkdownContent from "@/components/MarkdownContent";
+import { useT } from "@/stores/useLangStore";
 
 const COLLAPSE_THRESHOLD = 300;
 
@@ -49,8 +50,11 @@ function renderWithHighlights(
   type Span = { start: number; end: number; threadId: string; side?: "left" | "right" };
   const spans: Span[] = [];
   for (const { text, threadId, side } of anchors) {
-    const pos = content.indexOf(text);
-    if (pos !== -1) spans.push({ start: pos, end: pos + text.length, threadId, side });
+    const searchText = text.includes("\n")
+      ? (text.split("\n").find((s) => s.trim()) ?? text)
+      : text;
+    const pos = content.indexOf(searchText);
+    if (pos !== -1) spans.push({ start: pos, end: pos + searchText.length, threadId, side });
   }
   if (!spans.length) return content;
 
@@ -125,9 +129,12 @@ export default function MessageBubble({
   onAnchorHover,
   onRef,
 }: Props) {
+  const t = useT();
   const isUser = role === "user";
   const divRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
+  /** AI 消息的原始/渲染模式切换 */
+  const [rawMode, setRawMode] = useState(false);
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
@@ -157,52 +164,76 @@ export default function MessageBubble({
         (divRef as { current: HTMLDivElement | null }).current = el;
         onRef?.(el);
       }}
-      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
+      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-5 group/bubble`}
     >
-      {/* AI 图标 */}
+      {/* AI 头像 */}
       {!isUser && (
-        <div className="w-6 h-6 flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 rounded-md bg-zinc-800 border border-zinc-700/50">
-          <svg className="w-3 h-3 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
+        <div className="w-6 h-6 flex items-center justify-center mr-3 mt-0.5 flex-shrink-0 rounded-lg bg-zinc-900 border border-indigo-500/15 shadow-sm">
+          <svg className="w-3 h-3 text-indigo-400/80" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
           </svg>
         </div>
       )}
 
-      <div
-        onMouseUp={handleMouseUp}
-        className={`max-w-[72%] rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
-          isUser
-            ? "bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap"
-            : "bg-zinc-900 text-zinc-100 rounded-tl-sm"
-        }`}
-      >
-        {isUser ? (
-          <>
-            {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
-            {needsCollapse && !expanded && (
-              <span className="text-indigo-300 select-none">…</span>
-            )}
-          </>
-        ) : (
-          <MarkdownContent
-            content={displayContent}
-            anchors={anchors}
-            onAnchorClick={onAnchorClick}
-            onAnchorHover={onAnchorHover}
-          />
-        )}
-        {streaming && (
-          <span className="inline-block w-0.5 h-3.5 bg-zinc-400 ml-0.5 align-middle animate-pulse" />
-        )}
-        {needsCollapse && (
-          <div className="mt-2">
-            <button
-              onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-              className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors select-none"
-            >
-              {expanded ? "收起" : `展开全文（共 ${content.length} 字）`}
-            </button>
-          </div>
+      <div className="relative max-w-[72%]">
+        <div
+          onMouseUp={handleMouseUp}
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
+            isUser
+              ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/30"
+              : "bg-zinc-900 text-zinc-100 border border-white/5"
+          }`}
+        >
+          {isUser ? (
+            <>
+              {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
+              {needsCollapse && !expanded && (
+                <span className="text-indigo-300 select-none">…</span>
+              )}
+            </>
+          ) : rawMode ? (
+            <pre className="whitespace-pre-wrap text-sm text-zinc-300 font-mono leading-relaxed">
+              {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
+            </pre>
+          ) : (
+            <MarkdownContent
+              content={displayContent}
+              anchors={anchors}
+              onAnchorClick={onAnchorClick}
+              onAnchorHover={onAnchorHover}
+            />
+          )}
+          {streaming && (
+            <span className="inline-block w-0.5 h-3.5 bg-zinc-500 ml-0.5 align-middle animate-pulse" />
+          )}
+          {needsCollapse && (
+            <div className="mt-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors select-none"
+              >
+                {expanded ? t.collapse : `${t.expandFull}（共 ${content.length} ${t.chars}）`}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Markdown 切换按钮 — AI 消息 hover 时显示 */}
+        {!isUser && !streaming && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setRawMode((r) => !r); }}
+            className="absolute -bottom-5 right-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-[10px] text-zinc-700 hover:text-zinc-400 flex items-center gap-1 select-none"
+            title={rawMode ? t.showMd : t.showRaw}
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              {rawMode ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              )}
+            </svg>
+            <span>{rawMode ? t.mdMode : t.rawMode}</span>
+          </button>
         )}
       </div>
     </div>

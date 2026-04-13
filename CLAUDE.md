@@ -568,6 +568,7 @@ cd backend && pytest tests/ -q
 | services/memory_service.py | test_memory_service.py |
 | services/search_service.py | test_search_service.py |
 | routers/merge.py | test_merge_router.py |
+| routers/sessions.py (bulk messages) | test_session_messages.py |
 
 写测试的原则：
 - mock 外部依赖（Supabase、LLM API），只测本模块逻辑

@@ -68,7 +68,7 @@ function flattenTree(
 
 const ROW_H = 28;
 const INDENT = 18;
-const DOT_R = 3.5;
+const DOT_R = 3;
 
 const dotX = (depth: number) => depth * INDENT + INDENT / 2;
 const dotY = (row: number) => row * ROW_H + ROW_H / 2;
@@ -93,7 +93,7 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
   if (flat.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-[11px] text-zinc-700 select-none">{t.noThreads}</p>
+        <p className="text-[10px] text-zinc-700 select-none tracking-wider">{t.noThreads}</p>
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
                 key={`line-${node.thread.id}`}
                 d={`M ${x1} ${y1} L ${x1} ${y2} L ${x2} ${y2}`}
                 fill="none"
-                stroke="#3f3f46"
+                stroke="#27272a"
                 strokeWidth={1}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -138,22 +138,25 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
             const hasUnread = (unreadCounts[node.thread.id] ?? 0) > 0;
 
             const dotColor = isActive
-              ? "#3b82f6"
+              ? "#6366f1"
               : hasUnread
-              ? "#ef4444"
+              ? "#f87171"
               : isRoot
-              ? "#71717a"
-              : "#52525b";
+              ? "#52525b"
+              : "#3f3f46";
 
             return (
               <g key={`dot-${node.thread.id}`}>
                 {isActive && (
-                  <circle cx={dotX(node.depth)} cy={dotY(node.row)} r={DOT_R + 3} fill="#1e3a5f" />
+                  <circle cx={dotX(node.depth)} cy={dotY(node.row)} r={DOT_R + 4} fill="#312e8120" />
+                )}
+                {isActive && (
+                  <circle cx={dotX(node.depth)} cy={dotY(node.row)} r={DOT_R + 2} fill="#312e8140" />
                 )}
                 <circle
                   cx={dotX(node.depth)}
                   cy={dotY(node.row)}
-                  r={isRoot ? DOT_R + 1 : DOT_R}
+                  r={isRoot ? DOT_R + 0.5 : DOT_R}
                   fill={dotColor}
                 />
               </g>
@@ -169,31 +172,31 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
           const label = isRoot
             ? (node.thread.title ?? t.mainConversation)
             : node.thread.title ?? node.thread.anchor_text?.slice(0, 18) ?? t.subThread;
-          const labelOffset = dotX(node.depth) + DOT_R + 6;
+          const labelOffset = dotX(node.depth) + DOT_R + 7;
 
           return (
             <button
               key={`btn-${node.thread.id}`}
               onClick={() => onSelect(node.thread.id)}
               style={{ position: "absolute", top: node.row * ROW_H, left: 0, right: 0, height: ROW_H }}
-              className={`flex items-center rounded transition-colors ${
-                isActive ? "bg-indigo-950/30" : "hover:bg-zinc-800/60"
+              className={`flex items-center rounded-md transition-colors ${
+                isActive ? "bg-indigo-950/40" : "hover:bg-white/[0.03]"
               }`}
             >
               <div className="flex-shrink-0" style={{ width: labelOffset }} />
               <span
-                className={`text-xs truncate text-left flex-1 ${
+                className={`text-[11px] truncate text-left flex-1 leading-none ${
                   isActive
                     ? "text-indigo-300 font-medium"
                     : hasUnread
-                    ? "text-zinc-200 font-medium"
-                    : "text-zinc-500"
+                    ? "text-zinc-300 font-medium"
+                    : "text-zinc-600"
                 }`}
               >
                 {label}
               </span>
               {hasUnread && !isActive && (
-                <span className="flex-shrink-0 mr-2 w-1.5 h-1.5 rounded-full bg-red-500" />
+                <span className="flex-shrink-0 mr-2 w-1 h-1 rounded-full bg-red-500/80" />
               )}
             </button>
           );

@@ -112,3 +112,50 @@ async def get_session(session_id: uuid.UUID):
         **session_res.data,
         "threads": threads_res.data or [],
     }
+
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: uuid.UUID):
+    """
+    批量获取该 session 下所有线程的消息，按 thread_id 分组返回。
+    Bulk-fetch all messages for every thread in this session, grouped by thread_id.
+
+    替代前端对每个 thread 串行调用 /threads/{id}/messages（N 次往返 → 1 次往返）。
+    Replaces N sequential /threads/{id}/messages calls from the frontend with a single round-trip.
+
+    返回格式 / Response shape:
+      { "<thread_id>": [ ...messages ], ... }
+    """
+    sb = get_supabase()
+
+    # Step 1：拿该 session 下所有 thread ID（复用已有索引，极快）
+    # Step 1: fetch all thread IDs for this session (uses existing index, very fast)
+    threads_res = await _db(lambda: (
+        sb.table("threads")
+        .select("id")
+        .eq("session_id", str(session_id))
+        .execute()
+    ))
+    thread_ids = [t["id"] for t in (threads_res.data or [])]
+    if not thread_ids:
+        return {}
+
+    # Step 2：一次 IN 查询拿全部消息（单次 DB 往返）
+    # Step 2: fetch all messages in one IN query (single DB round-trip)
+    messages_res = await _db(lambda: (
+        sb.table("messages")
+        .select("*")
+        .in_("thread_id", thread_ids)
+        .order("created_at")
+        .execute()
+    ))
+
+    # 按 thread_id 分组，保证每个 thread 都有键（即使无消息）
+    # Group by thread_id; ensure every thread has a key even if it has no messages
+    result: dict[str, list] = {tid: [] for tid in thread_ids}
+    for msg in (messages_res.data or []):
+        tid = msg["thread_id"]
+        if tid in result:
+            result[tid].append(msg)
+
+    return result

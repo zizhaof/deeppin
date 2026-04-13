@@ -24,6 +24,10 @@ CHUNK_SIZE    = 350   # 约 512 token（中文字符约 1.5 token/字）/ ~512 t
 CHUNK_OVERLAP = 50    # 块间重叠字符数，保证语义边界连续 / Overlap between chunks for semantic continuity
 BATCH_INSERT  = 100   # Supabase PostgREST 单次 payload 上限 / Max rows per Supabase PostgREST insert
 
+# 内联阈值：提取文本不超过此长度时直接作为消息 context，不进 RAG
+# Inline threshold: text shorter than this is passed as message context, not fed into RAG
+INLINE_THRESHOLD = 3_000  # 与 context_builder._MAX_SINGLE_MSG_CHARS 保持一致
+
 # 可直接 UTF-8 解码的纯文本扩展名
 # File extensions that can be decoded directly as UTF-8 text
 _TEXT_EXTS = {
@@ -200,37 +204,53 @@ async def _store_chunks(
 
 # ── 主入口 / Main entry point ─────────────────────────────────────────
 
-async def process_attachment(session_id: str, filename: str, content: bytes) -> int:
+async def process_attachment(
+    session_id: str,
+    filename: str,
+    content: bytes,
+) -> dict:
     """
-    完整处理流水线：提取 → 分块 → 向量化 → 存库。
-    Full processing pipeline: extract → chunk → embed → store.
+    完整处理流水线，根据提取文本长度决定走内联还是 RAG。
+    Full processing pipeline; routes to inline or RAG based on extracted text length.
 
-    同步等待完成后返回写入的块数（0 表示处理失败或文本为空）。
-    Returns the number of chunks written after completing synchronously
-    (0 means processing failed or the file contained no extractable text).
+    返回值 / Return value:
+      {
+        "chunk_count": int,          # RAG 模式写入的块数；内联/失败时为 0
+        "inline_text": str | None,   # 内联模式时为完整提取文本；RAG 模式或失败时为 None
+      }
 
-    由 upload 端点直接 await，确保返回前 embedding 已就绪。
-    Directly awaited by the upload endpoint to guarantee embeddings are ready before returning.
+    判断逻辑 / Decision logic:
+      len(text) <= INLINE_THRESHOLD  → inline：文本直接作为消息 context，不进向量库
+      len(text) >  INLINE_THRESHOLD  → RAG：分块 → 向量化 → 存库，由检索注入 context
     """
     try:
         text = await extract_text(content, filename)
         if not text.strip():
-            logger.warning("附件 %s 提取文本为空，跳过向量化 / Attachment %s yielded empty text; skipping embedding", filename, filename)
-            return 0
+            logger.warning("附件 %s 提取文本为空 / Attachment %s yielded empty text", filename, filename)
+            return {"chunk_count": 0, "inline_text": None}
 
+        # 短文本直接内联，无需向量化
+        # Short text: pass inline as context, skip chunking/embedding
+        if len(text) <= INLINE_THRESHOLD:
+            logger.info("附件 %s 内联模式（%d 字符）/ Attachment %s inline mode (%d chars)",
+                        filename, len(text), filename, len(text))
+            return {"chunk_count": 0, "inline_text": text.strip()}
+
+        # 长文本：分块 → 向量化 → 存库
+        # Long text: chunk → embed → store
         chunks = chunk_text(text)
         if not chunks:
-            return 0
+            return {"chunk_count": 0, "inline_text": None}
 
         from services.embedding_service import embed_texts
         embeddings = await embed_texts(chunks)
 
         await _store_chunks(session_id, filename, chunks, embeddings)
-        logger.info("附件 %s 处理完成：%d 块，session=%s / Attachment %s processed: %d chunks, session=%s",
+        logger.info("附件 %s RAG 模式：%d 块，session=%s / Attachment %s RAG mode: %d chunks, session=%s",
                     filename, len(chunks), session_id, filename, len(chunks), session_id)
-        return len(chunks)
+        return {"chunk_count": len(chunks), "inline_text": None}
 
     except Exception:
         logger.exception("附件 %s 处理失败（session=%s）/ Attachment %s processing failed (session=%s)",
                          filename, session_id, filename, session_id)
-        return 0
+        return {"chunk_count": 0, "inline_text": None}

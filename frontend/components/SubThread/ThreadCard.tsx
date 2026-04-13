@@ -36,8 +36,8 @@ export default function ThreadCard({
   const hasAutoReply = messages.some((m) => m.role === "assistant");
 
   const baseCls = isActive
-    ? "border-indigo-500/40 bg-indigo-950/20"
-    : "border-zinc-800 bg-zinc-900/80 hover:border-zinc-700 hover:bg-zinc-900";
+    ? "border-indigo-500/30 bg-indigo-950/20"
+    : "border-white/6 bg-zinc-900/70 hover:border-white/10 hover:bg-zinc-900";
 
   // ── 折叠态 ──────────────────────────────────────────────────
   if (collapsed) {
@@ -58,8 +58,8 @@ export default function ThreadCard({
             <circle cx="3" cy="14" r="1.2"/><circle cx="7" cy="14" r="1.2"/>
           </svg>
         </span>
-        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/70 flex-shrink-0" />
-        <p className="font-medium text-zinc-300 text-xs truncate flex-1">{title}</p>
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 flex-shrink-0" />
+        <p className="font-medium text-zinc-400 text-xs truncate flex-1">{title}</p>
         {unreadCount > 0 && (
           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -67,7 +67,7 @@ export default function ThreadCard({
         )}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
+          className="flex-shrink-0 text-zinc-700 hover:text-zinc-400 transition-colors"
           title="展开"
         >
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -111,8 +111,8 @@ export default function ThreadCard({
             <circle cx="3" cy="14" r="1.2"/><circle cx="7" cy="14" r="1.2"/>
           </svg>
         </span>
-        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/70 flex-shrink-0" />
-        <p className="font-medium text-zinc-200 leading-snug truncate flex-1">{title}</p>
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 flex-shrink-0" />
+        <p className="font-medium text-zinc-300 leading-snug truncate flex-1">{title}</p>
         {unreadCount > 0 && (
           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -120,7 +120,7 @@ export default function ThreadCard({
         )}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
+          className="flex-shrink-0 text-zinc-700 hover:text-zinc-400 transition-colors"
           title="折叠"
         >
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -132,12 +132,12 @@ export default function ThreadCard({
       {/* AI 回复预览 */}
       {(isStreaming || lastMsg) && (
         <div className="px-3 pb-2">
-          <p className={`leading-snug line-clamp-2 ${
-            isStreaming ? "text-indigo-400" : "text-zinc-500"
+          <p className={`leading-snug line-clamp-2 text-[11px] ${
+            isStreaming ? "text-indigo-400/80" : "text-zinc-600"
           }`}>
             {preview}
             {isStreaming && (
-              <span className="inline-block w-0.5 h-3 bg-indigo-400 ml-0.5 animate-pulse align-middle" />
+              <span className="inline-block w-0.5 h-3 bg-indigo-400/70 ml-0.5 animate-pulse align-middle" />
             )}
           </p>
         </div>
@@ -153,7 +153,7 @@ export default function ThreadCard({
             <button
               key={i}
               onClick={() => onSendSuggestion(q)}
-              className="text-left text-[11px] text-indigo-400/80 bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-900/50 rounded-lg px-2.5 py-1.5 leading-snug transition-colors line-clamp-2"
+              className="text-left text-[11px] text-indigo-400/70 bg-indigo-950/20 hover:bg-indigo-950/40 border border-indigo-900/40 rounded-lg px-2.5 py-1.5 leading-snug transition-colors line-clamp-2"
             >
               {q}
             </button>

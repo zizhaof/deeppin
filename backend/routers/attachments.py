@@ -32,18 +32,24 @@ async def upload_attachment(
     file: UploadFile = File(...),
 ) -> dict:
     """
-    上传文件并同步等待完整处理（提取 → 分块 → 向量化 → 存库）。
-    Upload a file and synchronously wait for the full pipeline (extract → chunk → embed → store).
+    上传文件并同步等待完整处理。
+    Upload a file and synchronously wait for the full pipeline.
 
-    返回前 embedding 已写入 DB，前端随即可发消息并命中 RAG 检索。
-    Embeddings are in the DB before this returns, so the user can immediately send messages
-    and have the file content retrieved via RAG.
+    根据提取文本长度自动路由 / Automatically routes based on extracted text length:
+      - 短文本（≤ INLINE_THRESHOLD）：直接返回提取文本，前端将其拼入消息 context
+        Short text (≤ INLINE_THRESHOLD): returns extracted text for the frontend to embed inline
+      - 长文本（> INLINE_THRESHOLD）：分块 → 向量化 → 存库，返回前 embedding 已就绪
+        Long text (> INLINE_THRESHOLD): chunk → embed → store; embeddings are ready before returning
 
     返回值 / Response:
       {
         "filename": "example.pdf",
-        "chunk_count": 18   # 0 表示提取失败 / 0 means extraction failed
+        "chunk_count": 18,          # RAG 模式写入的块数；内联/失败时为 0
+        "inline_text": "..." | null # 内联模式时为提取文本；否则为 null
       }
+
+    chunk_count=0 且 inline_text=null 表示提取失败（扫描件、加密 PDF 等）。
+    chunk_count=0 with inline_text=null means extraction failed (scanned image, encrypted PDF, etc.).
     """
     content = await file.read()
     filename = file.filename or "未命名文件"
@@ -51,6 +57,10 @@ async def upload_attachment(
     if not content:
         raise HTTPException(status_code=400, detail="文件内容为空 / File content is empty")
 
-    chunk_count = await process_attachment(str(session_id), filename, content)
+    result = await process_attachment(str(session_id), filename, content)
 
-    return {"filename": filename, "chunk_count": chunk_count}
+    return {
+        "filename": filename,
+        "chunk_count": result["chunk_count"],
+        "inline_text": result["inline_text"],
+    }

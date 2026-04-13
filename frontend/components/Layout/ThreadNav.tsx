@@ -16,6 +16,7 @@ interface Props {
   onSelect: (threadId: string) => void;
   lang: Lang;
   onToggleLang: () => void;
+  onOpenSessions: () => void;
 }
 
 export default function ThreadNav({
@@ -27,6 +28,7 @@ export default function ThreadNav({
   onForward,
   onSelect,
   onToggleLang,
+  onOpenSessions,
 }: Props) {
   const t = useT();
 
@@ -45,53 +47,70 @@ export default function ThreadNav({
   const breadcrumb = buildBreadcrumb(activeThreadId);
 
   return (
-    <header className="h-11 border-b border-white/5 bg-zinc-950 flex items-center px-3 gap-2 flex-shrink-0">
-      {/* 主页链接 */}
+    <header className="h-11 border-b border-white/[0.04] bg-zinc-950 flex items-center px-3 gap-2 flex-shrink-0">
+      {/* 菜单按钮 — 打开 session 抽屉 */}
+      <button
+        onClick={onOpenSessions}
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors flex-shrink-0 group"
+        title="所有对话"
+      >
+        <svg className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-300 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* 品牌图标 */}
       <Link
         href="/"
-        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors flex-shrink-0"
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors flex-shrink-0 group"
         title="返回主页"
       >
-        <svg className="w-3.5 h-3.5 text-indigo-400/80" viewBox="0 0 24 24" fill="currentColor">
+        <svg className="w-3.5 h-3.5 text-indigo-400/60 group-hover:text-indigo-400 transition-colors" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
         </svg>
       </Link>
 
-      <div className="w-px h-4 bg-white/8 flex-shrink-0" />
+      <div className="w-px h-3.5 bg-white/[0.06] flex-shrink-0" />
 
       {/* 前进后退 */}
       <button
         onClick={onBack}
         disabled={!canBack}
-        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/5 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
         aria-label={t.back}
       >
-        <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg className="w-3.5 h-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
       </button>
       <button
         onClick={onForward}
         disabled={!canForward}
-        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/5 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
         aria-label={t.forward}
       >
-        <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg className="w-3.5 h-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
 
       {/* 面包屑 */}
-      <div className="flex items-center gap-0.5 text-sm min-w-0 flex-1">
+      <div className="flex items-center gap-0 text-sm min-w-0 flex-1 overflow-hidden">
         {breadcrumb.map((thr, i) => (
-          <span key={thr.id} className="flex items-center gap-0.5 min-w-0">
-            {i > 0 && <span className="text-zinc-700 flex-shrink-0 text-xs px-0.5">›</span>}
+          <span key={thr.id} className="flex items-center gap-0 min-w-0 flex-shrink-0">
+            {i > 0 && (
+              <svg className="w-3 h-3 text-zinc-700 flex-shrink-0 mx-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            )}
             <button
               onClick={() => onSelect(thr.id)}
-              className={`truncate max-w-[160px] px-2 py-1 rounded-lg hover:bg-zinc-800 transition-colors text-sm ${
+              className={`truncate max-w-[150px] px-1.5 py-1 rounded-md hover:bg-white/5 transition-colors text-xs ${
                 thr.id === activeThreadId
-                  ? "text-zinc-100 font-medium"
-                  : "text-zinc-500 hover:text-zinc-300"
+                  ? "text-zinc-200 font-medium"
+                  : "text-zinc-600 hover:text-zinc-400"
               }`}
             >
               {thr.parent_thread_id === null
@@ -106,7 +125,7 @@ export default function ThreadNav({
       {/* 语言切换 */}
       <button
         onClick={onToggleLang}
-        className="flex-shrink-0 text-[11px] font-medium text-zinc-600 hover:text-zinc-300 px-2 py-1 rounded-lg border border-white/8 hover:border-white/15 transition-colors"
+        className="flex-shrink-0 text-[10px] font-semibold text-zinc-600 hover:text-zinc-300 px-2.5 py-1 rounded-lg border border-white/6 hover:border-white/12 hover:bg-white/3 transition-all tracking-wide"
       >
         {t.toggleLang}
       </button>

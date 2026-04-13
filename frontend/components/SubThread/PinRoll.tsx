@@ -21,11 +21,11 @@ interface Props {
 }
 
 const CFG = [
-  { h: 156, op: 1    },
-  { h: 108, op: 0.8  },
-  { h:  74, op: 0.55 },
-  { h:  52, op: 0.35 },
-  { h:  38, op: 0.2  },
+  { h: 148, op: 1    },
+  { h: 100, op: 0.85 },
+  { h:  72, op: 0.65 },
+  { h:  58, op: 0.5  },
+  { h:  52, op: 0.4  },
 ];
 const GAP = 5;
 const RESUME_DELAY = 2000;
@@ -141,7 +141,7 @@ export default function PinRoll({
   if (sorted.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-[10px] text-zinc-500 [writing-mode:vertical-rl] select-none tracking-widest">
+        <p className="text-[10px] text-zinc-700 [writing-mode:vertical-rl] select-none tracking-[0.15em]">
           {t.selectToPin}
         </p>
       </div>
@@ -191,9 +191,8 @@ export default function PinRoll({
         const hasStatus = !!item.statusText && !isStreaming;
         const hasAutoReply = item.messages.some((m) => m.role === "assistant");
 
-        // 字体随卡片高度自适应
-        const titleSizeCls = h >= 90 ? "text-xs" : h >= 55 ? "text-[10px]" : "text-[9px]";
-        const previewSizeCls = h >= 90 ? "text-[11px]" : "text-[10px]";
+        const titleSizeCls = "text-xs";
+        const previewSizeCls = "text-[11px]";
 
         let preview = "";
         if (isStreaming) preview = (item.streamingText || "…").slice(0, 300);
@@ -220,23 +219,23 @@ export default function PinRoll({
             className={`
               rounded-xl border overflow-hidden cursor-pointer flex flex-col
               ${isActive
-                ? "border-indigo-500/40 bg-indigo-950/20"
+                ? "border-indigo-500/30 bg-indigo-950/15"
                 : isFocused
-                ? "border-zinc-600 bg-zinc-800"
-                : "border-zinc-800 bg-zinc-900/60"
+                ? "border-white/10 bg-zinc-800/90"
+                : "border-white/[0.05] bg-zinc-900/70"
               }
             `}
           >
             {/* 标题行 */}
             <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 flex-shrink-0">
-              <div className="w-1 h-1 rounded-full bg-indigo-500/60 flex-shrink-0" />
+              <div className="w-1 h-1 rounded-full bg-indigo-500/50 flex-shrink-0" />
               <p className={`font-medium truncate flex-1 leading-tight ${
-                isFocused ? `text-zinc-200 ${titleSizeCls}` : `text-zinc-500 ${titleSizeCls}`
+                isFocused ? `text-zinc-200 ${titleSizeCls}` : `text-zinc-400 ${titleSizeCls}`
               }`}>
                 {title}
               </p>
               {item.unreadCount > 0 && (
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500/80 flex-shrink-0" />
               )}
             </div>
 
@@ -245,18 +244,18 @@ export default function PinRoll({
               <div className="flex-1 min-h-0 flex flex-col px-3 pb-2.5 gap-1.5 overflow-hidden">
                 {(preview || isStreaming || hasStatus) && (
                   <div className={`flex-1 min-h-0 leading-snug overflow-hidden ${previewSizeCls} ${
-                    isStreaming ? "text-indigo-400" : "text-zinc-500"
+                    isStreaming ? "text-indigo-400/80" : "text-zinc-600"
                   }`}>
                     <p className="overflow-hidden break-words" style={{ wordBreak: "break-word" }}>
                       {preview || "…"}
                     </p>
                     {isStreaming && (
-                      <span className="inline-block w-0.5 h-3 bg-indigo-400 animate-pulse ml-0.5" />
+                      <span className="inline-block w-0.5 h-3 bg-indigo-400/70 animate-pulse ml-0.5" />
                     )}
                     {hasStatus && (
                       <span className="flex gap-0.5 items-center mt-0.5">
                         {[0, 1, 2].map((j) => (
-                          <span key={j} className="w-1 h-1 rounded-full bg-zinc-500 animate-bounce"
+                          <span key={j} className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce"
                             style={{ animationDelay: `${j * 150}ms`, animationDuration: "900ms" }} />
                         ))}
                       </span>
@@ -276,7 +275,7 @@ export default function PinRoll({
                           consumeSuggestion(item.thread.id, q);
                           onSendSuggestion(item.thread.id, q);
                         }}
-                        className="text-left text-[10px] text-indigo-400/80 bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-900/50 rounded-lg px-2 py-0.5 leading-snug transition-colors truncate"
+                        className="text-left text-[10px] text-indigo-400/70 bg-indigo-950/20 hover:bg-indigo-950/40 border border-indigo-900/30 rounded-lg px-2 py-0.5 leading-snug transition-colors truncate"
                       >
                         {q}
                       </button>

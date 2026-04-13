@@ -95,11 +95,18 @@ export async function getMessages(threadId: string): Promise<Message[]> {
   return res.json();
 }
 
+/** 批量获取 session 下所有线程的消息（一次请求替代 N 次串行请求） */
+export async function getAllMessages(sessionId: string): Promise<Record<string, Message[]>> {
+  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/messages`);
+  if (!res.ok) throw new Error(`批量获取消息失败: ${res.status}`);
+  return res.json();
+}
+
 /** 上传附件，后端异步提取文本并向量化（不返回文本内容，通过 RAG 检索注入 context） */
 export async function uploadAttachment(
   sessionId: string,
   file: File,
-): Promise<{ filename: string; chunk_count: number }> {
+): Promise<{ filename: string; chunk_count: number; inline_text: string | null }> {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/upload`, {

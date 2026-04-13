@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { getSession, getMessages, createThread, getSuggestions } from "@/lib/api";
+import { getSession, getMessages, getAllMessages, createThread, getSuggestions, listSessions } from "@/lib/api";
+import type { Session } from "@/lib/api";
 import { sendMessageStream, sendSearchStream } from "@/lib/sse";
 import { useThreadStore } from "@/stores/useThreadStore";
 import type { ThreadSide } from "@/stores/useThreadStore";
@@ -20,6 +21,7 @@ import type { ThreadCardItem } from "@/components/SubThread/SideColumn";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import MergeOutput from "@/components/MergeOutput";
+import SessionDrawer from "@/components/SessionDrawer";
 
 /**
  * 检测用户输入是否需要实时联网搜索。
@@ -133,6 +135,9 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [webSearch, setWebSearch] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  const [showSessions, setShowSessions] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [pinDialog, setPinDialog] = useState<PinDialogInfo | null>(null);
   /** 立即传给 PinRoll，触发卡片聚焦动画（第一个悬浮线程） */
@@ -155,6 +160,7 @@ export default function ChatPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const leftCardsRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement>>({});
+  const scrollFrameRef = useRef<number | null>(null);
   const [sideMetrics, setSideMetrics] = useState({ offset: 0, height: 600, mainHeight: 600 });
 
   const mainThread = threads.find((t) => t.parent_thread_id === null);
@@ -176,24 +182,26 @@ export default function ChatPage() {
     let cancelled = false;
     async function init() {
       try {
-        const session = await getSession(sessionId);
+        // session（含 threads）和全部消息并行加载，1 次网络往返
+        // Load session (with threads) and all messages in parallel — 1 round-trip total
+        const [session, messageMap] = await Promise.all([
+          getSession(sessionId),
+          getAllMessages(sessionId),
+        ]);
         if (cancelled) return;
-        setThreads(session.threads ?? []);
 
         const allThreads = session.threads ?? [];
+        setThreads(allThreads);
+
         const main = allThreads.find((t) => t.parent_thread_id === null);
         if (main) navigateTo(main.id);
 
-        await Promise.all(
-          allThreads.map(async (t) => {
-            try {
-              const msgs = await getMessages(t.id);
-              if (!cancelled) setMessages(t.id, msgs);
-            } catch {
-              // 单个线程加载失败不影响其他（messagesByThread 已在 setThreads 时初始化为 []）
-            }
-          })
-        );
+        // 批量写入所有线程消息（O(1) 次请求，替代原来的 N 次串行请求）
+        // Bulk-set all thread messages (O(1) requests, replaces the original N sequential requests)
+        for (const t of allThreads) {
+          if (cancelled) break;
+          setMessages(t.id, messageMap[t.id] ?? []);
+        }
       } catch (e) {
         if (!cancelled) setError(String(e));
       } finally {
@@ -268,8 +276,13 @@ export default function ChatPage() {
   }, []);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop);
-    updatePositions();
+    const newTop = e.currentTarget.scrollTop;
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      setScrollTop(newTop);
+      updatePositions();
+      scrollFrameRef.current = null;
+    });
   }, [updatePositions]);
 
   // ── 发送消息 ────────────────────────────────────────────────────
@@ -277,7 +290,7 @@ export default function ChatPage() {
   const handleSend = async (content: string, display?: string) => {
     if (!activeThreadId || isStreaming) return;
     addUserMessage(activeThreadId, display ?? content);
-    setStreamStatus(activeThreadId, "正在处理…");
+    setStreamStatus(activeThreadId, t.processing);
     const threadId = activeThreadId;
 
     // 手动开启 或 自动检测到实时数据需求
@@ -288,7 +301,7 @@ export default function ChatPage() {
         content,
         (chunk) => appendChunk(threadId, chunk),
         (fullText) => finalizeStream(threadId, fullText, null),
-        (msg) => { finalizeStream(threadId, `[错误] ${msg}`); setError(msg); },
+        (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
         (text) => setStreamStatus(threadId, text),
       );
     } else {
@@ -297,7 +310,7 @@ export default function ChatPage() {
         content,
         (chunk) => appendChunk(threadId, chunk),
         (fullText, messageId) => finalizeStream(threadId, fullText, messageId),
-        (msg) => { finalizeStream(threadId, `[错误] ${msg}`); setError(msg); },
+        (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
         (tid, title) => updateThreadTitle(tid, title),
         (text) => setStreamStatus(threadId, text),
       );
@@ -307,13 +320,13 @@ export default function ChatPage() {
   const handleSendSuggestion = useCallback((threadId: string, question: string) => {
     consumeSuggestion(threadId, question);
     addUserMessage(threadId, question);
-    setStreamStatus(threadId, "正在处理…");
+    setStreamStatus(threadId, t.processing);
     sendMessageStream(
       threadId,
       question,
       (chunk) => appendChunk(threadId, chunk),
       (fullText, messageId) => finalizeStream(threadId, fullText, messageId),
-      (msg) => finalizeStream(threadId, `[错误] ${msg}`),
+      (msg) => finalizeStream(threadId, `${t.streamError} ${msg}`),
       undefined,
       (text) => setStreamStatus(threadId, text),
     );
@@ -323,6 +336,18 @@ export default function ChatPage() {
   const handleAnchorClick = useCallback((threadId: string) => {
     navigateTo(threadId);
   }, [navigateTo]);
+
+  // ── 打开 session 抽屉时懒加载列表 ──────────────────────────────
+  const handleOpenSessions = useCallback(() => {
+    setShowSessions(true);
+    if (sessions.length === 0) {
+      setSessionsLoading(true);
+      listSessions()
+        .then((s) => setSessions(s))
+        .catch(() => {})
+        .finally(() => setSessionsLoading(false));
+    }
+  }, [sessions.length]);
 
   // ── 切换线程时清除残留引导线 ─────────────────────────────────────
   useEffect(() => {
@@ -479,7 +504,15 @@ export default function ChatPage() {
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-zinc-950">
-        <div className="text-zinc-500 text-sm">{t.loading}</div>
+        <div className="flex items-center gap-2.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-zinc-700 animate-bounce"
+              style={{ animationDelay: `${i * 150}ms`, animationDuration: "900ms" }}
+            />
+          ))}
+        </div>
       </div>
     );
   }
@@ -487,7 +520,12 @@ export default function ChatPage() {
   if (error) {
     return (
       <div className="h-screen flex items-center justify-center bg-zinc-950">
-        <div className="text-red-400 text-sm">{t.errorPrefix}{error}</div>
+        <div className="flex items-center gap-2 text-sm">
+          <svg className="w-4 h-4 text-red-500/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <span className="text-red-400/80">{t.errorPrefix}{error}</span>
+        </div>
       </div>
     );
   }
@@ -504,17 +542,23 @@ export default function ChatPage() {
         onSelect={navigateTo}
         lang={lang}
         onToggleLang={toggleLang}
+        onOpenSessions={handleOpenSessions}
       />
 
       {/* drawable area — SVG 在此范围内，不包含 InputBar，避免引导线污染输入框 */}
-      <div ref={drawableAreaRef} className="flex flex-1 min-h-0 overflow-hidden relative">
+      {/* onMouseLeave 兜底：鼠标快速滑出整个区域时内层元素可能漏发事件，统一在此清除 */}
+      <div
+        ref={drawableAreaRef}
+        className="flex flex-1 min-h-0 overflow-hidden relative"
+        onMouseLeave={() => { setCardGuide(null); setHoverThreadId(null); }}
+      >
 
         {/* 左侧：子问题面板 */}
         {hasContent && (
-          <div className={`${rollItems.length > 0 ? "flex-[1]" : "w-8"} min-w-0 border-r border-zinc-800 flex flex-col transition-[width,flex] duration-200`}>
+          <div className={`${rollItems.length > 0 ? "flex-[1]" : "w-8"} min-w-0 border-r border-white/[0.04] flex flex-col transition-[width,flex] duration-200`}>
             {rollItems.length > 0 && (
-              <div className="px-3 py-2 border-b border-zinc-800 flex-shrink-0 flex items-center">
-                <h2 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex-1">
+              <div className="px-3 py-2 border-b border-white/[0.04] flex-shrink-0 flex items-center">
+                <h2 className="text-[9px] font-semibold text-zinc-600 uppercase tracking-[0.12em] flex-1">
                   {t.subQuestions}
                 </h2>
               </div>
@@ -561,19 +605,22 @@ export default function ChatPage() {
 
         {/* 右侧：概览面板 */}
         {hasContent && (
-          <div className="flex-[1] min-w-0 border-l border-zinc-800 flex flex-col">
-            <div className="px-3 py-2 border-b border-zinc-800 flex-shrink-0 flex items-center gap-2">
-              <h2 className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex-1">
+          <div className="flex-[1] min-w-0 border-l border-white/[0.04] flex flex-col">
+            <div className="px-3 py-2 border-b border-white/[0.04] flex-shrink-0 flex items-center gap-2">
+              <h2 className="text-[9px] font-semibold text-zinc-600 uppercase tracking-[0.12em] flex-1">
                 {t.overview}
               </h2>
-              <span className="text-[9px] text-zinc-600 select-none">{threads.length}</span>
+              <span className="text-[9px] text-zinc-700 tabular-nums select-none">{threads.length}</span>
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowMerge(true)}
-                  className="text-[10px] text-zinc-400 hover:text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-zinc-600 hover:text-zinc-300 border border-white/6 hover:border-white/12 hover:bg-white/3 transition-all"
                   title="合并输出 / Merge output"
                 >
-                  🔀
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l8 9M20 4l-8 9m0 0v7" />
+                  </svg>
+                  <span className="text-[10px] font-medium">{t.mergeButton}</span>
                 </button>
               )}
             </div>
@@ -595,29 +642,103 @@ export default function ChatPage() {
           const base = container.getBoundingClientRect();
           const toLocal = (vx: number, vy: number) => ({ x: vx - base.left, y: vy - base.top });
 
+          /**
+           * 用字符偏移量在消息 DOM 里精确还原选中区域的中心坐标。
+           * 走 TreeWalker 遍历所有文本节点，累计字符数定位到 startOffset/endOffset
+           * 所在的节点和偏移，建 Range 后取 getBoundingClientRect()。
+           * 对单行、多行、跨段落均准确，不依赖 Markdown 高亮是否渲染成功。
+           *
+           * Accurately find the midpoint of a selection using character offsets,
+           * by walking text nodes with TreeWalker and constructing a Range.
+           * Works for single-line, multi-line, and cross-paragraph selections.
+           */
+          function anchorEdge(
+            msgEl: HTMLElement,
+            startOff: number,
+            endOff: number,
+          ): { x: number; y: number } | null {
+            const walker = document.createTreeWalker(msgEl, NodeFilter.SHOW_TEXT);
+            let cur = 0;
+            let sNode: Text | null = null, sOff = 0;
+            let eNode: Text | null = null, eOff = 0;
+            let node = walker.nextNode() as Text | null;
+            while (node) {
+              const len = node.length;
+              if (!sNode && cur + len > startOff) { sNode = node; sOff = startOff - cur; }
+              if (sNode && cur + len >= endOff)   { eNode = node; eOff = endOff   - cur; break; }
+              cur += len;
+              node = walker.nextNode() as Text | null;
+            }
+            if (!sNode || !eNode) return null;
+            try {
+              const range = document.createRange();
+              range.setStart(sNode, Math.min(sOff, sNode.length));
+              range.setEnd(eNode,   Math.min(eOff,  eNode.length));
+              const r = range.getBoundingClientRect();
+              if (!r.width && !r.height) return null;
+              // 指向锚点左边缘，垂直居中
+              return toLocal(r.left, r.top + r.height / 2);
+            } catch { return null; }
+          }
+
           const paths = cardGuide.flatMap((threadId) => {
             const cardEl = container.querySelector(`[data-thread-id="${threadId}"]`);
-            // ~= 匹配 data-anchor-thread-ids 空格分隔列表中的某个词
-            const markEl = container.querySelector(`[data-anchor-thread-ids~="${threadId}"]`);
-            if (!cardEl || !markEl) return [];
+            if (!cardEl) return [];
 
             const cr = cardEl.getBoundingClientRect();
-            const mr = markEl.getBoundingClientRect();
             const p1 = toLocal(cr.right, cr.top + cr.height / 2);
-            const p2 = toLocal(mr.left, mr.top + mr.height / 2);
-            const dx = Math.abs(p2.x - p1.x);
 
+            // 优先：data-anchor-thread-ids 高亮 span — 指向左边缘
+            // Priority: anchor highlight span — connect to left edge
+            let p2: { x: number; y: number } | null = null;
+            const markEl = container.querySelector(`[data-anchor-thread-ids~="${threadId}"]`);
+            if (markEl) {
+              const mr = markEl.getBoundingClientRect();
+              p2 = toLocal(mr.left, mr.top + mr.height / 2);
+            }
+
+            // 次选：TreeWalker + Range 偏移量定位（跨行 / 跨段落均可）
+            // Fallback: TreeWalker + Range offset lookup (handles multi-line/cross-paragraph)
+            if (!p2) {
+              const thr = threads.find((t) => t.id === threadId);
+              if (thr?.anchor_message_id != null &&
+                  thr.anchor_start_offset != null &&
+                  thr.anchor_end_offset != null) {
+                const msgEl = messageRefs.current[thr.anchor_message_id] ??
+                              messageRefs.current[thr.anchor_message_id.toLowerCase()];
+                if (msgEl) {
+                  p2 = anchorEdge(msgEl, thr.anchor_start_offset, thr.anchor_end_offset);
+                }
+              }
+            }
+
+            // 兜底：连到消息气泡左边缘中点
+            // Last resort: connect to left edge of message bubble
+            if (!p2) {
+              const thr = threads.find((t) => t.id === threadId);
+              if (thr?.anchor_message_id) {
+                const msgEl = container.querySelector(`[data-message-id="${thr.anchor_message_id}"]`);
+                if (msgEl) {
+                  const mr = msgEl.getBoundingClientRect();
+                  p2 = toLocal(mr.left, mr.top + mr.height / 2);
+                }
+              }
+            }
+
+            if (!p2) return [];
+
+            const dx = Math.abs(p2.x - p1.x);
             return [(
               <g key={threadId}>
                 <path
                   d={`M ${p1.x} ${p1.y} C ${p1.x + dx * 0.45} ${p1.y}, ${p2.x - dx * 0.45} ${p2.y}, ${p2.x} ${p2.y}`}
                   fill="none"
-                  stroke="#818cf8"
-                  strokeWidth={1.5}
-                  opacity={0.75}
+                  stroke="#6366f1"
+                  strokeWidth={1}
+                  opacity={0.5}
                 />
-                <circle cx={p1.x} cy={p1.y} r="2" fill="#818cf8" opacity={0.75} />
-                <circle cx={p2.x} cy={p2.y} r="2" fill="#818cf8" opacity={0.75} />
+                <circle cx={p1.x} cy={p1.y} r="2" fill="#6366f1" opacity={0.6} />
+                <circle cx={p2.x} cy={p2.y} r="2" fill="#6366f1" opacity={0.6} />
               </g>
             )];
           });
@@ -666,6 +787,15 @@ export default function ChatPage() {
           onClose={() => setShowMerge(false)}
         />
       )}
+
+      <SessionDrawer
+        open={showSessions}
+        onClose={() => setShowSessions(false)}
+        sessions={sessions}
+        loading={sessionsLoading}
+        currentSessionId={sessionId}
+        t={t}
+      />
     </div>
   );
 }

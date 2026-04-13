@@ -173,59 +173,67 @@ class TestExtractText:
 
 class TestProcessAttachment:
     @pytest.mark.asyncio
-    async def test_empty_text_returns_zero(self):
-        """提取文本为空时返回 0 / Returns 0 when extracted text is empty."""
+    async def test_empty_text_returns_failure(self):
+        """提取文本为空时返回失败字典 / Returns failure dict when extracted text is empty."""
         from services.attachment_processor import process_attachment
 
         with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value="   ")):
             result = await process_attachment("session-1", "empty.txt", b"content")
 
-        assert result == 0
+        assert result == {"chunk_count": 0, "inline_text": None}
 
     @pytest.mark.asyncio
-    async def test_no_chunks_returns_zero(self):
-        """chunk_text 返回空列表时返回 0 / Returns 0 when chunk_text produces no chunks."""
-        from services.attachment_processor import process_attachment
+    async def test_short_text_returns_inline(self):
+        """短文本（≤ INLINE_THRESHOLD）走内联模式，不分块 / Short text goes inline; no chunking."""
+        from services.attachment_processor import process_attachment, INLINE_THRESHOLD
 
-        with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value="有文本")), \
+        short_text = "短文本内容" * 10  # 远小于阈值 / well below threshold
+        assert len(short_text) <= INLINE_THRESHOLD
+
+        with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value=short_text)):
+            result = await process_attachment("session-1", "note.txt", b"content")
+
+        assert result["chunk_count"] == 0
+        assert result["inline_text"] == short_text.strip()
+
+    @pytest.mark.asyncio
+    async def test_long_text_goes_to_rag(self):
+        """长文本（> INLINE_THRESHOLD）走 RAG 流水线 / Long text goes through the RAG pipeline."""
+        from services.attachment_processor import process_attachment, INLINE_THRESHOLD
+
+        long_text = "内容" * (INLINE_THRESHOLD + 1)  # 超过阈值 / exceeds threshold
+        fake_chunks = ["块一", "块二", "块三"]
+        fake_embeddings = [[0.1] * 384] * 3
+
+        with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value=long_text)), \
+             patch("services.attachment_processor.chunk_text", return_value=fake_chunks), \
+             patch("services.attachment_processor._store_chunks", new=AsyncMock()):
+            from services import attachment_processor
+            with patch("services.embedding_service.embed_texts", new=AsyncMock(return_value=fake_embeddings)):
+                result = await process_attachment("session-1", "doc.pdf", b"pdf bytes")
+
+        assert result["chunk_count"] == len(fake_chunks)
+        assert result["inline_text"] is None
+
+    @pytest.mark.asyncio
+    async def test_no_chunks_returns_failure(self):
+        """长文本 chunk_text 返回空列表时返回失败字典 / Returns failure dict when chunk_text produces no chunks for long text."""
+        from services.attachment_processor import process_attachment, INLINE_THRESHOLD
+
+        long_text = "X" * (INLINE_THRESHOLD + 100)
+
+        with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value=long_text)), \
              patch("services.attachment_processor.chunk_text", return_value=[]):
             result = await process_attachment("session-1", "file.txt", b"content")
 
-        assert result == 0
+        assert result == {"chunk_count": 0, "inline_text": None}
 
     @pytest.mark.asyncio
-    async def test_successful_pipeline_returns_chunk_count(self):
-        """成功完整流水线返回写入块数 / Successful pipeline returns the number of chunks written."""
-        from services.attachment_processor import process_attachment
-
-        fake_chunks = ["块一内容", "块二内容", "块三内容"]
-        fake_embeddings = [[0.1] * 384] * 3
-
-        mock_sb = MagicMock()
-        mock_sb.table.return_value = mock_sb
-        mock_sb.insert.return_value = mock_sb
-        mock_sb.execute.return_value = MagicMock(data=[])
-
-        with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value="有内容的文本")), \
-             patch("services.attachment_processor.chunk_text", return_value=fake_chunks), \
-             patch("services.embedding_service.embed_texts", new=AsyncMock(return_value=fake_embeddings)), \
-             patch("services.attachment_processor._store_chunks", new=AsyncMock()), \
-             patch("services.embedding_service.embed_texts", new=AsyncMock(return_value=fake_embeddings)):
-
-            from services import attachment_processor
-            with patch.object(attachment_processor, "chunk_text", return_value=fake_chunks):
-                with patch("services.embedding_service.embed_texts", new=AsyncMock(return_value=fake_embeddings)):
-                    with patch("services.attachment_processor._store_chunks", new=AsyncMock()) as mock_store:
-                        result = await process_attachment("session-1", "doc.pdf", b"pdf bytes")
-
-        assert result == len(fake_chunks)
-
-    @pytest.mark.asyncio
-    async def test_exception_returns_zero(self):
-        """提取阶段抛出异常时返回 0，不传播异常 / Returns 0 and does not propagate exceptions raised during extraction."""
+    async def test_exception_returns_failure(self):
+        """提取阶段抛出异常时返回失败字典，不传播异常 / Returns failure dict and does not propagate exceptions."""
         from services.attachment_processor import process_attachment
 
         with patch("services.attachment_processor.extract_text", new=AsyncMock(side_effect=Exception("disk full"))):
             result = await process_attachment("session-1", "crash.pdf", b"bytes")
 
-        assert result == 0
+        assert result == {"chunk_count": 0, "inline_text": None}

@@ -10,6 +10,8 @@ const PASTE_ATTACH_THRESHOLD = 300;
 interface FileAttachment {
   kind: "file";
   label: string;
+  /** 内联模式：短文件提取文本直接拼入消息 context，不在气泡中显示 */
+  content?: string;
 }
 
 interface PasteAttachment {
@@ -50,6 +52,8 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     if (trimmed) contentParts.push(trimmed);
     for (const a of attachments) {
       if (a.kind === "paste") contentParts.push(a.content);
+      // 内联模式文件：提取文本拼入 context，但不在气泡中显示
+      if (a.kind === "file" && a.content) contentParts.push(`[附件内容：${a.label}]\n${a.content}`);
     }
     const fullContent = contentParts.join("\n\n---\n\n");
 
@@ -87,7 +91,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
       e.preventDefault();
       setAttachments((prev) => [
         ...prev,
-        { kind: "paste", label: `长文本（${pasted.length} 字）`, content: pasted },
+        { kind: "paste", label: `${t.longTextLabel}（${pasted.length} ${t.chars}）`, content: pasted },
       ]);
     }
   };
@@ -99,14 +103,18 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
       e.target.value = "";
       setUploading(true);
       try {
-        const { filename, chunk_count } = await uploadAttachment(sessionId, file);
-        if (chunk_count === 0) {
-          alert(`文件「${filename}」解析失败，无法提取文字内容。`);
+        const { filename, chunk_count, inline_text } = await uploadAttachment(sessionId, file);
+        // chunk_count=0 且 inline_text=null → 提取失败（扫描件/加密 PDF 等）
+        if (chunk_count === 0 && inline_text === null) {
+          alert(`「${filename}」${t.fileParseError}`);
           return;
         }
-        setAttachments((prev) => [...prev, { kind: "file", label: filename }]);
+        setAttachments((prev) => [
+          ...prev,
+          { kind: "file", label: filename, ...(inline_text ? { content: inline_text } : {}) },
+        ]);
       } catch (err) {
-        alert(`文件上传失败：${err instanceof Error ? err.message : "未知错误"}`);
+        alert(`${t.fileUploadError}：${err instanceof Error ? err.message : "unknown error"}`);
       } finally {
         setUploading(false);
       }
@@ -119,9 +127,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   };
 
   return (
-    <div className="border-t border-white/5 bg-zinc-950 px-6 py-3">
-      <div className={`bg-zinc-900 rounded-2xl border transition-colors overflow-hidden ${
-        disabled ? "border-white/5" : "border-white/8 focus-within:border-indigo-500/30"
+    <div className="border-t border-white/[0.04] bg-zinc-950 px-4 py-3">
+      <div className={`bg-zinc-900 rounded-2xl border overflow-hidden transition-all ${
+        disabled
+          ? "border-white/[0.04]"
+          : "border-white/8 focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)]"
       }`}>
 
         {/* 附件 chips */}
@@ -130,15 +140,15 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             {attachments.map((a, i) => (
               <span
                 key={i}
-                className="flex items-center gap-1.5 text-[11px] bg-zinc-800 text-zinc-300 rounded-full pl-2.5 pr-1 py-0.5 border border-zinc-700/50"
+                className="flex items-center gap-1.5 text-[11px] bg-zinc-800/80 text-zinc-400 rounded-full pl-2.5 pr-1 py-0.5 border border-white/6"
               >
-                <svg className="w-3 h-3 text-zinc-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-3 h-3 text-zinc-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
                 <span className="max-w-[160px] truncate">{a.label}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="ml-0.5 w-4 h-4 rounded-full hover:bg-zinc-700 flex items-center justify-center text-zinc-500 hover:text-zinc-300 flex-shrink-0 transition-colors"
+                  className="ml-0.5 w-4 h-4 rounded-full hover:bg-zinc-700 flex items-center justify-center text-zinc-600 hover:text-zinc-400 flex-shrink-0 transition-colors"
                 >
                   <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M18 6L6 18M6 6l12 12" />
@@ -156,7 +166,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={disabled || uploading}
-            className="w-7 h-7 rounded-lg hover:bg-zinc-800 disabled:opacity-30 text-zinc-600 hover:text-zinc-400 flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+            className="w-7 h-7 rounded-lg hover:bg-white/5 disabled:opacity-20 text-zinc-700 hover:text-zinc-500 flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
             aria-label="添加附件"
           >
             {uploading ? (
@@ -185,10 +195,10 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             onPaste={handlePaste}
-            placeholder={uploading ? t.extracting : webSearch ? "联网搜索…" : t.inputPlaceholder}
+            placeholder={uploading ? t.extracting : webSearch ? t.webSearchPlaceholder : t.inputPlaceholder}
             disabled={disabled || uploading}
             rows={1}
-            className="flex-1 bg-transparent resize-none outline-none text-sm text-zinc-100 placeholder-zinc-600 max-h-40 disabled:opacity-40 leading-relaxed"
+            className="flex-1 bg-transparent resize-none outline-none text-sm text-zinc-200 placeholder-zinc-700 max-h-40 disabled:opacity-30 leading-relaxed"
           />
 
           {/* 联网搜索 toggle */}
@@ -196,11 +206,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             type="button"
             onClick={() => onWebSearchToggle?.(!webSearch)}
             disabled={disabled}
-            title={webSearch ? "关闭联网搜索" : "开启联网搜索"}
-            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 disabled:opacity-30 ${
+            title={webSearch ? t.webSearchOn : t.webSearchOff}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 disabled:opacity-20 ${
               webSearch
-                ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25"
-                : "hover:bg-zinc-800 text-zinc-600 hover:text-zinc-400"
+                ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/20"
+                : "hover:bg-white/5 text-zinc-700 hover:text-zinc-500"
             }`}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -214,7 +224,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 shadow-sm shadow-indigo-950/50"
             aria-label="发送"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>

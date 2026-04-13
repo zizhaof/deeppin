@@ -49,15 +49,22 @@ function highlightStr(
   if (!anchors.length) return text;
 
   // 在文本块内查找所有锚点匹配位置 / Find all anchor match positions within this text chunk
+  // 跨段落选中时 anchorText 含 \n，Markdown 渲染后文本节点无 \n，
+  // 取第一个非空段落作为匹配标记（高亮第一段）
+  // For cross-paragraph anchors, anchorText contains \n but rendered text nodes don't;
+  // use the first non-empty paragraph as the match target (highlight only first segment).
   type Span = { start: number; end: number; threadId: string };
   const spans: Span[] = [];
   for (const { text: anchorText, threadId } of anchors) {
+    const searchText = anchorText.includes("\n")
+      ? (anchorText.split("\n").find((s) => s.trim()) ?? anchorText)
+      : anchorText;
     let pos = 0;
     while (true) {
-      const idx = text.indexOf(anchorText, pos);
+      const idx = text.indexOf(searchText, pos);
       if (idx === -1) break;
-      spans.push({ start: idx, end: idx + anchorText.length, threadId });
-      pos = idx + anchorText.length;
+      spans.push({ start: idx, end: idx + searchText.length, threadId });
+      pos = idx + searchText.length;
     }
   }
   if (!spans.length) return text;
