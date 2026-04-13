@@ -18,12 +18,13 @@ import asyncio
 import json
 import logging
 import uuid
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
 from db.supabase import get_supabase
+from dependencies.auth import get_current_user
 from models.thread import CreateThreadRequest, Thread
 from models.message import ChatRequest
 from services.llm_client import generate_title_and_suggestions
@@ -42,7 +43,7 @@ async def _db(fn):
 
 
 @router.post("/threads", response_model=Thread, status_code=201)
-async def create_thread(body: CreateThreadRequest):
+async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user)):
     """
     创建子线程（插针）。
     Create a sub-thread (pin).
@@ -55,7 +56,7 @@ async def create_thread(body: CreateThreadRequest):
     LLM title and suggested questions are generated asynchronously in the background;
     they do not block this endpoint's response.
     """
-    sb = get_supabase()
+    _user_id, sb = auth
 
     # 计算嵌套深度 / Calculate nesting depth
     if body.depth is not None:
@@ -170,7 +171,7 @@ async def _generate_and_patch(
 
 
 @router.get("/threads/{thread_id}/suggest")
-async def suggest_questions(thread_id: uuid.UUID):
+async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
     返回子线程的建议追问（最多 3 个）。
     Return suggested follow-up questions for a sub-thread (up to 3).
@@ -183,7 +184,7 @@ async def suggest_questions(thread_id: uuid.UUID):
     On cache miss (fallback for historical threads): wait 300ms and re-check
     (_generate_and_patch is usually done by then); if still missing, generate and write back in real time.
     """
-    sb = get_supabase()
+    _user_id, sb = auth
 
     thread_res = await _db(lambda: (
         sb.table("threads")
@@ -264,7 +265,7 @@ async def suggest_questions(thread_id: uuid.UUID):
 
 
 @router.post("/threads/{thread_id}/autostart")
-async def autostart_thread(thread_id: uuid.UUID, body: ChatRequest):
+async def autostart_thread(thread_id: uuid.UUID, body: ChatRequest, auth=Depends(get_current_user)):
     """
     自动向子线程发送第一条消息（建议问题），流式返回 AI 回复。
     Auto-send the first message (a suggested question) to a sub-thread; stream back the AI reply.
@@ -272,6 +273,15 @@ async def autostart_thread(thread_id: uuid.UUID, body: ChatRequest):
     SSE 格式与 /api/threads/{id}/chat 完全一致。
     SSE format is identical to /api/threads/{id}/chat.
     """
+    _user_id, sb = auth
+
+    # 验证线程存在且属于当前用户（RLS 自动过滤）
+    thread_res = await _db(lambda: (
+        sb.table("threads").select("id").eq("id", str(thread_id)).maybe_single().execute()
+    ))
+    if not thread_res or not thread_res.data:
+        raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
+
     return StreamingResponse(
         stream_and_save(str(thread_id), body.content),
         media_type="text/event-stream",
@@ -283,12 +293,12 @@ async def autostart_thread(thread_id: uuid.UUID, body: ChatRequest):
 
 
 @router.get("/threads/{thread_id}/messages")
-async def get_messages(thread_id: uuid.UUID):
+async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
     获取指定线程的消息历史，按创建时间升序排列。
     Get the message history for the specified thread in ascending chronological order.
     """
-    sb = get_supabase()
+    _user_id, sb = auth
 
     # 验证线程存在 / Verify the thread exists
     thread_res = await _db(lambda: (
