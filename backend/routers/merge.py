@@ -20,11 +20,11 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-from db.supabase import get_supabase
+from dependencies.auth import get_current_user
 from services.llm_client import merge_threads
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class MergeRequest(BaseModel):
 
 
 @router.post("/sessions/{session_id}/merge")
-async def merge(session_id: uuid.UUID, body: MergeRequest):
+async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_current_user)):
     """
     合并 session 下所有子线程内容，流式返回结构化报告。
     Merge all sub-thread content for the session; stream back a structured report.
@@ -67,7 +67,7 @@ async def merge(session_id: uuid.UUID, body: MergeRequest):
     若 session 下没有子线程，返回 400。
     Returns 400 if the session has no sub-threads.
     """
-    sb = get_supabase()
+    _user_id, sb = auth
 
     # 1. 查 session 是否存在 / Check session existence
     session_res = await _db(

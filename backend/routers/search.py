@@ -20,10 +20,11 @@ from __future__ import annotations
 import json
 from typing import AsyncGenerator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from dependencies.auth import get_current_user
 from services.llm_client import chat_stream, META_SENTINEL
 from services.search_service import search as searxng_search
 
@@ -40,11 +41,12 @@ class SearchRequest(BaseModel):
 
 
 @router.post("/search")
-async def search_endpoint(body: SearchRequest):
+async def search_endpoint(body: SearchRequest, auth=Depends(get_current_user)):
     """
     执行联网搜索并流式返回 AI 回答。
     Perform a web search and stream back the AI-generated answer.
     """
+    _user_id, _sb = auth
     return StreamingResponse(
         _search_stream(body.query),
         media_type="text/event-stream",

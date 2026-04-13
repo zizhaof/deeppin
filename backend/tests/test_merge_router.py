@@ -124,11 +124,14 @@ def _messages(*pairs):
     return MagicMock(data=[{"role": r, "content": c} for r, c in pairs])
 
 
-async def _collect_generate(session_id, format_type="free"):
+async def _collect_generate(session_id, format_type="free", sb=None):
     """Run generate() and collect all SSE lines."""
     import uuid
     from routers.merge import merge as merge_endpoint, MergeRequest
-    resp = await merge_endpoint(uuid.UUID(session_id), MergeRequest(format=format_type))
+    if sb is None:
+        sb = MagicMock()
+    mock_auth = ("mock-user-id", sb)
+    resp = await merge_endpoint(uuid.UUID(session_id), MergeRequest(format=format_type), auth=mock_auth)
     events = []
     async for chunk in resp.body_iterator:
         if isinstance(chunk, bytes):
@@ -150,21 +153,22 @@ class TestMergeGenerate:
         from routers.merge import merge as merge_endpoint, MergeRequest
         import uuid
 
+        sb = MagicMock()
         fake_db = _make_db_mock(MagicMock(data=None))
-        with patch("routers.merge._db", side_effect=fake_db), \
-             patch("routers.merge.get_supabase", return_value=MagicMock()):
+        mock_auth = ("mock-user-id", sb)
+        with patch("routers.merge._db", side_effect=fake_db):
             with pytest.raises(HTTPException) as exc_info:
-                await merge_endpoint(uuid.UUID(SESSION_ID), MergeRequest())
+                await merge_endpoint(uuid.UUID(SESSION_ID), MergeRequest(), auth=mock_auth)
         assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_no_sub_threads_yields_error_event(self):
         """没有子线程（depth > 0）时产生 error 事件
         No sub-threads (depth > 0) yields an error event."""
+        sb = MagicMock()
         fake_db = _make_db_mock(_session_exists(), _no_threads())
-        with patch("routers.merge._db", side_effect=fake_db), \
-             patch("routers.merge.get_supabase", return_value=MagicMock()):
-            events = await _collect_generate(SESSION_ID)
+        with patch("routers.merge._db", side_effect=fake_db):
+            events = await _collect_generate(SESSION_ID, sb=sb)
         error_events = [e for e in events if e["type"] == "error"]
         assert len(error_events) == 1
         assert "子线程" in error_events[0]["message"] or "No sub-threads" in error_events[0]["message"]
@@ -195,9 +199,8 @@ class TestMergeGenerate:
             yield "merged"
 
         with patch("routers.merge._db", side_effect=tracking_db), \
-             patch("routers.merge.get_supabase", return_value=sb), \
              patch("routers.merge.merge_threads", side_effect=fake_merge):
-            events = await _collect_generate(SESSION_ID)
+            events = await _collect_generate(SESSION_ID, sb=sb)
 
         chunk_events = [e for e in events if e["type"] == "chunk"]
         assert any(e["content"] == "merged" for e in chunk_events)
@@ -242,9 +245,8 @@ class TestMergeGenerate:
             passed_threads_data.extend(threads_data)
             yield "ok"
 
-        with patch("routers.merge.get_supabase", return_value=sb), \
-             patch("routers.merge.merge_threads", side_effect=fake_merge):
-            events = await _collect_generate(SESSION_ID)
+        with patch("routers.merge.merge_threads", side_effect=fake_merge):
+            events = await _collect_generate(SESSION_ID, sb=sb)
 
         # content should contain the concatenated messages
         assert passed_threads_data
@@ -279,8 +281,7 @@ class TestMergeGenerate:
 
         sb.table.side_effect = make_table
 
-        with patch("routers.merge.get_supabase", return_value=sb):
-            events = await _collect_generate(SESSION_ID)
+        events = await _collect_generate(SESSION_ID, sb=sb)
 
         error_events = [e for e in events if e["type"] == "error"]
         assert len(error_events) == 1
@@ -313,9 +314,8 @@ class TestMergeGenerate:
             yield "part1"
             yield "part2"
 
-        with patch("routers.merge.get_supabase", return_value=sb), \
-             patch("routers.merge.merge_threads", side_effect=fake_merge):
-            events = await _collect_generate(SESSION_ID)
+        with patch("routers.merge.merge_threads", side_effect=fake_merge):
+            events = await _collect_generate(SESSION_ID, sb=sb)
 
         chunk_contents = [e["content"] for e in events if e["type"] == "chunk"]
         assert "part1" in chunk_contents

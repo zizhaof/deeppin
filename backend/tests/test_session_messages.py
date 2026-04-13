@@ -13,7 +13,7 @@ Tests for the bulk session messages endpoint.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 
 def _make_sb(thread_data, message_data):
@@ -57,8 +57,7 @@ async def test_happy_path_groups_by_thread():
     import uuid
     sid = uuid.uuid4()
 
-    with patch("routers.sessions.get_supabase", return_value=_make_sb(threads, messages)):
-        result = await get_session_messages(sid)
+    result = await get_session_messages(sid, auth=("mock-user", _make_sb(threads, messages)))
 
     assert set(result.keys()) == {tid1, tid2}
     assert len(result[tid1]) == 2
@@ -83,8 +82,7 @@ async def test_no_threads_returns_empty_dict():
     chain.execute.return_value = MagicMock(data=[])
     sb.table.return_value = chain
 
-    with patch("routers.sessions.get_supabase", return_value=sb):
-        result = await get_session_messages(sid)
+    result = await get_session_messages(sid, auth=("mock-user", sb))
 
     assert result == {}
     # 只调用了一次 table()（threads 查询），没有第二次
@@ -100,8 +98,7 @@ async def test_thread_with_no_messages_still_has_key():
     import uuid
     sid = uuid.uuid4()
 
-    with patch("routers.sessions.get_supabase", return_value=_make_sb([{"id": tid}], [])):
-        result = await get_session_messages(sid)
+    result = await get_session_messages(sid, auth=("mock-user", _make_sb([{"id": tid}], [])))
 
     assert tid in result
     assert result[tid] == []
@@ -121,8 +118,7 @@ async def test_message_not_in_known_threads_is_ignored():
         {"id": "m2", "thread_id": "zzzz",  "role": "user", "content": "b", "token_count": None, "created_at": "2024-01-01"},
     ]
 
-    with patch("routers.sessions.get_supabase", return_value=_make_sb([{"id": tid}], messages)):
-        result = await get_session_messages(sid)
+    result = await get_session_messages(sid, auth=("mock-user", _make_sb([{"id": tid}], messages)))
 
     assert "zzzz" not in result
     assert len(result[tid]) == 1

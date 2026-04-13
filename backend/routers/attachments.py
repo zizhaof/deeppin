@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from dependencies.auth import get_current_user
 from services.attachment_processor import process_attachment
 
 router = APIRouter()
@@ -30,6 +31,7 @@ router = APIRouter()
 async def upload_attachment(
     session_id: uuid.UUID,
     file: UploadFile = File(...),
+    auth=Depends(get_current_user),
 ) -> dict:
     """
     上传文件并同步等待完整处理。
@@ -51,6 +53,7 @@ async def upload_attachment(
     chunk_count=0 且 inline_text=null 表示提取失败（扫描件、加密 PDF 等）。
     chunk_count=0 with inline_text=null means extraction failed (scanned image, encrypted PDF, etc.).
     """
+    _user_id, _sb = auth
     content = await file.read()
     filename = file.filename or "未命名文件"
 
