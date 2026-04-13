@@ -350,15 +350,18 @@ async def assess_relevance(
 
 async def merge_threads(
     threads_data: list[dict],
+    main_content: str = "",
     format_type: str = "free",
     custom_prompt: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
-    将多条子线程内容合并为结构化输出，流式返回。
-    Merge multiple sub-thread contents into a structured output, streamed.
+    以主线对话为主干、子线程为细节补充，合并为结构化输出，流式返回。
+    Merge with main thread as the backbone and sub-threads as enriching detail; streamed.
 
     threads_data 格式 / threads_data format:
       [{"title": str, "anchor": str, "content": str}, ...]
+
+    main_content: 主线对话原文（可为空）/ Main thread full text (may be empty)
 
     format_type:
       "free"       — 自由总结（流畅叙述）/ Free-form summary (flowing prose)
@@ -372,17 +375,18 @@ async def merge_threads(
 
     FORMAT_INSTRUCTIONS = {
         "free": (
-            "请将以下所有探索方向综合起来，用流畅的文字写一篇完整的总结报告。"
-            "不要简单罗列，要融合各角度的洞察，输出有深度的叙述。"
+            "请以主线对话为核心脉络，用子问题的深入探索来丰富和补充细节，"
+            "写一篇流畅有深度的总结报告。不要简单罗列，要将主线与子问题有机融合。"
         ),
         "bullets": (
-            "请将以下所有探索方向提炼为结构化的要点列表。"
-            "按主题分组，每组用二级标题，要点用「- 」开头，保持简洁有力。"
+            "请以主线对话为框架，将子问题探索的要点按主题分组补充进来，"
+            "输出结构化的要点列表。每组用二级标题，要点用「- 」开头，保持简洁有力。"
         ),
         "structured": (
-            "请将以下所有探索方向整理为结构化分析，严格按以下四部分输出：\n"
+            "请以主线对话为基础，结合子问题的深入探索，整理为结构化分析，"
+            "严格按以下四部分输出：\n"
             "## 问题与背景\n## 方案与见解\n## 权衡与对比\n## 结论与行动\n"
-            "每部分下可分条阐述，覆盖所有探索方向的关键信息。"
+            "每部分下可分条阐述，主线提供主干，子问题提供细节支撑。"
         ),
     }
 
@@ -391,35 +395,47 @@ async def merge_threads(
     else:
         instruction = FORMAT_INSTRUCTIONS.get(format_type, FORMAT_INSTRUCTIONS["free"])
 
-    # 将各子线程内容序列化为 prompt 段落
-    # Serialize each sub-thread into a prompt section
-    sections = []
+    # 主线内容段落 / Main thread section
+    main_section = ""
+    if main_content and main_content.strip():
+        main_section = f"## 主线对话\n\n{main_content}\n\n"
+
+    # 子线程内容段落 / Sub-thread sections
+    sub_sections = []
     for i, t in enumerate(threads_data, 1):
-        title = t.get("title") or f"探索 {i}"
+        title = t.get("title") or f"子问题 {i}"
         anchor = t.get("anchor", "")
         content = t.get("content", "")
-        section = f"### 针 {i}：{title}"
+        section = f"### 子问题 {i}：{title}"
         if anchor:
             section += f"\n> 锚点：「{anchor}」"
         if content:
             section += f"\n\n{content}"
-        sections.append(section)
+        sub_sections.append(section)
 
-    threads_text = "\n\n---\n\n".join(sections)
+    sub_text = "\n\n---\n\n".join(sub_sections)
+    sub_section = f"## 子问题探索\n\n{sub_text}" if sub_text else ""
+
+    user_content = "以下是用户的对话内容，请按要求整合输出：\n\n"
+    if main_section:
+        user_content += main_section
+    if sub_section:
+        user_content += sub_section
 
     messages = [
         {
             "role": "system",
             "content": (
                 "你是一位帮助用户整合思考成果的助手。"
-                "用户在阅读或对话过程中对多个要点插针展开了深入探索，"
-                "现在需要你将这些探索结果合并为一篇有价值的输出。\n\n"
+                "用户在对话过程中对多个要点插针展开了深入探索。"
+                "主线对话是主干，子问题是对主线细节的深入挖掘，"
+                "请以主线为核心将所有内容整合为有价值的输出。\n\n"
                 + instruction
             ),
         },
         {
             "role": "user",
-            "content": f"以下是用户的所有探索内容：\n\n{threads_text}",
+            "content": user_content,
         },
     ]
 

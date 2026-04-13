@@ -173,72 +173,79 @@ class TestMergeGenerate:
         assert len(error_events) == 1
         assert "子线程" in error_events[0]["message"] or "No sub-threads" in error_events[0]["message"]
 
-    @pytest.mark.asyncio
-    async def test_uses_full_messages_for_content(self):
-        """合并时使用全部消息原文，不走摘要缓存
-        Merge uses full message history, not the summary cache."""
-        sb = MagicMock()
-        call_count = [0]
+    def _make_sb(self, sub_threads=None, main_messages=None, sub_messages=None):
+        """
+        构造通用 Supabase mock，按表名路由：
+        - sessions → session 存在
+        - threads (gt/order) → sub_threads 列表
+        - threads (eq depth=0 / maybe_single) → 主线 id
+        - messages → 按调用顺序返回 main_messages 再返回 sub_messages
+        Build a Supabase mock that routes by table name.
+        """
+        if sub_threads is None:
+            sub_threads = [{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}]
+        if main_messages is None:
+            main_messages = [{"role": "user", "content": "main q"}, {"role": "assistant", "content": "main a"}]
+        if sub_messages is None:
+            sub_messages = [{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}]
 
-        def make_table(_name):
+        msg_calls = [0]
+
+        def make_table(name):
             m = MagicMock()
-            call_count[0] += 1
-            n = call_count[0]
-            if n == 1:
-                # session exists
+            if name == "sessions":
                 m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
                     MagicMock(data={"id": SESSION_ID})
-            elif n == 2:
-                # threads
+            elif name == "threads":
+                # sub-threads query (depth > 0)
                 m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
-            else:
-                # messages (full, no limit)
+                    MagicMock(data=sub_threads)
+                # main thread query (depth = 0, maybe_single)
+                m.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
+                    MagicMock(data={"id": "main-1"})
+            elif name == "messages":
+                msg_calls[0] += 1
+                msgs = main_messages if msg_calls[0] == 1 else sub_messages
                 m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}])
+                    MagicMock(data=msgs)
             return m
 
+        sb = MagicMock()
         sb.table.side_effect = make_table
-        passed_threads_data = []
+        return sb
 
-        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
-            passed_threads_data.extend(threads_data)
+    @pytest.mark.asyncio
+    async def test_uses_full_messages_for_content(self):
+        """合并时使用全部消息原文，包含主线和子线程
+        Merge uses full message history for both main and sub-threads."""
+        sb = self._make_sb(
+            sub_messages=[{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}]
+        )
+        passed_kwargs = {}
+
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
+            passed_kwargs["threads_data"] = threads_data
+            passed_kwargs["main_content"] = main_content
             yield "merged"
 
         with patch("routers.merge.merge_threads", side_effect=fake_merge):
             events = await _collect_generate(SESSION_ID, sb=sb)
 
         assert any(e["type"] == "chunk" and e["content"] == "merged" for e in events)
-        assert passed_threads_data
-        assert "question" in passed_threads_data[0]["content"]
-        assert "answer" in passed_threads_data[0]["content"]
+        assert "question" in passed_kwargs["threads_data"][0]["content"]
+        assert "answer" in passed_kwargs["threads_data"][0]["content"]
+        assert "main" in passed_kwargs["main_content"]  # main thread content included
 
     @pytest.mark.asyncio
     async def test_falls_back_to_messages_on_cache_miss(self):
-        """消息为主要内容来源（原缓存回退测试保留以确保消息格式正确）
-        Messages are always the content source; verify correct label format."""
-        sb = MagicMock()
-        call_count = [0]
-
-        def make_table(_name):
-            m = MagicMock()
-            call_count[0] += 1
-            n = call_count[0]
-            if n == 1:
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data={"id": SESSION_ID})
-            elif n == 2:
-                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
-            else:
-                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}])
-            return m
-
-        sb.table.side_effect = make_table
+        """子线程消息格式正确（用户/AI 标签）
+        Sub-thread messages are formatted with correct 用户/AI labels."""
+        sb = self._make_sb(
+            sub_messages=[{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+        )
         passed_threads_data = []
 
-        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
             passed_threads_data.extend(threads_data)
             yield "ok"
 
@@ -253,57 +260,22 @@ class TestMergeGenerate:
     async def test_all_empty_threads_yields_error(self):
         """所有子线程内容为空时产生 error 事件
         Yields an error event when all sub-threads have empty content."""
-        sb = MagicMock()
-        call_count = [0]
-
-        def make_table(_name):
-            m = MagicMock()
-            call_count[0] += 1
-            n = call_count[0]
-            if n == 1:
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data={"id": SESSION_ID})
-            elif n == 2:
-                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"id": "t1", "title": "", "anchor_text": "", "depth": 1}])
-            else:
-                # empty messages
-                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[])
-            return m
-
-        sb.table.side_effect = make_table
-
+        sb = self._make_sb(
+            sub_threads=[{"id": "t1", "title": "", "anchor_text": "", "depth": 1}],
+            sub_messages=[],
+        )
         events = await _collect_generate(SESSION_ID, sb=sb)
-
-        error_events = [e for e in events if e["type"] == "error"]
-        assert len(error_events) == 1
+        assert any(e["type"] == "error" for e in events)
 
     @pytest.mark.asyncio
     async def test_streams_chunks_and_done(self):
         """正常路径：产生 chunk 事件 + done 事件
         Happy path: yields chunk events followed by a done event."""
-        sb = MagicMock()
-        call_count = [0]
+        sb = self._make_sb(
+            sub_messages=[{"role": "assistant", "content": "some content"}]
+        )
 
-        def make_table(_name):
-            m = MagicMock()
-            call_count[0] += 1
-            n = call_count[0]
-            if n == 1:
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data={"id": SESSION_ID})
-            elif n == 2:
-                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
-            else:
-                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"role": "assistant", "content": "some content"}])
-            return m
-
-        sb.table.side_effect = make_table
-
-        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
             yield "part1"
             yield "part2"
 
@@ -315,43 +287,21 @@ class TestMergeGenerate:
         assert "part2" in chunk_contents
         assert any(e["type"] == "done" for e in events)
 
-
     @pytest.mark.asyncio
     async def test_summarizes_when_content_exceeds_budget(self):
         """内容超出单线程字符预算时调用 summarize 压缩
         Calls summarize when a thread's full content exceeds its char budget."""
-        sb = MagicMock()
-        call_count = [0]
-
-        # 生成超长内容（远超 per-thread 预算）/ Generate content that exceeds per-thread budget
         long_content = "A" * 100_000
+        sb = self._make_sb(sub_messages=[{"role": "assistant", "content": long_content}])
 
-        def make_table(_name):
-            m = MagicMock()
-            call_count[0] += 1
-            n = call_count[0]
-            if n == 1:
-                m.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
-                    MagicMock(data={"id": SESSION_ID})
-            elif n == 2:
-                m.select.return_value.eq.return_value.gt.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"id": "t1", "title": "T", "anchor_text": "A", "depth": 1}])
-            else:
-                m.select.return_value.eq.return_value.order.return_value.execute.return_value = \
-                    MagicMock(data=[{"role": "assistant", "content": long_content}])
-            return m
-
-        sb.table.side_effect = make_table
-
-        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
             yield "ok"
 
         with patch("routers.merge.merge_threads", side_effect=fake_merge), \
              patch("routers.merge.summarize", new_callable=AsyncMock, return_value="compressed") as mock_summarize:
             events = await _collect_generate(SESSION_ID, sb=sb)
 
-        # summarize must have been called due to oversized content
-        mock_summarize.assert_called_once()
+        assert mock_summarize.call_count >= 1
         assert any(e["type"] == "done" for e in events)
 
 

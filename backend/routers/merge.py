@@ -111,22 +111,21 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
 
             yield _sse("status", {"text": f"找到 {len(threads)} 个探索角度，正在读取内容… / Found {len(threads)} pins, reading content…"})
 
-            # 3. 并发获取每条子线程的摘要（优先从缓存，否则取最近消息）
-            #    Concurrently fetch each sub-thread's summary (cache first, fall back to recent messages)
-            # 每个子线程的字符预算 = 总 token 预算 × chars/token ÷ 线程数
-            # Per-thread char budget = total token budget × chars/token ÷ number of threads
-            per_thread_char_budget = (
-                _CONTENT_BUDGET_TOKENS * _CHARS_PER_TOKEN // max(len(threads), 1)
-            )
+            # 3. 取主线 + 子线程内容，按权重分配 token 预算
+            #    Fetch main thread + sub-thread content; allocate token budget by weight
+            # 主线权重 2，子线程各权重 1（主线 = 主干，子线程 = 补充细节）
+            # Main thread weight 2, each sub-thread weight 1
+            total_slots = 2 + len(threads)  # main gets 2 slots
+            chars_per_slot = _CONTENT_BUDGET_TOKENS * _CHARS_PER_TOKEN // max(total_slots, 1)
+            main_char_budget = chars_per_slot * 2
+            sub_char_budget = chars_per_slot
 
-            async def get_thread_content(thread: dict) -> dict:
-                tid = thread["id"]
-
-                # 取全部消息原文 / Fetch all messages verbatim
+            async def fetch_content(thread_id: str, char_budget: int) -> str:
+                """取全文，超出预算时生成摘要。/ Use full text; summarize if over budget."""
                 msgs_res = await _db(
                     lambda: sb.table("messages")
                     .select("role, content")
-                    .eq("thread_id", tid)
+                    .eq("thread_id", thread_id)
                     .order("created_at")
                     .execute()
                 )
@@ -136,30 +135,35 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
                     for m in messages
                 ]
                 full_content = "\n".join(lines)
+                if len(full_content) <= char_budget:
+                    return full_content
+                token_budget = max(200, char_budget // _CHARS_PER_TOKEN)
+                return await summarize(full_content, token_budget)
 
-                if len(full_content) <= per_thread_char_budget:
-                    # 全文在预算内，直接使用 / Full content fits — use as-is
-                    content = full_content
-                else:
-                    # 超出预算，压缩为专用摘要（预算比 context compact 大得多）
-                    # Over budget — generate a merge-quality summary (larger budget than context compact)
-                    token_budget = max(200, per_thread_char_budget // _CHARS_PER_TOKEN)
-                    content = await summarize(full_content, token_budget)
+            # 取主线内容 / Fetch main thread content
+            main_thread_res = await _db(
+                lambda: sb.table("threads")
+                .select("id")
+                .eq("session_id", str(session_id))
+                .eq("depth", 0)
+                .maybe_single()
+                .execute()
+            )
+            main_content = ""
+            if main_thread_res and main_thread_res.data:
+                main_content = await fetch_content(main_thread_res.data["id"], main_char_budget)
 
-                return {
-                    "title": thread.get("title") or "",
-                    "anchor": thread.get("anchor_text") or "",
-                    "content": content,
-                }
-
-            # 串行获取避免 Supabase 单例 httpx 客户端并发竞争
-            # Sequential to avoid concurrent contention on the shared Supabase httpx client
+            # 取子线程内容（串行避免 Supabase httpx 竞争）
+            # Fetch sub-thread content sequentially
             threads_data = []
             for t in threads:
-                threads_data.append(await get_thread_content(t))
-            # 过滤掉没有任何内容的空线程
-            # Filter out threads with no content at all
-            threads_data = [t for t in threads_data if t["content"].strip() or t["anchor"].strip()]
+                content = await fetch_content(t["id"], sub_char_budget)
+                if content.strip() or (t.get("anchor_text") or "").strip():
+                    threads_data.append({
+                        "title": t.get("title") or "",
+                        "anchor": t.get("anchor_text") or "",
+                        "content": content,
+                    })
 
             if not threads_data:
                 yield _sse("error", {"message": "子线程均无内容，无法合并 / Sub-threads have no content to merge"})
@@ -170,6 +174,7 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
             # 4. 流式生成合并报告 / Stream the merged report
             async for chunk in merge_threads(
                 list(threads_data),
+                main_content=main_content,
                 format_type=body.format,
                 custom_prompt=body.custom_prompt,
             ):
