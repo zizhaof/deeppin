@@ -3,8 +3,8 @@
 
 import { createClient } from "./supabase";
 
-// 浏览器直连后端，避免经过 Vercel 代理多一跳网络
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+// rewrites 在 next.config.ts 里把 /api/* 代理到后端，浏览器无需直接访问后端
+const BASE_URL = "";
 
 /** 获取带 Authorization header 的 JSON 请求头 */
 async function getAuthHeaders(): Promise<Record<string, string>> {

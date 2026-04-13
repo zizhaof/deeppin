@@ -3,7 +3,7 @@
 
 import { createClient } from "./supabase";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const BASE_URL = "";
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
