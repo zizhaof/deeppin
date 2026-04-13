@@ -1,17 +1,29 @@
 services:
   backend:
     build: ./backend
-    ports:
-      - "8000:8000"
-    env_file: ./backend/.env
     restart: always
+    expose:
+      - "8000"
+    env_file: ./backend/.env
 
   searxng:
     image: searxng/searxng:latest
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8888:8080"   # 只绑定本地，不对外暴露
+    expose:
+      - "8080"
     volumes:
       - ./searxng:/etc/searxng
     environment:
       - BASE_URL=http://localhost:8888
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/deeppin.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro   # SSL 证书挂载目录
+    depends_on:
+      - backend
