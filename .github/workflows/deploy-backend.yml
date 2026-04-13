@@ -25,3 +25,18 @@ jobs:
             docker compose up -d searxng
             # 清理旧镜像，节省磁盘空间
             docker image prune -f
+
+            # 健康检查：等待服务启动，最多重试 15 次（每次间隔 2s，共 30s）
+            echo "Waiting for backend to be healthy..."
+            for i in $(seq 1 15); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health)
+              if [ "$STATUS" = "200" ]; then
+                echo "Health check passed (attempt $i)"
+                exit 0
+              fi
+              echo "Attempt $i: got HTTP $STATUS, retrying..."
+              sleep 2
+            done
+            echo "Health check failed after 30s"
+            docker logs deeppin-backend-1 --tail 30
+            exit 1
