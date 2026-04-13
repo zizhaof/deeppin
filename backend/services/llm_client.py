@@ -351,6 +351,7 @@ async def assess_relevance(
 async def merge_threads(
     threads_data: list[dict],
     format_type: str = "free",
+    custom_prompt: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     将多条子线程内容合并为结构化输出，流式返回。
@@ -364,6 +365,7 @@ async def merge_threads(
       "bullets"    — 要点列表（分主题分级）/ Bullet-point list (grouped by theme)
       "structured" — 结构化分析（问题/方案/权衡/结论）
                      Structured analysis (problem / solution / trade-offs / conclusion)
+      "custom"     — 用户自定义提示词 / User-supplied custom instruction
     """
     if not threads_data:
         return
@@ -384,7 +386,10 @@ async def merge_threads(
         ),
     }
 
-    instruction = FORMAT_INSTRUCTIONS.get(format_type, FORMAT_INSTRUCTIONS["free"])
+    if format_type == "custom" and custom_prompt and custom_prompt.strip():
+        instruction = custom_prompt.strip()
+    else:
+        instruction = FORMAT_INSTRUCTIONS.get(format_type, FORMAT_INSTRUCTIONS["free"])
 
     # 将各子线程内容序列化为 prompt 段落
     # Serialize each sub-thread into a prompt section

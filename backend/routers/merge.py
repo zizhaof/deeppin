@@ -47,13 +47,14 @@ async def _db(fn):
 
 
 class MergeRequest(BaseModel):
-    format: str = "free"  # "free" | "bullets" | "structured"
+    format: str = "free"  # "free" | "bullets" | "structured" | "custom"
     thread_ids: list[str] | None = None  # None = 全部；有值 = 仅合并指定线程
+    custom_prompt: str | None = None  # 仅 format="custom" 时使用
 
     @field_validator("format")
     @classmethod
     def validate_format(cls, v: str) -> str:
-        allowed = {"free", "bullets", "structured"}
+        allowed = {"free", "bullets", "structured", "custom"}
         if v not in allowed:
             raise ValueError(f"format 必须是 {allowed} 之一 / format must be one of {allowed}")
         return v
@@ -160,7 +161,11 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
             yield _sse("status", {"text": "正在生成合并报告… / Generating merged report…"})
 
             # 4. 流式生成合并报告 / Stream the merged report
-            async for chunk in merge_threads(list(threads_data), format_type=body.format):
+            async for chunk in merge_threads(
+                list(threads_data),
+                format_type=body.format,
+                custom_prompt=body.custom_prompt,
+            ):
                 yield _sse("chunk", {"content": chunk})
 
             yield _sse("done", {})

@@ -38,7 +38,7 @@ export type SSEEvent =
   | { type: "error"; message: string }
   | { type: "thread_title"; thread_id: string; title: string };
 
-export type MergeFormat = "free" | "bullets" | "structured";
+export type MergeFormat = "free" | "bullets" | "structured" | "custom";
 
 /**
  * 触发合并生成，通过 SSE 流式接收合并报告。
@@ -52,6 +52,7 @@ export async function sendMergeStream(
   onDone: (fullText: string) => void,
   onError: (message: string) => void,
   onStatus?: (text: string) => void,
+  customPrompt?: string,
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/merge`, {
     method: "POST",
@@ -59,6 +60,7 @@ export async function sendMergeStream(
     body: JSON.stringify({
       format,
       ...(threadIds !== null ? { thread_ids: threadIds } : {}),
+      ...(format === "custom" && customPrompt ? { custom_prompt: customPrompt } : {}),
     }),
   });
 

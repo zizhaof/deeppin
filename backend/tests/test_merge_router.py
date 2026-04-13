@@ -195,7 +195,7 @@ class TestMergeGenerate:
         sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = \
             MagicMock(data={"summary": "cached summary text"})
 
-        async def fake_merge(threads_data, format_type="free"):
+        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
             yield "merged"
 
         with patch("routers.merge._db", side_effect=tracking_db), \
@@ -241,7 +241,7 @@ class TestMergeGenerate:
 
         passed_threads_data = []
 
-        async def fake_merge(threads_data, format_type="free"):
+        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
             passed_threads_data.extend(threads_data)
             yield "ok"
 
@@ -310,7 +310,7 @@ class TestMergeGenerate:
 
         sb.table.side_effect = make_table
 
-        async def fake_merge(threads_data, format_type="free"):
+        async def fake_merge(threads_data, format_type="free", custom_prompt=None):
             yield "part1"
             yield "part2"
 

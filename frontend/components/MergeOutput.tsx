@@ -41,9 +41,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
     { value: "free",       label: t.mergeFormatFree,       desc: t.mergeFormatFreeDesc },
     { value: "bullets",    label: t.mergeFormatBullets,    desc: t.mergeFormatBulletsDesc },
     { value: "structured", label: t.mergeFormatStructured, desc: t.mergeFormatStructuredDesc },
+    { value: "custom",     label: t.mergeFormatCustom,     desc: t.mergeFormatCustomDesc },
   ];
 
   const [format, setFormat] = useState<MergeFormat>("free");
+  const [customPrompt, setCustomPrompt] = useState("");
   const [state, setState] = useState<State>("loading-relevance");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState("");
@@ -114,8 +116,9 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       (fullText) => { setContent(fullText); setState("done"); },
       (msg) => { setErrorMsg(msg); setState("error"); },
       (text) => setStatus(text),
+      format === "custom" ? customPrompt : undefined,
     );
-  }, [sessionId, format, selected]);
+  }, [sessionId, format, selected, customPrompt]);
 
   const handleCopy = useCallback(async () => {
     try { await navigator.clipboard.writeText(content); }
@@ -171,19 +174,31 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
         </div>
 
         {/* ── 格式选择 ── */}
-        <div className="flex gap-2 px-5 py-3 border-b border-white/5 flex-shrink-0">
-          {FORMAT_OPTIONS.map((opt) => (
-            <button key={opt.value} onClick={() => setFormat(opt.value)}
+        <div className="flex flex-col gap-2 px-5 py-3 border-b border-white/5 flex-shrink-0">
+          <div className="flex gap-2">
+            {FORMAT_OPTIONS.map((opt) => (
+              <button key={opt.value} onClick={() => setFormat(opt.value)}
+                disabled={isGenerating}
+                className={`flex-1 rounded-xl px-2.5 py-2.5 text-xs transition-all border ${
+                  format === opt.value
+                    ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
+                    : "bg-zinc-900/60 border-white/5 text-zinc-500 hover:border-white/10 hover:text-zinc-400"
+                } disabled:opacity-40 disabled:cursor-not-allowed`}>
+                <div className="font-semibold text-left">{opt.label}</div>
+                <div className="text-[10px] mt-0.5 opacity-60 text-left leading-snug">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+          {format === "custom" && (
+            <textarea
+              value={customPrompt}
+              onChange={e => setCustomPrompt(e.target.value)}
               disabled={isGenerating}
-              className={`flex-1 rounded-xl px-2.5 py-2.5 text-xs transition-all border ${
-                format === opt.value
-                  ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
-                  : "bg-zinc-900/60 border-white/5 text-zinc-500 hover:border-white/10 hover:text-zinc-400"
-              } disabled:opacity-40 disabled:cursor-not-allowed`}>
-              <div className="font-semibold text-left">{opt.label}</div>
-              <div className="text-[10px] mt-0.5 opacity-60 text-left leading-snug">{opt.desc}</div>
-            </button>
-          ))}
+              placeholder={t.mergeCustomPromptPlaceholder}
+              rows={3}
+              className="w-full bg-zinc-900/60 border border-white/8 rounded-xl px-3 py-2.5 text-xs text-zinc-300 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-indigo-500/40 transition-colors disabled:opacity-40"
+            />
+          )}
         </div>
 
         {/* ── 内容区 ── */}
@@ -279,8 +294,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               </button>
             )}
             {isSelecting && (
-              <button onClick={handleGenerate} disabled={selCount === 0}
-                className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white px-4 py-1.5 rounded-lg transition-colors">
+              <button
+                onClick={handleGenerate}
+                disabled={selCount === 0 || (format === "custom" && !customPrompt.trim())}
+                className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white px-4 py-1.5 rounded-lg transition-colors"
+              >
                 合并 {selCount} 个子问题
               </button>
             )}
