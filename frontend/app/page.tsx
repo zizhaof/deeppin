@@ -121,6 +121,12 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // 预热：登录后立即在后台创建好一个 session，点击时直接跳转无需等待
+  const prewarmedRef = useRef<string | null>(null);
+
+  const prewarm = (headers?: Record<string, string>) => {
+    createSession().then(s => { prewarmedRef.current = s.id; }).catch(() => {});
+  };
 
   // 先检查 auth，认证后再拉取 sessions（避免未登录时静默抛错）
   // Check auth first, then fetch sessions (avoids silent errors for unauthenticated users)
@@ -136,6 +142,8 @@ export default function HomePage() {
           .then(setSessions)
           .catch(() => setSessions([]))
           .finally(() => setLoading(false));
+        // 后台预热一个 session
+        prewarm();
       } else {
         setLoading(false);
       }
@@ -154,6 +162,15 @@ export default function HomePage() {
       router.push("/login");
       return;
     }
+    // 如果预热好了，直接跳转，同时后台预热下一个
+    if (prewarmedRef.current) {
+      const id = prewarmedRef.current;
+      prewarmedRef.current = null;
+      router.push(`/chat/${id}`);
+      prewarm();
+      return;
+    }
+    // 预热未完成（极少情况），fallback 正常创建
     setCreating(true);
     try {
       const s = await createSession();
