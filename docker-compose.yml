@@ -24,6 +24,6 @@ services:
       - "443:443"
     volumes:
       - ./nginx/deeppin.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro   # SSL 证书挂载目录
+      - /etc/letsencrypt:/etc/letsencrypt:ro  # Let's Encrypt 证书
     depends_on:
       - backend
