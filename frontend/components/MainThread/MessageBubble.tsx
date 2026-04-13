@@ -2,6 +2,7 @@
 // components/MainThread/MessageBubble.tsx
 
 import { useRef, useState } from "react";
+import MarkdownContent from "@/components/MarkdownContent";
 
 const COLLAPSE_THRESHOLD = 300; // 超过此字符数的用户消息默认折叠
 
@@ -177,15 +178,29 @@ export default function MessageBubble({
 
       <div
         onMouseUp={handleMouseUp}
-        className={`max-w-[72%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap select-text ${
+        className={`max-w-[72%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed select-text ${
           isUser
-            ? "bg-blue-600 text-white rounded-tr-sm"
+            ? "bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap"
             : "bg-zinc-800 border border-zinc-700/60 text-zinc-100 rounded-tl-sm"
         }`}
       >
-        {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
-        {needsCollapse && !expanded && (
-          <span className="text-zinc-500 select-none">…</span>
+        {isUser ? (
+          // 用户消息：纯文本，保留换行 / User messages: plain text, preserve newlines
+          <>
+            {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
+            {needsCollapse && !expanded && (
+              <span className="text-blue-200 select-none">…</span>
+            )}
+          </>
+        ) : (
+          // AI 消息：渲染 Markdown，锚点高亮由 MarkdownContent 内部处理
+          // AI messages: render Markdown; anchor highlighting is handled inside MarkdownContent
+          <MarkdownContent
+            content={displayContent}
+            anchors={anchors}
+            onAnchorClick={onAnchorClick}
+            onAnchorHover={onAnchorHover}
+          />
         )}
         {streaming && (
           <span className="inline-block w-0.5 h-3.5 bg-zinc-400 ml-0.5 align-middle animate-pulse" />

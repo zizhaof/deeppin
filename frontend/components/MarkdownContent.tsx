@@ -1,0 +1,249 @@
+"use client";
+// components/MarkdownContent.tsx
+//
+// 将 AI 回复渲染为 Markdown，同时支持锚点高亮。
+// Renders AI replies as Markdown while supporting anchor highlights.
+//
+// 高亮策略 / Highlight strategy:
+//   react-markdown 将 Markdown 解析为 React 树，每个段落 / 列表项里的直接文本
+//   子节点是纯字符串。highlightStr() 在这些字符串中查找锚点文字并插入
+//   彩色 <span>，再递归处理 <strong> / <em> 等内联元素中的文本子节点。
+//
+//   react-markdown processes Markdown into a React tree; direct text children of
+//   paragraphs / list items are plain strings. highlightStr() searches those strings
+//   for anchor text and inserts colored <span> elements, then recurses into inline
+//   elements such as <strong> and <em>.
+//
+//   已知限制 / Known limitation:
+//   如果锚点文字跨越 Markdown 格式边界（如 "**粗体** 普通" 选中 "粗体 普通"），
+//   高亮将无法命中，但 pin 本身仍然正常工作。
+//   If anchor text spans a Markdown formatting boundary (e.g. selecting across
+//   "**bold** plain"), the highlight won't appear, but the pin still works.
+
+import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { AnchorRange } from "./MainThread/MessageBubble";
+
+// ── 颜色 / Colors ─────────────────────────────────────────────────────
+const ANCHOR_COLORS = ["#818cf8", "#a78bfa", "#67e8f9", "#f9a8d4", "#fbbf24"];
+
+function buildColorMap(anchors: AnchorRange[]): Map<string, string> {
+  const map = new Map<string, string>();
+  let idx = 0;
+  for (const { threadId } of anchors) {
+    if (!map.has(threadId)) map.set(threadId, ANCHOR_COLORS[idx++ % ANCHOR_COLORS.length]);
+  }
+  return map;
+}
+
+// ── 单个文本块内查找并高亮锚点 / Highlight anchors within one text chunk ──
+
+function highlightStr(
+  text: string,
+  anchors: AnchorRange[],
+  colorMap: Map<string, string>,
+  onAnchorClick?: (threadId: string) => void,
+  onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
+): React.ReactNode {
+  if (!anchors.length) return text;
+
+  // 在文本块内查找所有锚点匹配位置 / Find all anchor match positions within this text chunk
+  type Span = { start: number; end: number; threadId: string };
+  const spans: Span[] = [];
+  for (const { text: anchorText, threadId } of anchors) {
+    let pos = 0;
+    while (true) {
+      const idx = text.indexOf(anchorText, pos);
+      if (idx === -1) break;
+      spans.push({ start: idx, end: idx + anchorText.length, threadId });
+      pos = idx + anchorText.length;
+    }
+  }
+  if (!spans.length) return text;
+
+  // 用边界点切分文本，为覆盖的 segment 包 span / Segment text at boundary points; wrap covered segments in spans
+  const points = new Set([0, text.length]);
+  for (const { start, end } of spans) { points.add(start); points.add(end); }
+  const sorted = [...points].sort((a, b) => a - b);
+
+  const nodes: React.ReactNode[] = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const segStart = sorted[i];
+    const segEnd = sorted[i + 1];
+    const segText = text.slice(segStart, segEnd);
+    if (!segText) continue;
+
+    const covering = spans.filter(s => s.start <= segStart && s.end >= segEnd);
+    if (!covering.length) {
+      nodes.push(segText);
+      continue;
+    }
+
+    // 嵌套彩色下划线 / Nested colored underlines
+    let inner: React.ReactNode = segText;
+    for (let j = covering.length - 1; j >= 0; j--) {
+      const color = colorMap.get(covering[j].threadId)!;
+      inner = (
+        <span key={covering[j].threadId} style={{ borderBottom: `2px solid ${color}`, paddingBottom: "3px" }}>
+          {inner}
+        </span>
+      );
+    }
+
+    const allThreadIds = covering.map(c => c.threadId);
+    nodes.push(
+      <span
+        key={segStart}
+        data-anchor-thread-ids={allThreadIds.join(" ")}
+        className="bg-indigo-900/40 text-indigo-200 rounded-sm px-0.5 cursor-pointer transition-colors hover:bg-indigo-800/50"
+        onClick={(e) => {
+          e.stopPropagation();
+          const sel = window.getSelection();
+          if (sel && !sel.isCollapsed) return;
+          onAnchorClick?.(covering[0].threadId);
+        }}
+        onMouseEnter={(e) => {
+          onAnchorHover?.(allThreadIds, (e.currentTarget as HTMLElement).getBoundingClientRect());
+        }}
+        onMouseLeave={() => onAnchorHover?.([], null)}
+      >
+        {inner}
+      </span>
+    );
+  }
+
+  return nodes.length === 1 ? nodes[0] : <React.Fragment key={text.slice(0, 8)}>{nodes}</React.Fragment>;
+}
+
+// ── 递归处理子节点 / Recursively process children ─────────────────────
+
+function processChildren(
+  children: React.ReactNode,
+  anchors: AnchorRange[],
+  colorMap: Map<string, string>,
+  onAnchorClick?: (threadId: string) => void,
+  onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
+): React.ReactNode {
+  if (!anchors.length) return children;
+  return React.Children.map(children, (child) => {
+    if (typeof child === "string") {
+      return highlightStr(child, anchors, colorMap, onAnchorClick, onAnchorHover);
+    }
+    if (React.isValidElement(child) && child.props) {
+      const props = child.props as Record<string, unknown>;
+      if (props.children !== undefined) {
+        return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
+          children: processChildren(props.children as React.ReactNode, anchors, colorMap, onAnchorClick, onAnchorHover),
+        });
+      }
+    }
+    return child;
+  });
+}
+
+// ── 主组件 / Main component ───────────────────────────────────────────
+
+interface Props {
+  content: string;
+  anchors?: AnchorRange[];
+  onAnchorClick?: (threadId: string) => void;
+  onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
+}
+
+export default function MarkdownContent({ content, anchors = [], onAnchorClick, onAnchorHover }: Props) {
+  const colorMap = buildColorMap(anchors);
+
+  // 把锚点 + 颜色映射传给 processChildren 的快捷函数
+  // Shorthand that forwards anchors + colorMap to processChildren
+  const hl = (children: React.ReactNode) =>
+    processChildren(children, anchors, colorMap, onAnchorClick, onAnchorHover);
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // ── 块级元素 / Block elements ─────────────────────────────────
+        p:          ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{hl(children)}</p>,
+        h1:         ({ children }) => <h1 className="text-lg font-bold mt-4 mb-2 border-b border-zinc-700 pb-1">{hl(children)}</h1>,
+        h2:         ({ children }) => <h2 className="text-base font-bold mt-3 mb-1.5">{hl(children)}</h2>,
+        h3:         ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1 text-zinc-300">{hl(children)}</h3>,
+        ul:         ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-0.5">{children}</ul>,
+        ol:         ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-0.5">{children}</ol>,
+        li:         ({ children }) => <li className="leading-relaxed">{hl(children)}</li>,
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-zinc-600 pl-3 my-2 text-zinc-400 italic">
+            {children}
+          </blockquote>
+        ),
+        hr: () => <hr className="border-zinc-700 my-3" />,
+
+        // ── 表格 / Table ──────────────────────────────────────────────
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-3">
+            <table className="min-w-full text-xs border border-zinc-700 rounded">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="bg-zinc-800">{children}</thead>,
+        th:    ({ children }) => <th className="px-3 py-1.5 text-left font-semibold border-b border-zinc-700 text-zinc-300">{hl(children)}</th>,
+        td:    ({ children }) => <td className="px-3 py-1.5 border-b border-zinc-800 text-zinc-200">{hl(children)}</td>,
+
+        // ── 行内元素 / Inline elements ────────────────────────────────
+        strong: ({ children }) => <strong className="font-semibold text-zinc-100">{hl(children)}</strong>,
+        em:     ({ children }) => <em className="italic text-zinc-300">{hl(children)}</em>,
+        del:    ({ children }) => <del className="line-through text-zinc-500">{hl(children)}</del>,
+        a:      ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 underline underline-offset-2 hover:text-blue-300 transition-colors"
+          >
+            {children}
+          </a>
+        ),
+
+        // ── 代码 / Code ───────────────────────────────────────────────
+        // 注意：react-markdown v9+ 用 code 组件同时处理行内和块级代码。
+        // Note: react-markdown v9+ uses a single code component for both inline and block code.
+        code: ({ className, children, ...rest }) => {
+          // 有语言 class（如 language-python）→ 块级代码
+          // Has language class (e.g. language-python) → fenced code block
+          const isBlock = /language-/.test(className ?? "");
+          const lang = (className ?? "").replace("language-", "");
+          if (isBlock) {
+            return (
+              <div className="my-3 rounded-lg overflow-hidden border border-zinc-700">
+                {lang && (
+                  <div className="flex items-center justify-between bg-zinc-900 px-3 py-1 border-b border-zinc-700">
+                    <span className="text-[11px] text-zinc-500 font-mono">{lang}</span>
+                  </div>
+                )}
+                <pre className="bg-zinc-950 px-4 py-3 overflow-x-auto">
+                  <code className="text-sm font-mono text-zinc-200 whitespace-pre">{children}</code>
+                </pre>
+              </div>
+            );
+          }
+          // 行内代码 / Inline code
+          return (
+            <code
+              className="bg-zinc-700/70 text-zinc-200 rounded px-1 py-0.5 text-[0.85em] font-mono"
+              {...rest}
+            >
+              {children}
+            </code>
+          );
+        },
+
+        // pre はreact-markdown が code を包む際に生成するが、
+        // code コンポーネント側でブロックを丸ごとレンダリングするため不要
+        // react-markdown generates <pre> wrapping <code> for fenced blocks;
+        // since we handle the entire block inside the code component, skip pre here
+        pre: ({ children }) => <>{children}</>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
