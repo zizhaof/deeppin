@@ -49,3 +49,6 @@ logs/
 *.key
 *.cert
 .worktrees/
+
+# Superpowers 本地插件缓存
+.superpowers/
