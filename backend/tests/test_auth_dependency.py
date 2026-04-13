@@ -92,3 +92,26 @@ async def test_valid_token_creates_client_with_anon_key():
         await get_current_user(credentials=creds)
 
     mock_create.assert_called_once_with("https://proj.supabase.co", "anon-xyz")
+
+
+@pytest.mark.asyncio
+async def test_get_user_returns_none_raises_401():
+    """user_response.user 为 None 时 → 401（token 对应用户不存在）。
+    user_response.user is None → 401 (user no longer exists)."""
+    from dependencies.auth import get_current_user
+    from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="ghost_token")
+
+    with patch("dependencies.auth.get_supabase") as mock_get_sb:
+        mock_sb = MagicMock()
+        mock_response = MagicMock()
+        mock_response.user = None
+        mock_sb.auth.get_user.return_value = mock_response
+        mock_get_sb.return_value = mock_sb
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_current_user(credentials=creds)
+
+    assert exc_info.value.status_code == 401
