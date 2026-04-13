@@ -4,7 +4,7 @@
 import { useRef, useState } from "react";
 import MarkdownContent from "@/components/MarkdownContent";
 
-const COLLAPSE_THRESHOLD = 300; // 超过此字符数的用户消息默认折叠
+const COLLAPSE_THRESHOLD = 300;
 
 export interface AnchorRange {
   text: string;
@@ -18,7 +18,6 @@ interface Props {
   content: string;
   streaming?: boolean;
   anchors?: AnchorRange[];
-  /** 选中文字时触发，仅 assistant 消息 */
   onSelect?: (text: string, messageId: string, rect: DOMRect, side: "left" | "right", startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
@@ -37,7 +36,6 @@ function getCharOffset(container: Element, targetNode: Node, targetOffset: numbe
   return offset;
 }
 
-// 每个线程对应一条下划线颜色
 const ANCHOR_COLORS = ["#818cf8", "#a78bfa", "#67e8f9", "#f9a8d4", "#fbbf24"];
 
 function renderWithHighlights(
@@ -48,7 +46,6 @@ function renderWithHighlights(
 ): React.ReactNode {
   if (!anchors.length) return content;
 
-  // 找出每个 anchor 在文本中的位置
   type Span = { start: number; end: number; threadId: string; side?: "left" | "right" };
   const spans: Span[] = [];
   for (const { text, threadId, side } of anchors) {
@@ -57,12 +54,10 @@ function renderWithHighlights(
   }
   if (!spans.length) return content;
 
-  // 所有 anchor 的边界点，将文本切成若干 segment
   const points = new Set<number>([0, content.length]);
   for (const { start, end } of spans) { points.add(start); points.add(end); }
   const sorted = [...points].sort((a, b) => a - b);
 
-  // 为每个线程分配固定颜色（按首次出现顺序）
   const colorMap = new Map<string, string>();
   let colorIdx = 0;
   for (const { threadId } of anchors) {
@@ -78,19 +73,17 @@ function renderWithHighlights(
     const segText = content.slice(segStart, segEnd);
     if (!segText) continue;
 
-    // 覆盖此 segment 的所有 thread
     const covering = spans.filter(s => s.start <= segStart && s.end >= segEnd);
     if (!covering.length) {
       nodes.push(segText);
       continue;
     }
 
-    // 嵌套 span：每层加一条 border-bottom，padding-bottom=3px 撑开间距
     let inner: React.ReactNode = segText;
-    for (let i = covering.length - 1; i >= 0; i--) {
-      const color = colorMap.get(covering[i].threadId)!;
+    for (let j = covering.length - 1; j >= 0; j--) {
+      const color = colorMap.get(covering[j].threadId)!;
       inner = (
-        <span key={covering[i].threadId} style={{ borderBottom: `2px solid ${color}`, paddingBottom: "3px" }}>
+        <span key={covering[j].threadId} style={{ borderBottom: `2px solid ${color}`, paddingBottom: "2px" }}>
           {inner}
         </span>
       );
@@ -101,10 +94,9 @@ function renderWithHighlights(
       <span
         key={segStart}
         data-anchor-thread-ids={allThreadIds.join(" ")}
-        className="bg-indigo-900/40 text-indigo-200 rounded-sm px-0.5 not-italic cursor-pointer transition-colors hover:bg-indigo-800/50"
+        className="bg-indigo-500/15 text-indigo-200 rounded-sm px-0.5 cursor-pointer transition-colors hover:bg-indigo-500/25"
         onClick={(e) => {
           e.stopPropagation();
-          // 有文字被选中时（拖拽选择）不触发跳转，只有纯单击才跳转
           const sel = window.getSelection();
           if (sel && !sel.isCollapsed) return;
           onAnchorClick?.(covering[0].threadId);
@@ -140,7 +132,7 @@ export default function MessageBubble({
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
   const handleMouseUp = () => {
-    if (!onSelect || isUser) return; // 只对 AI 消息插针
+    if (!onSelect || isUser) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
 
@@ -165,12 +157,12 @@ export default function MessageBubble({
         (divRef as { current: HTMLDivElement | null }).current = el;
         onRef?.(el);
       }}
-      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}
+      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
     >
-      {/* AI 头像：简洁火花图标 */}
+      {/* AI 图标 */}
       {!isUser && (
-        <div className="w-6 h-6 flex items-center justify-center mr-2 mt-1 flex-shrink-0">
-          <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="currentColor">
+        <div className="w-6 h-6 flex items-center justify-center mr-2.5 mt-0.5 flex-shrink-0 rounded-md bg-zinc-800 border border-zinc-700/50">
+          <svg className="w-3 h-3 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
           </svg>
         </div>
@@ -178,23 +170,20 @@ export default function MessageBubble({
 
       <div
         onMouseUp={handleMouseUp}
-        className={`max-w-[72%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed select-text ${
+        className={`max-w-[72%] rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
           isUser
-            ? "bg-blue-600 text-white rounded-tr-sm whitespace-pre-wrap"
-            : "bg-zinc-800 border border-zinc-700/60 text-zinc-100 rounded-tl-sm"
+            ? "bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap"
+            : "bg-zinc-900 text-zinc-100 rounded-tl-sm"
         }`}
       >
         {isUser ? (
-          // 用户消息：纯文本，保留换行 / User messages: plain text, preserve newlines
           <>
             {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
             {needsCollapse && !expanded && (
-              <span className="text-blue-200 select-none">…</span>
+              <span className="text-indigo-300 select-none">…</span>
             )}
           </>
         ) : (
-          // AI 消息：渲染 Markdown，锚点高亮由 MarkdownContent 内部处理
-          // AI messages: render Markdown; anchor highlighting is handled inside MarkdownContent
           <MarkdownContent
             content={displayContent}
             anchors={anchors}
@@ -206,7 +195,7 @@ export default function MessageBubble({
           <span className="inline-block w-0.5 h-3.5 bg-zinc-400 ml-0.5 align-middle animate-pulse" />
         )}
         {needsCollapse && (
-          <div className="mt-1.5">
+          <div className="mt-2">
             <button
               onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
               className="text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors select-none"

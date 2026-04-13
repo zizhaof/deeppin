@@ -124,7 +124,7 @@ export default function MergeOutput({ sessionId, pinCount, onClose }: Props) {
               disabled={isGenerating}
               className={`flex-1 rounded-lg px-2 py-2 text-xs transition-colors border ${
                 format === opt.value
-                  ? "bg-blue-600/20 border-blue-500 text-blue-300"
+                  ? "bg-indigo-600/20 border-indigo-500 text-indigo-300"
                   : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
               } disabled:opacity-40 disabled:cursor-not-allowed`}
             >
@@ -148,9 +148,9 @@ export default function MergeOutput({ sessionId, pinCount, onClose }: Props) {
 
           {(state === "loading") && (
             <div className="flex items-center gap-2 text-zinc-500 text-sm py-4">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]" />
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]" />
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.3s]" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce [animation-delay:-0.15s]" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" />
               <span className="ml-1">{status || "正在准备…"}</span>
             </div>
           )}
@@ -202,7 +202,7 @@ export default function MergeOutput({ sessionId, pinCount, onClose }: Props) {
             <button
               onClick={handleGenerate}
               disabled={isGenerating}
-              className="text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white px-4 py-1.5 rounded-lg transition-colors"
+              className="text-xs font-medium bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white px-4 py-1.5 rounded-lg transition-colors"
             >
               {isGenerating ? "生成中…" : hasContent ? "重新生成" : "生成"}
             </button>

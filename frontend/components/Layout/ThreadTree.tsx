@@ -177,14 +177,14 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
               onClick={() => onSelect(node.thread.id)}
               style={{ position: "absolute", top: node.row * ROW_H, left: 0, right: 0, height: ROW_H }}
               className={`flex items-center rounded transition-colors ${
-                isActive ? "bg-blue-950/40" : "hover:bg-zinc-800/60"
+                isActive ? "bg-indigo-950/30" : "hover:bg-zinc-800/60"
               }`}
             >
               <div className="flex-shrink-0" style={{ width: labelOffset }} />
               <span
                 className={`text-xs truncate text-left flex-1 ${
                   isActive
-                    ? "text-blue-300 font-medium"
+                    ? "text-indigo-300 font-medium"
                     : hasUnread
                     ? "text-zinc-200 font-medium"
                     : "text-zinc-500"

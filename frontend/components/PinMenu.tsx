@@ -49,7 +49,7 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
         onClick={() => onPin(selection)}
         className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-zinc-700 transition-colors whitespace-nowrap"
       >
-        <svg className="w-3.5 h-3.5 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+        <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
         </svg>
         <span className="text-xs">{t.pinAction}</span>

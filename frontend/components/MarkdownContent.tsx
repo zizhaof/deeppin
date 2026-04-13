@@ -197,7 +197,7 @@ export default function MarkdownContent({ content, anchors = [], onAnchorClick, 
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-400 underline underline-offset-2 hover:text-blue-300 transition-colors"
+            className="text-indigo-400 underline underline-offset-2 hover:text-indigo-300 transition-colors"
           >
             {children}
           </a>

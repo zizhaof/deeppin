@@ -35,39 +35,44 @@ export default function ThreadCard({
   const lastMsg = messages[messages.length - 1];
   const hasAutoReply = messages.some((m) => m.role === "assistant");
 
-  const borderCls = isActive
-    ? "border-blue-400 bg-blue-50 shadow-blue-100"
-    : "border-gray-200 bg-white hover:border-blue-300 hover:shadow-md";
+  const baseCls = isActive
+    ? "border-indigo-500/40 bg-indigo-950/20"
+    : "border-zinc-800 bg-zinc-900/80 hover:border-zinc-700 hover:bg-zinc-900";
 
-  // ── 折叠态：只显示标题行 ────────────────────────────────────
+  // ── 折叠态 ──────────────────────────────────────────────────
   if (collapsed) {
     return (
       <div
         onClick={onClick}
-        className={`w-52 rounded-xl border cursor-pointer transition-all shadow-sm flex items-center gap-1 px-2 h-9 ${borderCls}`}
+        className={`w-52 rounded-xl border cursor-pointer transition-all flex items-center gap-2 px-2.5 h-9 ${baseCls}`}
       >
-        {/* 拖拽把手 */}
         <span
           onPointerDown={onDragHandlePointerDown}
-          className="text-gray-300 hover:text-gray-500 cursor-grab select-none flex-shrink-0 text-[11px] pr-0.5"
+          className="text-zinc-700 hover:text-zinc-500 cursor-grab select-none flex-shrink-0"
           title="拖拽移动"
         >
-          ⠿
+          <svg className="w-3 h-3" viewBox="0 0 10 16" fill="currentColor">
+            <circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/>
+            <circle cx="3" cy="6" r="1.2"/><circle cx="7" cy="6" r="1.2"/>
+            <circle cx="3" cy="10" r="1.2"/><circle cx="7" cy="10" r="1.2"/>
+            <circle cx="3" cy="14" r="1.2"/><circle cx="7" cy="14" r="1.2"/>
+          </svg>
         </span>
-        <span className="text-blue-500 flex-shrink-0 text-[11px]">📍</span>
-        <p className="font-medium text-gray-700 text-xs truncate flex-1">{title}</p>
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/70 flex-shrink-0" />
+        <p className="font-medium text-zinc-300 text-xs truncate flex-1">{title}</p>
         {unreadCount > 0 && (
-          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center font-bold">
+          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
-        {/* 展开按钮 */}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 text-[10px] px-0.5"
+          className="flex-shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
           title="展开"
         >
-          ▾
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
       </div>
     );
@@ -90,61 +95,65 @@ export default function ThreadCard({
   return (
     <div
       onClick={onClick}
-      className={`w-52 rounded-xl border cursor-pointer transition-all text-xs shadow-sm ${borderCls}`}
+      className={`w-52 rounded-xl border cursor-pointer transition-all text-xs ${baseCls}`}
     >
       {/* 标题行 */}
-      <div className="flex items-center gap-1 px-2 pt-2 pb-1.5">
-        {/* 拖拽把手 */}
+      <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
         <span
           onPointerDown={onDragHandlePointerDown}
-          className="text-gray-300 hover:text-gray-500 cursor-grab select-none flex-shrink-0 text-[11px]"
+          className="text-zinc-700 hover:text-zinc-500 cursor-grab select-none flex-shrink-0"
           title="拖拽移动"
         >
-          ⠿
+          <svg className="w-3 h-3" viewBox="0 0 10 16" fill="currentColor">
+            <circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/>
+            <circle cx="3" cy="6" r="1.2"/><circle cx="7" cy="6" r="1.2"/>
+            <circle cx="3" cy="10" r="1.2"/><circle cx="7" cy="10" r="1.2"/>
+            <circle cx="3" cy="14" r="1.2"/><circle cx="7" cy="14" r="1.2"/>
+          </svg>
         </span>
-        <span className="text-blue-500 flex-shrink-0 text-[10px]">📍</span>
-        <p className="font-semibold text-gray-700 leading-snug truncate flex-1">{title}</p>
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/70 flex-shrink-0" />
+        <p className="font-medium text-zinc-200 leading-snug truncate flex-1">{title}</p>
         {unreadCount > 0 && (
-          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center font-bold">
+          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
-        {/* 折叠按钮 */}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 text-[10px] px-0.5"
+          className="flex-shrink-0 text-zinc-600 hover:text-zinc-400 transition-colors"
           title="折叠"
         >
-          ▴
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 15l-6-6-6 6" />
+          </svg>
         </button>
       </div>
 
       {/* AI 回复预览 */}
       {(isStreaming || lastMsg) && (
-        <div className="px-3 pb-1.5">
-          <div className={`flex items-start gap-1 ${isStreaming ? "text-blue-600" : "text-gray-400"}`}>
-            {(hasAutoReply || isStreaming) && (
-              <span className="flex-shrink-0 mt-0.5 text-[10px]">💡</span>
-            )}
-            <p className="leading-snug line-clamp-2">{preview}</p>
+        <div className="px-3 pb-2">
+          <p className={`leading-snug line-clamp-2 ${
+            isStreaming ? "text-indigo-400" : "text-zinc-500"
+          }`}>
+            {preview}
             {isStreaming && (
-              <span className="inline-block w-0.5 h-3 bg-blue-400 ml-0.5 animate-pulse flex-shrink-0" />
+              <span className="inline-block w-0.5 h-3 bg-indigo-400 ml-0.5 animate-pulse align-middle" />
             )}
-          </div>
+          </p>
         </div>
       )}
 
       {/* 建议 chips */}
       {remainingSuggestions.length > 0 && (
         <div
-          className="px-3 pb-3 flex flex-col gap-1"
+          className="px-2.5 pb-2.5 flex flex-col gap-1"
           onClick={(e) => e.stopPropagation()}
         >
           {remainingSuggestions.map((q, i) => (
             <button
               key={i}
               onClick={() => onSendSuggestion(q)}
-              className="text-left text-[11px] text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2 py-1 leading-snug transition-colors line-clamp-2"
+              className="text-left text-[11px] text-indigo-400/80 bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-900/50 rounded-lg px-2.5 py-1.5 leading-snug transition-colors line-clamp-2"
             >
               {q}
             </button>

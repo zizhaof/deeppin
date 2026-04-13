@@ -220,7 +220,7 @@ export default function PinRoll({
             className={`
               rounded-xl border overflow-hidden cursor-pointer flex flex-col
               ${isActive
-                ? "border-blue-500/50 bg-blue-950/30"
+                ? "border-indigo-500/40 bg-indigo-950/20"
                 : isFocused
                 ? "border-zinc-600 bg-zinc-800"
                 : "border-zinc-800 bg-zinc-900/60"
@@ -229,7 +229,7 @@ export default function PinRoll({
           >
             {/* 标题行 */}
             <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 flex-shrink-0">
-              <div className="w-1 h-1 rounded-full bg-blue-500/60 flex-shrink-0" />
+              <div className="w-1 h-1 rounded-full bg-indigo-500/60 flex-shrink-0" />
               <p className={`font-medium truncate flex-1 leading-tight ${
                 isFocused ? `text-zinc-200 ${titleSizeCls}` : `text-zinc-500 ${titleSizeCls}`
               }`}>
@@ -245,13 +245,13 @@ export default function PinRoll({
               <div className="flex-1 min-h-0 flex flex-col px-3 pb-2.5 gap-1.5 overflow-hidden">
                 {(preview || isStreaming || hasStatus) && (
                   <div className={`flex-1 min-h-0 leading-snug overflow-hidden ${previewSizeCls} ${
-                    isStreaming ? "text-blue-400" : "text-zinc-500"
+                    isStreaming ? "text-indigo-400" : "text-zinc-500"
                   }`}>
                     <p className="overflow-hidden break-words" style={{ wordBreak: "break-word" }}>
                       {preview || "…"}
                     </p>
                     {isStreaming && (
-                      <span className="inline-block w-0.5 h-3 bg-blue-400 animate-pulse ml-0.5" />
+                      <span className="inline-block w-0.5 h-3 bg-indigo-400 animate-pulse ml-0.5" />
                     )}
                     {hasStatus && (
                       <span className="flex gap-0.5 items-center mt-0.5">
@@ -276,7 +276,7 @@ export default function PinRoll({
                           consumeSuggestion(item.thread.id, q);
                           onSendSuggestion(item.thread.id, q);
                         }}
-                        className="text-left text-[10px] text-blue-400 bg-blue-950/40 hover:bg-blue-900/40 border border-blue-800/40 rounded-lg px-2 py-0.5 leading-snug transition-colors truncate"
+                        className="text-left text-[10px] text-indigo-400/80 bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-900/50 rounded-lg px-2 py-0.5 leading-snug transition-colors truncate"
                       >
                         {q}
                       </button>

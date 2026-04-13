@@ -1,6 +1,5 @@
 "use client";
 // components/Layout/ThreadNav.tsx
-// 顶部导航：面包屑 + 前进后退 + 语言切换
 
 import Link from "next/link";
 import type { Thread } from "@/lib/api";
@@ -46,25 +45,25 @@ export default function ThreadNav({
   const breadcrumb = buildBreadcrumb(activeThreadId);
 
   return (
-    <header className="h-11 border-b border-zinc-800 bg-zinc-950 flex items-center px-3 gap-2 flex-shrink-0">
+    <header className="h-11 border-b border-white/5 bg-zinc-950 flex items-center px-3 gap-2 flex-shrink-0">
       {/* 主页链接 */}
       <Link
         href="/"
-        className="w-6 h-6 flex items-center justify-center rounded hover:bg-zinc-800 transition-colors flex-shrink-0"
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 transition-colors flex-shrink-0"
         title="返回主页"
       >
-        <svg className="w-3.5 h-3.5 text-zinc-500" viewBox="0 0 24 24" fill="currentColor">
+        <svg className="w-3.5 h-3.5 text-indigo-400/80" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
         </svg>
       </Link>
 
-      <div className="w-px h-4 bg-zinc-800 flex-shrink-0" />
+      <div className="w-px h-4 bg-white/8 flex-shrink-0" />
 
       {/* 前进后退 */}
       <button
         onClick={onBack}
         disabled={!canBack}
-        className="w-6 h-6 rounded flex items-center justify-center hover:bg-zinc-800 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
         aria-label={t.back}
       >
         <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -74,7 +73,7 @@ export default function ThreadNav({
       <button
         onClick={onForward}
         disabled={!canForward}
-        className="w-6 h-6 rounded flex items-center justify-center hover:bg-zinc-800 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-zinc-800 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
         aria-label={t.forward}
       >
         <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -83,15 +82,15 @@ export default function ThreadNav({
       </button>
 
       {/* 面包屑 */}
-      <div className="flex items-center gap-1 text-sm min-w-0 flex-1">
+      <div className="flex items-center gap-0.5 text-sm min-w-0 flex-1">
         {breadcrumb.map((thr, i) => (
-          <span key={thr.id} className="flex items-center gap-1 min-w-0">
-            {i > 0 && <span className="text-zinc-700 flex-shrink-0 text-xs">›</span>}
+          <span key={thr.id} className="flex items-center gap-0.5 min-w-0">
+            {i > 0 && <span className="text-zinc-700 flex-shrink-0 text-xs px-0.5">›</span>}
             <button
               onClick={() => onSelect(thr.id)}
-              className={`truncate max-w-[160px] px-1.5 py-0.5 rounded hover:bg-zinc-800 transition-colors text-sm ${
+              className={`truncate max-w-[160px] px-2 py-1 rounded-lg hover:bg-zinc-800 transition-colors text-sm ${
                 thr.id === activeThreadId
-                  ? "font-semibold text-zinc-100"
+                  ? "text-zinc-100 font-medium"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
@@ -107,7 +106,7 @@ export default function ThreadNav({
       {/* 语言切换 */}
       <button
         onClick={onToggleLang}
-        className="flex-shrink-0 text-[11px] font-medium text-zinc-500 hover:text-zinc-300 px-2 py-0.5 rounded border border-zinc-700 hover:border-zinc-600 transition-colors"
+        className="flex-shrink-0 text-[11px] font-medium text-zinc-600 hover:text-zinc-300 px-2 py-1 rounded-lg border border-white/8 hover:border-white/15 transition-colors"
       >
         {t.toggleLang}
       </button>

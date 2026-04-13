@@ -57,7 +57,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
       <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* 锚点引用 */}
         <div className="px-5 pt-5 pb-3 flex gap-3 items-start">
-          <div className="w-0.5 flex-shrink-0 self-stretch bg-blue-600/50 rounded-full" />
+          <div className="w-0.5 flex-shrink-0 self-stretch bg-indigo-500/40 rounded-full" />
           <p className="text-sm text-zinc-400 leading-relaxed italic line-clamp-3 flex-1">
             {info.anchorText}
           </p>
@@ -112,7 +112,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
           <button
             onClick={() => handleSend(input)}
             disabled={!input.trim()}
-            className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+            className="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />

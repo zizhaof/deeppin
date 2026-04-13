@@ -5,27 +5,23 @@ import { useState, useRef, KeyboardEvent, useCallback } from "react";
 import { useT } from "@/stores/useLangStore";
 import { uploadAttachment } from "@/lib/api";
 
-// 粘贴内容超过此字符数时转为 chip（内容仍内联在消息里）
 const PASTE_ATTACH_THRESHOLD = 300;
 
-// 文件附件：内容已存 DB，前端不持有文本
 interface FileAttachment {
   kind: "file";
-  label: string;   // 文件名，显示在 chip 和气泡
+  label: string;
 }
 
-// 粘贴附件：内容内联在消息里，对 AI 可见
 interface PasteAttachment {
   kind: "paste";
-  label: string;   // "长文本（N 字）"
-  content: string; // 原始文本，拼入 AI 消息
+  label: string;
+  content: string;
 }
 
 type Attachment = FileAttachment | PasteAttachment;
 
 interface Props {
   sessionId: string;
-  /** content = AI 接收的完整消息；display = 气泡显示文字（含 📎 标签） */
   onSend: (content: string, display?: string) => void;
   disabled?: boolean;
   webSearch?: boolean;
@@ -40,8 +36,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const canSend =
-    (text.trim().length > 0 || attachments.length > 0) && !disabled && !uploading;
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && !disabled && !uploading;
 
   const resetHeight = () => {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -51,7 +46,6 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     if (!canSend) return;
     const trimmed = text.trim();
 
-    // AI 收到的内容：文字输入 + 粘贴附件原文（文件附件由后端 RAG 注入，不拼入此处）
     const contentParts: string[] = [];
     if (trimmed) contentParts.push(trimmed);
     for (const a of attachments) {
@@ -59,14 +53,13 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     }
     const fullContent = contentParts.join("\n\n---\n\n");
 
-    // 气泡显示：文字 + 所有 chip 标签
     const displayParts: string[] = [];
     if (trimmed) displayParts.push(trimmed);
     for (const a of attachments) displayParts.push(`📎 ${a.label}`);
     const displayContent = displayParts.join("  ");
 
     onSend(
-      fullContent || displayContent,  // 防止 fullContent 为空（只有文件附件时）
+      fullContent || displayContent,
       displayContent !== fullContent ? displayContent : undefined,
     );
     setText("");
@@ -88,40 +81,30 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   };
 
-  // 超长粘贴转为内联 paste chip
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pasted = e.clipboardData.getData("text");
     if (pasted.length > PASTE_ATTACH_THRESHOLD) {
       e.preventDefault();
       setAttachments((prev) => [
         ...prev,
-        {
-          kind: "paste",
-          label: `长文本（${pasted.length} 字）`,
-          content: pasted,
-        },
+        { kind: "paste", label: `长文本（${pasted.length} 字）`, content: pasted },
       ]);
     }
   };
 
-  // 文件上传 → 后端存 DB → chip（不持有内容）
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
       e.target.value = "";
-
       setUploading(true);
       try {
         const { filename, chunk_count } = await uploadAttachment(sessionId, file);
         if (chunk_count === 0) {
-          alert(`文件「${filename}」解析失败，无法提取文字内容（可能是扫描件或加密 PDF）。`);
+          alert(`文件「${filename}」解析失败，无法提取文字内容。`);
           return;
         }
-        setAttachments((prev) => [
-          ...prev,
-          { kind: "file", label: filename },
-        ]);
+        setAttachments((prev) => [...prev, { kind: "file", label: filename }]);
       } catch (err) {
         alert(`文件上传失败：${err instanceof Error ? err.message : "未知错误"}`);
       } finally {
@@ -136,8 +119,10 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   };
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950 px-8 py-3">
-      <div className="bg-zinc-800/80 rounded-2xl border border-zinc-700/60 focus-within:border-zinc-600 transition-colors overflow-hidden">
+    <div className="border-t border-white/5 bg-zinc-950 px-6 py-3">
+      <div className={`bg-zinc-900 rounded-2xl border transition-colors overflow-hidden ${
+        disabled ? "border-white/5" : "border-white/8 focus-within:border-indigo-500/30"
+      }`}>
 
         {/* 附件 chips */}
         {attachments.length > 0 && (
@@ -145,20 +130,15 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             {attachments.map((a, i) => (
               <span
                 key={i}
-                className="flex items-center gap-1 text-[11px] bg-zinc-700/70 text-zinc-300 rounded-full pl-2.5 pr-1 py-0.5"
+                className="flex items-center gap-1.5 text-[11px] bg-zinc-800 text-zinc-300 rounded-full pl-2.5 pr-1 py-0.5 border border-zinc-700/50"
               >
-                <svg
-                  className="w-3 h-3 text-zinc-400 flex-shrink-0"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                >
+                <svg className="w-3 h-3 text-zinc-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
                 <span className="max-w-[160px] truncate">{a.label}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="ml-0.5 w-4 h-4 rounded-full hover:bg-zinc-600 flex items-center justify-center text-zinc-400 hover:text-zinc-200 flex-shrink-0"
-                  aria-label="移除"
+                  className="ml-0.5 w-4 h-4 rounded-full hover:bg-zinc-700 flex items-center justify-center text-zinc-500 hover:text-zinc-300 flex-shrink-0 transition-colors"
                 >
                   <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M18 6L6 18M6 6l12 12" />
@@ -170,12 +150,13 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
         )}
 
         {/* 输入行 */}
-        <div className="flex items-end gap-2 px-3 py-2">
+        <div className="flex items-end gap-2 px-3 py-2.5">
+          {/* 附件按钮 */}
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={disabled || uploading}
-            className="w-7 h-7 rounded-full hover:bg-zinc-700 disabled:opacity-40 text-zinc-500 hover:text-zinc-300 flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+            className="w-7 h-7 rounded-lg hover:bg-zinc-800 disabled:opacity-30 text-zinc-600 hover:text-zinc-400 flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
             aria-label="添加附件"
           >
             {uploading ? (
@@ -207,7 +188,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             placeholder={uploading ? t.extracting : webSearch ? "联网搜索…" : t.inputPlaceholder}
             disabled={disabled || uploading}
             rows={1}
-            className="flex-1 bg-transparent resize-none outline-none text-sm text-zinc-100 placeholder-zinc-600 max-h-40 disabled:opacity-40"
+            className="flex-1 bg-transparent resize-none outline-none text-sm text-zinc-100 placeholder-zinc-600 max-h-40 disabled:opacity-40 leading-relaxed"
           />
 
           {/* 联网搜索 toggle */}
@@ -216,14 +197,12 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             onClick={() => onWebSearchToggle?.(!webSearch)}
             disabled={disabled}
             title={webSearch ? "关闭联网搜索" : "开启联网搜索"}
-            className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 disabled:opacity-40 ${
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 disabled:opacity-30 ${
               webSearch
-                ? "bg-blue-600/20 text-blue-400 hover:bg-blue-600/30"
-                : "hover:bg-zinc-700 text-zinc-500 hover:text-zinc-300"
+                ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/25"
+                : "hover:bg-zinc-800 text-zinc-600 hover:text-zinc-400"
             }`}
-            aria-label="联网搜索"
           >
-            {/* Globe icon */}
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <line x1="2" y1="12" x2="22" y2="12" />
@@ -231,10 +210,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             </svg>
           </button>
 
+          {/* 发送按钮 */}
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className="w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
             aria-label="发送"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>

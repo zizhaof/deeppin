@@ -51,20 +51,20 @@ function PinChip({
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border cursor-pointer text-xs transition-colors shadow-sm select-none ${
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs transition-colors select-none ${
         isActive
-          ? "bg-blue-50 border-blue-400 text-blue-700"
-          : "bg-white border-gray-200 text-gray-600 hover:border-blue-300"
+          ? "bg-indigo-950/30 border-indigo-500/40 text-indigo-300"
+          : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300"
       }`}
     >
-      <span className="text-[10px] text-gray-400 flex-shrink-0">
+      <span className="text-zinc-600 flex-shrink-0 text-[10px]">
         {direction === "up" ? "↑" : "↓"}
       </span>
       <span className="truncate max-w-[120px]">
         {thread.title ?? thread.anchor_text ?? "子线程"}
       </span>
       {unreadCount > 0 && (
-        <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center font-bold">
+        <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
           {unreadCount > 9 ? "9+" : unreadCount}
         </span>
       )}
@@ -200,7 +200,7 @@ export default function SideColumn({
               key={item.thread.id}
               d={`M ${x0} ${anchorY} C ${mx} ${anchorY}, ${mx} ${cardCenterY}, ${x1} ${cardCenterY}`}
               fill="none"
-              stroke="#3b82f6"
+              stroke="#6366f1"
               strokeWidth={1.5}
               strokeOpacity={0.5}
             />

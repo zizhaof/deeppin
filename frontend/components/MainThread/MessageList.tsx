@@ -53,17 +53,17 @@ export default function MessageList({
             <div className="w-full max-w-lg flex flex-col gap-4">
               {anchorText && (
                 <div className="flex gap-3">
-                  <div className="w-0.5 flex-shrink-0 bg-blue-600/50 rounded-full" />
+                  <div className="w-0.5 flex-shrink-0 bg-indigo-500/40 rounded-full" />
                   <p className="text-sm text-zinc-400 leading-relaxed italic">{anchorText}</p>
                 </div>
               )}
-              <p className="text-xs text-zinc-400 font-medium">{t.chooseQuestion}</p>
+              <p className="text-xs text-zinc-500 font-medium tracking-wide uppercase">{t.chooseQuestion}</p>
               <div className="flex flex-col gap-2">
                 {suggestions.map((q, i) => (
                   <button
                     key={i}
                     onClick={() => onSendSuggestion?.(q)}
-                    className="text-left text-sm text-zinc-300 bg-zinc-800/60 hover:bg-zinc-700/60 border border-zinc-700/60 rounded-xl px-4 py-3 leading-snug transition-colors"
+                    className="text-left text-sm text-zinc-300 bg-zinc-900 hover:bg-zinc-800 border border-white/6 hover:border-white/10 rounded-xl px-4 py-3 leading-snug transition-colors"
                   >
                     {q}
                   </button>
@@ -73,13 +73,12 @@ export default function MessageList({
           ) : (
             /* 主线欢迎态 */
             <div className="flex flex-col items-center gap-3 text-center px-4 max-w-md">
-              {/* 简洁图标 */}
-              <div className="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center mb-1">
-                <svg className="w-6 h-6 text-zinc-400" viewBox="0 0 24 24" fill="currentColor">
+              <div className="w-11 h-11 rounded-2xl bg-zinc-900 border border-white/8 flex items-center justify-center mb-1">
+                <svg className="w-5 h-5 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-zinc-200">{t.welcomeTitle}</h2>
+              <h2 className="text-base font-semibold text-zinc-200">{t.welcomeTitle}</h2>
               <p className="text-sm text-zinc-500 leading-relaxed">{t.welcomeSub}</p>
             </div>
           )}
@@ -101,19 +100,18 @@ export default function MessageList({
           ))}
           {/* status 占位：无 streaming 内容时显示后台状态提示 */}
           {statusText && !streamingText && (
-            <div className="flex justify-start mb-4">
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-zinc-800/60 border border-zinc-700/40 max-w-xs">
-                {/* 三点脉冲动画 */}
+            <div className="flex justify-start mb-4 pl-8">
+              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-zinc-900 border border-white/6 max-w-xs">
                 <span className="flex gap-1 items-center">
                   {[0, 1, 2].map((i) => (
                     <span
                       key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce"
+                      className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce"
                       style={{ animationDelay: `${i * 150}ms`, animationDuration: "900ms" }}
                     />
                   ))}
                 </span>
-                <span className="text-xs text-zinc-400">{statusText}</span>
+                <span className="text-xs text-zinc-500">{statusText}</span>
               </div>
             </div>
           )}
