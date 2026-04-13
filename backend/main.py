@@ -9,11 +9,41 @@ Router registration order: sessions → threads → stream → attachments → s
 
 import os
 import json
+import logging
+import logging.handlers
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── 日志配置 / Logging configuration ─────────────────────────────────
+# 同时输出到控制台（Docker logs）和文件（持久化，7 天自动轮转）
+# Output to both console (docker logs) and file (persistent, auto-rotates every 7 days)
+_log_dir = Path(os.getenv("LOG_DIR", "/app/logs"))
+_log_dir.mkdir(parents=True, exist_ok=True)
+
+_formatter = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+_file_handler = logging.handlers.TimedRotatingFileHandler(
+    filename=_log_dir / "app.log",
+    when="midnight",       # 每天午夜轮转 / rotate at midnight
+    backupCount=30,        # 保留最近 30 天 / keep last 30 days
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_formatter)
+
+_console_handler = logging.StreamHandler()
+_console_handler.setFormatter(_formatter)
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[_file_handler, _console_handler],
+)
 
 from routers import sessions, threads, stream, attachments, search, merge, relevance
 

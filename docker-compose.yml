@@ -5,6 +5,8 @@ services:
     expose:
       - "8000"
     env_file: ./backend/.env
+    volumes:
+      - ./logs:/app/logs   # 日志持久化到宿主机 / persist logs to host
 
   searxng:
     image: searxng/searxng:latest
