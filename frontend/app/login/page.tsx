@@ -10,13 +10,18 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     setLoading(true);
     const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
-    // Page redirects to Google; no need to reset loading
+    // 成功时页面跳转到 Google，无需重置 loading
+    // On success the page navigates to Google; on error reset so user can retry
+    if (error) {
+      console.error("Google OAuth error:", error.message);
+      setLoading(false);
+    }
   };
 
   return (

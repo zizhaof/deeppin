@@ -36,8 +36,8 @@ export async function middleware(request: NextRequest) {
 
   const isChatRoute = request.nextUrl.pathname.startsWith("/chat");
   if (isChatRoute && !user) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
+    // 用 new URL 构造干净的 /login URL，避免携带原始请求的 query params
+    const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }
 
