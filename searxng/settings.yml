@@ -1,0 +1,12 @@
+use_default_settings: true
+
+server:
+  secret_key: "please_change_this_to_a_random_string_before_deploying"
+  limiter: false        # 本地自用，关闭速率限制
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json              # 必须开启，后端通过 ?format=json 调用
+  default_lang: "auto"
