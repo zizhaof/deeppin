@@ -215,7 +215,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
     set((s) => {
       const prev = s.messagesByThread[threadId] ?? [];
       const assistantMsg: Message = {
-        id: messageId ?? crypto.randomUUID(),
+        id: messageId ?? `local_${crypto.randomUUID()}`,
         thread_id: threadId,
         role: "assistant",
         content: fullText,

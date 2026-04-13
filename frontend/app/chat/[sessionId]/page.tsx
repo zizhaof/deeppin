@@ -429,7 +429,7 @@ export default function ChatPage() {
         session_id: sessionId,
         parent_thread_id: parentId,
         anchor_text: info.text,
-        anchor_message_id: info.messageId === "__streaming__" ? undefined : info.messageId,
+        anchor_message_id: (info.messageId === "__streaming__" || info.messageId?.startsWith("local_")) ? undefined : info.messageId,
         side: info.side as "left" | "right",
         anchor_start_offset: info.startOffset,
         anchor_end_offset: info.endOffset,
