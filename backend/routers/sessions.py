@@ -4,10 +4,11 @@ Session 路由
 Session router — create and retrieve sessions.
 
 端点列表 / Endpoints:
-  GET  /api/sessions               列出当前用户的所有 sessions
-  POST /api/sessions               创建 session（同时自动创建主线 thread）
-  GET  /api/sessions/{session_id}  获取 session 及其所有 threads
-  GET  /api/sessions/{session_id}/messages  批量获取所有 thread 消息
+  GET    /api/sessions               列出当前用户的所有 sessions
+  POST   /api/sessions               创建 session（同时自动创建主线 thread）
+  GET    /api/sessions/{session_id}  获取 session 及其所有 threads
+  DELETE /api/sessions/{session_id}  删除 session（CASCADE 删除所有 threads/messages/summaries）
+  GET    /api/sessions/{session_id}/messages  批量获取所有 thread 消息
 """
 
 import asyncio
@@ -91,6 +92,17 @@ async def get_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
         **session_res.data,
         "threads": threads_res.data or [],
     }
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
+    """删除指定 session（RLS 保证只能删自己的）。CASCADE 自动清理 threads/messages/summaries。"""
+    _user_id, sb = auth
+    res = await _db(lambda: (
+        sb.table("sessions").delete().eq("id", str(session_id)).execute()
+    ))
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Session 不存在或无权限 / Session not found or unauthorized")
 
 
 @router.get("/sessions/{session_id}/messages")

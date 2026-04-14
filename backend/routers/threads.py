@@ -4,14 +4,13 @@ Thread 路由
 Thread router — create and manage threads (pins).
 
 端点列表 / Endpoints:
-  POST /api/threads                          创建线程（主线或子线程/插针）
-                                             Create a thread (main or sub-thread/pin)
-  GET  /api/threads/{thread_id}/suggest      获取子线程建议追问（优先返回 DB 缓存）
-                                             Get suggested follow-up questions (prefers DB cache)
-  POST /api/threads/{thread_id}/autostart    自动向子线程发送第一条消息（流式）
-                                             Auto-send the first message to a sub-thread (streaming)
-  GET  /api/threads/{thread_id}/messages     获取线程消息历史
-                                             Get the thread's message history
+  POST   /api/threads                          创建线程（主线或子线程/插针）
+  GET    /api/threads/{thread_id}/suggest      获取子线程建议追问（优先返回 DB 缓存）
+  POST   /api/threads/{thread_id}/autostart    自动向子线程发送第一条消息（流式）
+  GET    /api/threads/{thread_id}/messages     获取线程消息历史
+  POST   /api/threads/{thread_id}/messages     直接写入一条消息（不触发 AI，用于保存合并结果）
+  GET    /api/threads/{thread_id}/subtree      返回该线程及所有后代的树结构（用于删除前预览）
+  DELETE /api/threads/{thread_id}              删除该线程及所有后代（CASCADE）
 """
 
 import asyncio
@@ -314,3 +313,90 @@ async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     ))
 
     return messages_res.data or []
+
+
+@router.post("/threads/{thread_id}/messages", status_code=201)
+async def save_message(thread_id: uuid.UUID, body: dict, auth=Depends(get_current_user)):
+    """
+    直接写入一条消息，不触发 AI（用于保存合并输出结果到主线）。
+    Directly insert a message without triggering AI (e.g., saving merge output to the main thread).
+    """
+    _user_id, sb = auth
+    role = body.get("role", "assistant")
+    content = body.get("content", "")
+    if not content.strip():
+        raise HTTPException(status_code=422, detail="content 不能为空 / content cannot be empty")
+    if role not in ("user", "assistant"):
+        raise HTTPException(status_code=422, detail="role 必须为 user 或 assistant / role must be user or assistant")
+
+    thread_res = await _db(lambda: (
+        sb.table("threads").select("id").eq("id", str(thread_id)).maybe_single().execute()
+    ))
+    if not thread_res or not thread_res.data:
+        raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
+
+    msg_res = await _db(lambda: sb.table("messages").insert({
+        "thread_id": str(thread_id),
+        "role": role,
+        "content": content,
+    }).execute())
+
+    return msg_res.data[0] if msg_res.data else {}
+
+
+@router.get("/threads/{thread_id}/subtree")
+async def get_subtree(thread_id: uuid.UUID, auth=Depends(get_current_user)):
+    """
+    返回该线程及所有后代的树结构，用于删除前展示将被删除的范围。
+    Return the thread and all its descendants as a tree, for previewing deletion scope.
+    """
+    _user_id, sb = auth
+
+    thread_res = await _db(lambda: (
+        sb.table("threads")
+        .select("id, title, session_id")
+        .eq("id", str(thread_id))
+        .maybe_single()
+        .execute()
+    ))
+    if not thread_res or not thread_res.data:
+        raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
+
+    session_id = thread_res.data["session_id"]
+
+    # 一次查出 session 内所有线程，内存递归构建子树
+    all_res = await _db(lambda: (
+        sb.table("threads")
+        .select("id, title, parent_thread_id")
+        .eq("session_id", session_id)
+        .execute()
+    ))
+    all_threads = {t["id"]: t for t in (all_res.data or [])}
+
+    def build_subtree(tid: str) -> dict:
+        node = all_threads.get(tid, {})
+        children = [
+            build_subtree(t["id"])
+            for t in all_threads.values()
+            if t.get("parent_thread_id") == tid
+        ]
+        return {"id": tid, "title": node.get("title"), "children": children}
+
+    return build_subtree(str(thread_id))
+
+
+@router.delete("/threads/{thread_id}", status_code=204)
+async def delete_thread(thread_id: uuid.UUID, auth=Depends(get_current_user)):
+    """
+    删除该线程及所有后代（DB CASCADE 自动处理 messages/summaries）。
+    Delete the thread and all its descendants (DB CASCADE handles messages/summaries).
+    """
+    _user_id, sb = auth
+
+    thread_res = await _db(lambda: (
+        sb.table("threads").select("id").eq("id", str(thread_id)).maybe_single().execute()
+    ))
+    if not thread_res or not thread_res.data:
+        raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
+
+    await _db(lambda: sb.table("threads").delete().eq("id", str(thread_id)).execute())
