@@ -22,9 +22,10 @@ interface Props {
   loading: boolean;
   currentSessionId?: string;
   t: T;
+  onDelete?: (sessionId: string) => void;
 }
 
-export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t }: Props) {
+export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t, onDelete }: Props) {
   const router = useRouter();
 
   return (
@@ -73,7 +74,7 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
                   <button
                     key={s.id}
                     onClick={() => { onClose(); router.push(`/chat/${s.id}`); }}
-                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg transition-colors group ${
+                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg transition-colors group relative ${
                       isActive ? "bg-indigo-950/30 border border-indigo-500/15" : "hover:bg-white/[0.03] border border-transparent"
                     }`}
                   >
@@ -94,6 +95,21 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
                     </div>
                     {isActive && (
                       <div className="w-1 h-1 rounded-full bg-indigo-500/70 flex-shrink-0" />
+                    )}
+                    {onDelete && (
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-all"
+                        aria-label="删除会话"
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14H6L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4h6v2" />
+                        </svg>
+                      </span>
                     )}
                   </button>
                 );

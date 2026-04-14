@@ -15,6 +15,8 @@ interface Props {
   onSendSuggestion: (question: string) => void;
   onToggleCollapse: (e: React.MouseEvent) => void;
   onDragHandlePointerDown: (e: React.PointerEvent) => void;
+  onDelete?: () => void;
+  isStreaming?: boolean;
 }
 
 export default function ThreadCard({
@@ -29,6 +31,7 @@ export default function ThreadCard({
   onSendSuggestion,
   onToggleCollapse,
   onDragHandlePointerDown,
+  onDelete,
 }: Props) {
   const title = thread.title ?? thread.anchor_text?.slice(0, 20) ?? "子线程";
   const isStreaming = streamingText !== undefined;
@@ -127,6 +130,18 @@ export default function ThreadCard({
             <path d="M18 15l-6-6-6 6" />
           </svg>
         </button>
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            disabled={isStreaming}
+            className="flex-shrink-0 text-zinc-700 hover:text-red-400 disabled:opacity-30 transition-colors"
+            title={isStreaming ? "生成中，不可删除" : "删除子线程"}
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* AI 回复预览 */}

@@ -5,8 +5,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sendMergeStream, type MergeFormat } from "@/lib/sse";
-import { getRelevance } from "@/lib/api";
+import { getRelevance, saveAssistantMessage } from "@/lib/api";
 import type { Thread } from "@/lib/api";
+import { useThreadStore } from "@/stores/useThreadStore";
 import MarkdownContent from "@/components/MarkdownContent";
 import MergeTreeCanvas from "@/components/MergeTreeCanvas";
 import { useT } from "@/stores/useLangStore";
@@ -51,8 +52,13 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   const [status, setStatus] = useState("");
   const [content, setContent] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const contentRef = useRef("");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { threads: storeThreads, setMessages, messagesByThread } = useThreadStore();
+  const mainThread = storeThreads.find((t) => t.parent_thread_id === null);
 
   // ── 弹窗尺寸（根据树的宽高动态计算）──────────────────────────────
   const subThreads = threads.filter(th => th.parent_thread_id !== null);
@@ -291,6 +297,25 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               <button onClick={handleDownload}
                 className="text-xs text-zinc-500 hover:text-zinc-300 px-2.5 py-1.5 rounded-lg border border-white/6 hover:border-white/12 transition-all">
                 {t.mergeDownload}
+              </button>
+            )}
+            {hasContent && state === "done" && (
+              <button
+                onClick={async () => {
+                  if (!mainThread || saving || saved) return;
+                  setSaving(true);
+                  try {
+                    const msg = await saveAssistantMessage(mainThread.id, content);
+                    setMessages(mainThread.id, [...(messagesByThread[mainThread.id] ?? []), msg]);
+                    setSaved(true);
+                  } catch { /* 静默失败 */ } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={!mainThread || saving || saved}
+                className="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40 px-2.5 py-1.5 rounded-lg border border-white/6 hover:border-white/12 transition-all"
+              >
+                {saved ? "已保存" : saving ? "保存中…" : "保存到对话"}
               </button>
             )}
             {isSelecting && (

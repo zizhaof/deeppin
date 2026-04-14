@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { getSession, getMessages, getAllMessages, createThread, getSuggestions, listSessions } from "@/lib/api";
+import { getSession, getMessages, getAllMessages, createThread, getSuggestions, listSessions, deleteSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { sendMessageStream, sendSearchStream } from "@/lib/sse";
 import { useThreadStore } from "@/stores/useThreadStore";
@@ -236,6 +236,17 @@ export default function ChatPage() {
       .catch(() => {});
   }, [activeThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── 首页输入框跳转后自动发送待发消息 ──────────────────────────
+  const pendingMsgSentRef = useRef(false);
+  useEffect(() => {
+    if (!activeThreadId || pendingMsgSentRef.current) return;
+    const pending = sessionStorage.getItem("deeppin:pending-msg");
+    if (!pending) return;
+    sessionStorage.removeItem("deeppin:pending-msg");
+    pendingMsgSentRef.current = true;
+    handleSend(pending);
+  }, [activeThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── 消息位置测量 ────────────────────────────────────────────────
   const updatePositions = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -363,6 +374,18 @@ export default function ChatPage() {
         .finally(() => setSessionsLoading(false));
     }
   }, [sessions.length]);
+
+  const handleDeleteSession = useCallback(async (sid: string) => {
+    if (!window.confirm("确定删除这个会话吗？删除后无法恢复。")) return;
+    try {
+      await deleteSession(sid);
+      setSessions((prev) => prev.filter((s) => s.id !== sid));
+      // 如果删的是当前 session，跳回首页
+      if (sid === sessionId) router.push("/");
+    } catch (err) {
+      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+    }
+  }, [sessionId]);
 
   // ── 切换线程时清除残留引导线 ─────────────────────────────────────
   useEffect(() => {
@@ -810,6 +833,7 @@ export default function ChatPage() {
         loading={sessionsLoading}
         currentSessionId={sessionId}
         t={t}
+        onDelete={handleDeleteSession}
       />
     </div>
   );

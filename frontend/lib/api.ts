@@ -76,6 +76,16 @@ export async function listSessions(): Promise<Session[]> {
   return res.json();
 }
 
+/** 删除 session（级联删除所有 threads/messages/summaries） */
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}`, {
+    method: "DELETE",
+    headers: await getAuthHeaders(),
+  });
+  if (res.status === 404) throw new Error("Session 不存在");
+  if (!res.ok) throw new Error(`删除 session 失败: ${res.status}`);
+}
+
 /** 创建新 session，后端自动创建对应主线 thread */
 export async function createSession(title?: string): Promise<Session> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
@@ -157,6 +167,36 @@ export async function getAllMessages(sessionId: string): Promise<Record<string, 
   });
   await assertOk(res, "批量获取消息失败");
   return res.json();
+}
+
+/** 直接保存一条 assistant 消息到指定线程（不触发 AI，用于保存合并结果） */
+export async function saveAssistantMessage(threadId: string, content: string): Promise<Message> {
+  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ role: "assistant", content }),
+  });
+  await assertOk(res, "保存消息失败");
+  return res.json();
+}
+
+/** 获取线程及所有后代的树结构（用于删除前预览） */
+export async function getThreadSubtree(threadId: string): Promise<{ id: string; title: string | null; children: unknown[] }> {
+  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/subtree`, {
+    headers: await getAuthHeaders(),
+  });
+  await assertOk(res, "获取子树失败");
+  return res.json();
+}
+
+/** 删除线程及所有后代 */
+export async function deleteThread(threadId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/threads/${threadId}`, {
+    method: "DELETE",
+    headers: await getAuthHeaders(),
+  });
+  if (res.status === 404) throw new Error("线程不存在");
+  if (!res.ok) throw new Error(`删除线程失败: ${res.status}`);
 }
 
 /** 上传附件，后端异步提取文本并向量化（不返回文本内容，通过 RAG 检索注入 context） */

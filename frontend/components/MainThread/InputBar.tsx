@@ -37,6 +37,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
 
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !disabled && !uploading;
 
@@ -81,7 +82,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !composingRef.current) {
       e.preventDefault();
       handleSend();
     }
@@ -202,6 +203,8 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             onInput={handleInput}
             onPaste={handlePaste}
             placeholder={uploading ? t.extracting : webSearch ? t.webSearchPlaceholder : t.inputPlaceholder}

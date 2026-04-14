@@ -1,10 +1,10 @@
 "use client";
 // app/page.tsx — 首页
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, createSession } from "@/lib/api";
+import { listSessions, createSession, deleteSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import { useT, useLangStore } from "@/stores/useLangStore";
@@ -121,6 +121,8 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [heroText, setHeroText] = useState("");
+  const heroComposingRef = useRef(false);
   // 预热：登录后立即在后台创建好一个 session，点击时直接跳转无需等待
   const prewarmedRef = useRef<string | null>(null);
 
@@ -155,12 +157,15 @@ export default function HomePage() {
     return () => clearTimeout(id);
   }, []);
 
-  const handleNewChat = async () => {
+  const handleNewChat = async (initialMessage?: string) => {
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       router.push("/login");
       return;
+    }
+    if (initialMessage?.trim()) {
+      sessionStorage.setItem("deeppin:pending-msg", initialMessage.trim());
     }
     // 如果预热好了，直接跳转，同时后台预热下一个
     if (prewarmedRef.current) {
@@ -177,6 +182,16 @@ export default function HomePage() {
       router.push(`/chat/${s.id}`);
     } catch {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!window.confirm("确定删除这个会话吗？删除后无法恢复。")) return;
+    try {
+      await deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch (err) {
+      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
     }
   };
 
@@ -212,7 +227,7 @@ export default function HomePage() {
       </div>
 
       {/* 抽屉 */}
-      <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} />
+      <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} />
 
       {/* 顶栏 */}
       <header className="relative z-10 border-b border-white/[0.05] px-4 py-3 flex items-center justify-between">
@@ -260,7 +275,7 @@ export default function HomePage() {
             {t.toggleLang}
           </button>
           <button
-            onClick={handleNewChat}
+            onClick={() => handleNewChat()}
             disabled={creating}
             className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
           >
@@ -289,16 +304,43 @@ export default function HomePage() {
 
           <h1 className="text-[22px] font-semibold text-zinc-100 tracking-tight leading-tight">{t.welcomeTitle}</h1>
 
-          <button
-            onClick={handleNewChat}
-            disabled={creating}
-            className="flex items-center gap-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl transition-colors shadow-[0_4px_16px_rgba(99,102,241,0.25)] hover:shadow-[0_4px_20px_rgba(99,102,241,0.35)]"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            {creating ? t.creating : t.newChat}
-          </button>
+          {/* 首页输入框 */}
+          <div className="w-full max-w-[360px] bg-zinc-900 rounded-2xl border border-white/8 focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
+            <textarea
+              value={heroText}
+              onChange={(e) => setHeroText(e.target.value)}
+              onCompositionStart={() => { heroComposingRef.current = true; }}
+              onCompositionEnd={() => { heroComposingRef.current = false; }}
+              onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === "Enter" && !e.shiftKey && !heroComposingRef.current) {
+                  e.preventDefault();
+                  if (heroText.trim() && !creating) handleNewChat(heroText);
+                }
+              }}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+              }}
+              placeholder={t.inputPlaceholder}
+              disabled={creating}
+              rows={1}
+              className="w-full bg-transparent resize-none outline-none text-sm text-zinc-200 placeholder-zinc-700 px-4 pt-3 pb-2 max-h-[120px] disabled:opacity-30 leading-relaxed"
+            />
+            <div className="flex justify-end px-3 pb-2.5">
+              <button
+                onClick={() => { if (heroText.trim() && !creating) handleNewChat(heroText); }}
+                disabled={!heroText.trim() || creating}
+                className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white flex items-center justify-center transition-colors shadow-sm shadow-indigo-950/50"
+                aria-label="开始对话"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                  <path d="M22 2L11 13" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M22 2L15 22 11 13 2 9l20-7z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ── 分隔 Why ── */}

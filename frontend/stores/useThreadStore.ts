@@ -71,6 +71,7 @@ export interface ThreadState {
   /** 切换卡片折叠状态 */
   toggleCardCollapsed: (threadId: string) => void;
   addThread: (thread: Thread) => void;
+  removeThreadAndDescendants: (threadId: string) => void;
   updateThreadTitle: (threadId: string, title: string) => void;
   setMessages: (threadId: string, messages: Message[]) => void;
   appendChunk: (threadId: string, chunk: string) => void;
@@ -178,6 +179,38 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
 
   addThread: (thread) =>
     set((s) => ({ threads: [...s.threads, thread] })),
+
+  removeThreadAndDescendants: (threadId) =>
+    set((s) => {
+      // 递归收集所有后代 id
+      const toRemove = new Set<string>();
+      const collect = (id: string) => {
+        toRemove.add(id);
+        for (const t of s.threads) {
+          if (t.parent_thread_id === id) collect(t.id);
+        }
+      };
+      collect(threadId);
+
+      const threads = s.threads.filter((t) => !toRemove.has(t.id));
+      const clean = <T>(obj: Record<string, T>) => {
+        const next = { ...obj };
+        for (const id of toRemove) delete next[id];
+        return next;
+      };
+
+      return {
+        threads,
+        messagesByThread: clean(s.messagesByThread),
+        streamingByThread: clean(s.streamingByThread),
+        statusByThread: clean(s.statusByThread),
+        anchorTextTops: clean(s.anchorTextTops),
+        suggestions: clean(s.suggestions),
+        userCardPositions: clean(s.userCardPositions),
+        collapsedCards: clean(s.collapsedCards),
+        unreadCounts: clean(s.unreadCounts),
+      };
+    }),
 
   updateThreadTitle: (threadId, title) =>
     set((s) => ({
