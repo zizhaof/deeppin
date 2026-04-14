@@ -4,8 +4,6 @@
 import { create } from "zustand";
 import type { Message, Thread } from "@/lib/api";
 
-export type ThreadSide = "left" | "right";
-
 // ── localStorage 未读持久化 ──────────────────────────────────────
 // 存储格式：JSON 数组，内容为有未读消息的 thread ID 列表
 const UNREAD_LS_KEY = "deeppin:unread";
@@ -42,8 +40,6 @@ export interface ThreadState {
   streamingByThread: Record<string, string>;
   /** 各线程的后台状态提示（thread_id → status text），首个 chunk 到达后清空 */
   statusByThread: Record<string, string>;
-  /** 子线程显示在哪侧（thread_id → side） */
-  threadSides: Record<string, ThreadSide>;
   /** 插针时选中文字相对主滚动内容的精确 top（px），用于侧栏精确对齐 */
   anchorTextTops: Record<string, number>;
   /** 每个子线程的追问建议（thread_id → questions） */
@@ -64,8 +60,8 @@ export interface ThreadState {
   navigateTo: (threadId: string) => void;
   navigateBack: () => void;
   navigateForward: () => void;
-  /** 插针：新增子线程并记录其侧边及选中文字的精确 Y 坐标 */
-  pinThread: (thread: Thread, side: ThreadSide, anchorTextTop?: number) => void;
+  /** 插针：新增子线程并记录选中文字的精确 Y 坐标 */
+  pinThread: (thread: Thread, anchorTextTop?: number) => void;
   /** 设置子线程的追问建议 */
   setSuggestions: (threadId: string, questions: string[]) => void;
   /** 消费一条建议（用户点击后移除） */
@@ -89,7 +85,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   messagesByThread: {},
   streamingByThread: {},
   statusByThread: {},
-  threadSides: {},
   anchorTextTops: {},
   suggestions: {},
   userCardPositions: {},
@@ -99,12 +94,9 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   navIndex: -1,
 
   setThreads: (threads) => {
-    // 从 thread.side 字段恢复 threadSides，解决刷新后侧针消失问题
-    const sides: Record<string, ThreadSide> = {};
     // 为每个线程初始化空消息数组，避免消息加载失败时 msgOrder 为 undefined 导致排序错乱
     const initialMessages: Record<string, Message[]> = {};
     for (const t of threads) {
-      if (t.side) sides[t.id] = t.side as ThreadSide;
       initialMessages[t.id] = [];
     }
 
@@ -116,7 +108,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       if (threadIdSet.has(id)) unread[id] = 1;
     }
 
-    set({ threads, threadSides: sides, unreadCounts: unread, messagesByThread: initialMessages });
+    set({ threads, unreadCounts: unread, messagesByThread: initialMessages });
   },
 
   navigateTo: (threadId) =>
@@ -156,10 +148,9 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       return { activeThreadId: threadId, navIndex: newIndex, unreadCounts: unread };
     }),
 
-  pinThread: (thread, side, anchorTextTop) =>
+  pinThread: (thread, anchorTextTop) =>
     set((s) => ({
       threads: [...s.threads, thread],
-      threadSides: { ...s.threadSides, [thread.id]: side },
       messagesByThread: { ...s.messagesByThread, [thread.id]: [] },
       anchorTextTops: anchorTextTop !== undefined
         ? { ...s.anchorTextTops, [thread.id]: anchorTextTop }

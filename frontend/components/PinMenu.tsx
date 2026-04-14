@@ -9,7 +9,6 @@ export interface SelectionInfo {
   text: string;
   messageId: string;
   rect: DOMRect;
-  side: "left" | "right";
   anchorContentY: number;
   startOffset: number;
   endOffset: number;

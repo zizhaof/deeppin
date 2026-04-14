@@ -52,7 +52,6 @@ export interface Thread {
   anchor_message_id: string | null;
   anchor_start_offset: number | null;
   anchor_end_offset: number | null;
-  side: "left" | "right" | null;
   title: string | null;
   suggestions: string[] | null;
   depth: number;
@@ -103,7 +102,6 @@ export async function createThread(params: {
   parent_thread_id?: string;
   anchor_text?: string;
   anchor_message_id?: string;
-  side?: "left" | "right";
   anchor_start_offset?: number;
   anchor_end_offset?: number;
   depth?: number;

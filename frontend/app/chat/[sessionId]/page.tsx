@@ -8,7 +8,6 @@ import { getSession, getMessages, getAllMessages, createThread, getSuggestions, 
 import type { Session } from "@/lib/api";
 import { sendMessageStream, sendSearchStream } from "@/lib/sse";
 import { useThreadStore } from "@/stores/useThreadStore";
-import type { ThreadSide } from "@/stores/useThreadStore";
 import { useT, useLangStore } from "@/stores/useLangStore";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
@@ -112,7 +111,6 @@ export default function ChatPage() {
     messagesByThread,
     streamingByThread,
     unreadCounts,
-    threadSides,
     anchorTextTops,
     suggestions,
     navHistory,
@@ -400,14 +398,14 @@ export default function ChatPage() {
 
   // ── 插针 ────────────────────────────────────────────────────────
   const handleTextSelect = useCallback(
-    (text: string, messageId: string, rect: DOMRect, side: "left" | "right", startOffset: number, endOffset: number) => {
+    (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
       const container = scrollContainerRef.current;
       const centerY = rect.top + rect.height / 2;
       const anchorContentY = container
         ? centerY - container.getBoundingClientRect().top + container.scrollTop
         : centerY;
 
-      setSelection({ text, messageId, rect, side, anchorContentY, startOffset, endOffset });
+      setSelection({ text, messageId, rect, anchorContentY, startOffset, endOffset });
     },
     []
   );
@@ -430,12 +428,11 @@ export default function ChatPage() {
         parent_thread_id: parentId,
         anchor_text: info.text,
         anchor_message_id: (info.messageId === "__streaming__" || info.messageId?.startsWith("local_")) ? undefined : info.messageId,
-        side: info.side as "left" | "right",
         anchor_start_offset: info.startOffset,
         anchor_end_offset: info.endOffset,
         depth: parentDepth + 1,
       });
-      pinThread(newThread, info.side as ThreadSide, anchorTextTop);
+      pinThread(newThread, anchorTextTop);
 
       const threadId = newThread.id;
 
@@ -468,7 +465,6 @@ export default function ChatPage() {
   const rollItems: ThreadCardItem[] = [];
   for (const thr of threads) {
     if (thr.parent_thread_id !== activeThreadId) continue;
-    if (!threadSides[thr.id]) continue;
 
     const anchorTop =
       anchorTextTops[thr.id] ??
@@ -512,7 +508,7 @@ export default function ChatPage() {
     if (!thr.anchor_message_id || !thr.anchor_text) continue;
     const mid = String(thr.anchor_message_id);
     if (!anchorsByMessage[mid]) anchorsByMessage[mid] = [];
-    anchorsByMessage[mid].push({ text: thr.anchor_text, threadId: thr.id, side: thr.side as "left" | "right" | undefined });
+    anchorsByMessage[mid].push({ text: thr.anchor_text, threadId: thr.id });
   }
 
   // 子线程（插针）数量，供 MergeOutput 面板显示

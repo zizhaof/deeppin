@@ -10,7 +10,6 @@ const COLLAPSE_THRESHOLD = 300;
 export interface AnchorRange {
   text: string;
   threadId: string;
-  side?: "left" | "right";
 }
 
 interface Props {
@@ -20,7 +19,7 @@ interface Props {
   streaming?: boolean;
   anchors?: AnchorRange[];
   userAvatarUrl?: string | null;
-  onSelect?: (text: string, messageId: string, rect: DOMRect, side: "left" | "right", startOffset: number, endOffset: number) => void;
+  onSelect?: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
   onRef?: (el: HTMLDivElement | null) => void;
@@ -48,14 +47,14 @@ function renderWithHighlights(
 ): React.ReactNode {
   if (!anchors.length) return content;
 
-  type Span = { start: number; end: number; threadId: string; side?: "left" | "right" };
+  type Span = { start: number; end: number; threadId: string };
   const spans: Span[] = [];
-  for (const { text, threadId, side } of anchors) {
+  for (const { text, threadId } of anchors) {
     const searchText = text.includes("\n")
       ? (text.split("\n").find((s) => s.trim()) ?? text)
       : text;
     const pos = content.indexOf(searchText);
-    if (pos !== -1) spans.push({ start: pos, end: pos + searchText.length, threadId, side });
+    if (pos !== -1) spans.push({ start: pos, end: pos + searchText.length, threadId });
   }
   if (!spans.length) return content;
 
@@ -154,9 +153,7 @@ export default function MessageBubble({
     const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
 
     const rect = range.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const side: "left" | "right" = centerX < window.innerWidth / 2 ? "left" : "right";
-    onSelect(sel.toString().trim(), messageId, rect, side, startOffset, endOffset);
+    onSelect(sel.toString().trim(), messageId, rect, startOffset, endOffset);
   };
 
   return (

@@ -17,7 +17,7 @@ interface Props {
   anchorText?: string | null;
   userAvatarUrl?: string | null;
   onMessageRef?: (messageId: string, el: HTMLDivElement | null) => void;
-  onTextSelect?: (text: string, messageId: string, rect: DOMRect, side: "left" | "right", startOffset: number, endOffset: number) => void;
+  onTextSelect?: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
   onSendSuggestion?: (question: string) => void;
