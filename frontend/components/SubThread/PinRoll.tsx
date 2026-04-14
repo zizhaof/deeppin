@@ -2,10 +2,96 @@
 // components/SubThread/PinRoll.tsx
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ThreadCardItem } from "./SideColumn";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT } from "@/stores/useLangStore";
 import { getThreadSubtree, deleteThread } from "@/lib/api";
+
+// ── 删除确认树形弹窗 ─────────────────────────────────────────────────
+interface SubtreeNode {
+  id: string;
+  title?: string | null;
+  children?: SubtreeNode[];
+}
+
+function TreePreview({ node, depth = 0 }: { node: SubtreeNode; depth?: number }) {
+  const title = node.title ?? "（无标题）";
+  const children = node.children ?? [];
+  return (
+    <div>
+      <div className="flex items-start gap-1.5" style={{ paddingLeft: depth * 16 }}>
+        {depth > 0 && (
+          <span className="mt-1.5 flex-shrink-0 text-zinc-600 select-none">└</span>
+        )}
+        <span className={`text-sm leading-snug ${depth === 0 ? "text-indigo-300 font-medium" : "text-zinc-300"}`}>
+          {title}
+        </span>
+      </div>
+      {children.map((c) => (
+        <TreePreview key={c.id} node={c} depth={depth + 1} />
+      ))}
+    </div>
+  );
+}
+
+function DeleteConfirmModal({
+  subtree,
+  onConfirm,
+  onCancel,
+}: {
+  subtree: SubtreeNode;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const countNodes = (n: SubtreeNode): number =>
+    1 + (n.children ?? []).reduce((s, c) => s + countNodes(c), 0);
+  const total = countNodes(subtree);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-80 max-h-[70vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 标题 */}
+        <div className="px-5 pt-5 pb-3 border-b border-zinc-800 flex-shrink-0">
+          <h3 className="text-sm font-semibold text-white">删除子线程</h3>
+          <p className="text-xs text-zinc-400 mt-1">
+            {total > 1
+              ? `以下 ${total} 个线程将被永久删除`
+              : "以下线程将被永久删除"}
+          </p>
+        </div>
+
+        {/* 树形预览 */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+          <TreePreview node={subtree} />
+        </div>
+
+        {/* 操作按钮 */}
+        <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2 justify-end flex-shrink-0">
+          <button
+            onClick={onCancel}
+            className="px-4 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-1.5 rounded-lg text-xs bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 interface Props {
   items: ThreadCardItem[];
@@ -73,27 +159,34 @@ export default function PinRoll({
   const t = useT();
   const { consumeSuggestion, removeThreadAndDescendants, streamingByThread } = useThreadStore();
 
+  // 删除确认弹窗状态
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    threadId: string;
+    subtree: SubtreeNode;
+  } | null>(null);
+
   const handleDelete = useCallback(async (threadId: string) => {
-    if (streamingByThread[threadId]) return; // 生成中不可删除
+    if (streamingByThread[threadId]) return;
     try {
-      const subtree = await getThreadSubtree(threadId);
-      const collectTitles = (node: { title?: string | null; children?: unknown[] }): string[] => {
-        const title = node.title ?? "（无标题）";
-        const children = (node.children ?? []) as { title?: string | null; children?: unknown[] }[];
-        return [title, ...children.flatMap(collectTitles)];
-      };
-      const titles = collectTitles(subtree);
-      const msg = titles.length > 1
-        ? `将删除以下 ${titles.length} 个子线程：\n${titles.map((s, i) => (i > 0 ? "  " : "") + "• " + s).join("\n")}\n\n确认删除？`
-        : `确认删除子线程「${titles[0]}」？`;
-      if (!window.confirm(msg)) return;
+      const raw = await getThreadSubtree(threadId);
+      setDeleteConfirm({ threadId, subtree: raw as SubtreeNode });
+    } catch (err) {
+      alert(`获取线程信息失败：${err instanceof Error ? err.message : "未知错误"}`);
+    }
+  }, [streamingByThread]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteConfirm) return;
+    const { threadId } = deleteConfirm;
+    setDeleteConfirm(null);
+    try {
       await deleteThread(threadId);
       removeThreadAndDescendants(threadId);
       onDeleteThread?.(threadId);
     } catch (err) {
       alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
     }
-  }, [streamingByThread, removeThreadAndDescendants, onDeleteThread]);
+  }, [deleteConfirm, removeThreadAndDescendants, onDeleteThread]);
   const sorted = items;
 
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -323,6 +416,15 @@ export default function PinRoll({
           </div>
         );
       })}
+
+      {/* 删除确认弹窗 */}
+      {deleteConfirm && (
+        <DeleteConfirmModal
+          subtree={deleteConfirm.subtree}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 }
