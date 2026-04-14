@@ -57,7 +57,7 @@ CHAT_MODELS = [
 SUMMARIZER_MODELS = [
     "llama-3.1-8b-instant",
     "openai/gpt-oss-20b",
-    "allam-2-7b",
+    # allam-2-7b 移除：阿拉伯语专用，不支持中文，context window 约 4K 容易超限
 ]
 
 # vision 专用模型 / Vision-specific model
