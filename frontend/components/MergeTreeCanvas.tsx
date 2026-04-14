@@ -194,9 +194,9 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
             <g
               key={t.id}
               transform={`translate(${x},${y})`}
-              data-node={isRoot ? undefined : "1"}
-              style={{ cursor: isRoot ? "default" : "pointer" }}
-              onClick={isRoot ? undefined : () => onToggle(t.id)}
+              data-node="1"
+              style={{ cursor: "pointer" }}
+              onClick={() => onToggle(t.id)}
             >
               {/* 外圈光晕 */}
               {isSel && !isRoot && (
@@ -216,7 +216,7 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
               {isRoot ? (
                 <text x={0} y={compact ? 4 : 5} textAnchor="middle" fill="#c7d2fe" fontSize={compact ? 9 : 11} fontWeight={600}
                   style={{ pointerEvents: "none", userSelect: "none" }}>
-                  主线
+                  {trunc(t.title ?? "主线对话", compact ? 8 : 12)}
                 </text>
               ) : (
                 <>
