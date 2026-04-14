@@ -201,10 +201,10 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         except Exception:
             pass  # 缓存损坏，走实时生成 / Cache corrupt; fall through to real-time generation
 
-    # _generate_and_patch 可能仍在后台跑，短轮询最多等 600ms（每 100ms 查一次，最多 6 次）
-    # _generate_and_patch may still be running; poll every 100ms up to 600ms total (6 attempts)
-    for _ in range(6):
-        await asyncio.sleep(0.1)
+    # _generate_and_patch 可能仍在后台跑，轮询最多等 3s（每 200ms 查一次，最多 15 次）
+    # _generate_and_patch may still be running; poll every 200ms up to 3s total (15 attempts)
+    for _ in range(15):
+        await asyncio.sleep(0.2)
         thread_res2 = await _db(lambda: (
             sb.table("threads")
             .select("suggestions")
