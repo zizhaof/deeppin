@@ -1,7 +1,7 @@
 "use client";
 // components/MergeTreeCanvas.tsx
-// 可平移 SVG 线程树 — 供 MergeOutput 的节点选择步骤使用
-// Pannable SVG thread tree for the MergeOutput node-selection step.
+// 自适应 SVG 线程树 — 根据画布宽高自动缩放布局，支持拖拽平移
+// Adaptive SVG thread tree — auto-scales to canvas dimensions, supports pan
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import type { Thread } from "@/lib/api";
@@ -10,22 +10,24 @@ interface Props {
   threads: Thread[];
   selected: Set<string>;
   onToggle: (threadId: string) => void;
-  /** 画布容器宽高（px），由父组件根据弹窗尺寸传入；省略时组件自行测量 */
+  /** 显式传入宽高（px），用于弹窗等固定尺寸场景；省略时组件自行测量 */
   canvasWidth?: number;
   canvasHeight?: number;
   /** 紧凑模式：节点更小，适合窄侧栏 */
   compact?: boolean;
 }
 
-// ── 布局常量 ──────────────────────────────────────────────────────────
+// ── 基准节点尺寸（布局计算起点，最终会按画布缩放）────────────────────
 const NODE_W = 130, NODE_H = 50, NODE_R = 9;
 const ROOT_W = 110, ROOT_H = 40;
 const H_GAP = 20, V_GAP = 85, PAD = 32;
 
-// 紧凑模式常量
 const C_NODE_W = 80, C_NODE_H = 34, C_NODE_R = 7;
 const C_ROOT_W = 66, C_ROOT_H = 28;
 const C_H_GAP = 8, C_V_GAP = 52, C_PAD = 16;
+
+// 缩放上限：避免节点太少时被放大过多
+const MAX_SCALE = 1.4;
 
 function trunc(s: string | null | undefined, n: number): string {
   if (!s) return "";
@@ -34,7 +36,10 @@ function trunc(s: string | null | undefined, n: number): string {
 
 interface NodePos { thread: Thread; x: number; y: number }
 
-function computeLayout(threads: Thread[], compact: boolean): { positions: NodePos[]; posMap: Record<string, NodePos>; treeW: number; treeH: number } {
+function computeLayout(
+  threads: Thread[],
+  compact: boolean,
+): { positions: NodePos[]; posMap: Record<string, NodePos>; treeW: number; treeH: number } {
   const nw = compact ? C_NODE_W : NODE_W;
   const nh = compact ? C_NODE_H : NODE_H;
   const hg = compact ? C_H_GAP : H_GAP;
@@ -69,19 +74,22 @@ function computeLayout(threads: Thread[], compact: boolean): { positions: NodePo
   return { positions, posMap, treeW, treeH };
 }
 
-export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWidth: propW, canvasHeight: propH, compact = false }: Props) {
+export default function MergeTreeCanvas({
+  threads, selected, onToggle,
+  canvasWidth: propW, canvasHeight: propH,
+  compact = false,
+}: Props) {
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // 自测量尺寸：若父组件未传入 canvasWidth/canvasHeight，则用 ResizeObserver 自行量
-  // Self-measured size: if parent doesn't provide explicit dimensions, measure via ResizeObserver
+  // 自测量：未传入 props 时用 ResizeObserver 量自身
   const [selfW, setSelfW] = useState(0);
   const [selfH, setSelfH] = useState(0);
   useEffect(() => {
-    if (propW !== undefined && propH !== undefined) return; // 外部传入时跳过
+    if (propW !== undefined && propH !== undefined) return;
     const el = wrapRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
@@ -89,14 +97,13 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
       setSelfH(el.clientHeight);
     });
     ro.observe(el);
-    // 立即读一次，不等下一帧 / Read immediately, don't wait for next frame
     setSelfW(el.clientWidth);
     setSelfH(el.clientHeight);
     return () => ro.disconnect();
   }, [propW, propH]);
 
-  const canvasWidth = propW ?? selfW;
-  const canvasHeight = propH ?? selfH;
+  const canvasW = propW ?? selfW;
+  const canvasH = propH ?? selfH;
 
   const nw = compact ? C_NODE_W : NODE_W;
   const nh = compact ? C_NODE_H : NODE_H;
@@ -109,21 +116,29 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
     [threads, compact],
   );
 
-  // 初始居中 / Center on mount
-  useEffect(() => {
-    if (!canvasWidth || !canvasHeight) return;
-    const cx = treeW < canvasWidth ? (canvasWidth - treeW) / 2 : 0;
-    const cy = treeH < canvasHeight ? (canvasHeight - treeH) / 2 : 0;
-    setPanX(cx);
-    setPanY(cy);
-  }, [treeW, treeH, canvasWidth, canvasHeight]);
+  // ── 自适应缩放 ────────────────────────────────────────────────────
+  // 计算让树刚好填满画布的缩放比（上限 MAX_SCALE，防止单节点被放大过多）
+  // Compute scale so the tree fills the canvas; cap at MAX_SCALE to avoid over-enlarging
+  const scale = canvasW && canvasH
+    ? Math.min(canvasW / treeW, canvasH / treeH, MAX_SCALE)
+    : 1;
 
+  // 缩放后居中偏移 / Center offset after scaling
+  const centX = canvasW ? (canvasW - treeW * scale) / 2 : 0;
+  const centY = canvasH ? (canvasH - treeH * scale) / 2 : 0;
+
+  // 树变化时重置 pan / Reset pan when tree layout changes
+  useEffect(() => { setPanX(0); setPanY(0); }, [treeW, treeH, canvasW, canvasH]);
+
+  // pan 限制（考虑缩放后实际尺寸）
   function clampPan(px: number, py: number): [number, number] {
-    const maxX = Math.max(0, treeW - canvasWidth + PAD);
-    const maxY = Math.max(0, treeH - canvasHeight + PAD);
+    const scaledW = treeW * scale;
+    const scaledH = treeH * scale;
+    const maxX = Math.max(0, scaledW - canvasW);
+    const maxY = Math.max(0, scaledH - canvasH);
     return [
-      Math.max(-maxX, Math.min(PAD, px)),
-      Math.max(-maxY, Math.min(PAD, py)),
+      Math.max(-maxX, Math.min(maxX, px)),
+      Math.max(-maxY, Math.min(maxY, py)),
     ];
   }
 
@@ -133,12 +148,12 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
     if (!el) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
-      setPanX(px => { const [nx] = clampPan(px - (e.shiftKey ? e.deltaY : e.deltaX) * 0.8, 0); return nx; });
-      setPanY(py => { const [, ny] = clampPan(0, py - (e.shiftKey ? 0 : e.deltaY) * 0.8); return ny; });
+      setPanX(px => clampPan(px - (e.shiftKey ? e.deltaY : e.deltaX) * 0.8, 0)[0]);
+      setPanY(py => clampPan(0, py - (e.shiftKey ? 0 : e.deltaY) * 0.8)[1]);
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [treeW, treeH, canvasWidth, canvasHeight]);
+  }, [treeW, treeH, canvasW, canvasH, scale]);
 
   // ── 拖拽平移 ──
   function onMouseDown(e: React.MouseEvent) {
@@ -152,31 +167,39 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
       const [nx, ny] = clampPan(dragStart.current.px + dx, dragStart.current.py + dy);
-      setPanX(nx);
-      setPanY(ny);
+      setPanX(nx); setPanY(ny);
     };
     const onUp = () => { isDragging.current = false; };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, [treeW, treeH, canvasWidth, canvasHeight]);
+  }, [treeW, treeH, canvasW, canvasH, scale]);
 
-  // 自测量模式下用 absolute inset-0，避免 height:100% 在 flex 子元素里失效
-  // In self-measure mode use absolute inset-0 — height:100% is unreliable inside flex items
-  const selfSizeStyle: React.CSSProperties = propW !== undefined
+  // 容器样式：外部传尺寸时用固定大小；自测量时用 absolute inset-0
+  const containerStyle: React.CSSProperties = propW !== undefined
     ? { width: propW, height: propH, position: "relative" }
     : { position: "absolute", inset: 0 };
+
+  // SVG 内容用 <g> 包裹，先平移居中+pan，再缩放
+  // transform order: translate first (screen coords), then scale (tree coords)
+  const groupTransform = `translate(${centX + panX}, ${centY + panY}) scale(${scale})`;
+
+  const titleChars = compact ? 8 : 11;
+  const anchorChars = compact ? 10 : 16;
+  const titleFontSize = compact ? 8.5 : 10;
+  const anchorFontSize = compact ? 7.5 : 8.5;
 
   return (
     <div
       ref={wrapRef}
-      style={{ ...selfSizeStyle, overflow: "hidden", cursor: "grab" }}
+      style={{ ...containerStyle, overflow: "hidden", cursor: "grab" }}
       onMouseDown={onMouseDown}
     >
+      {/* SVG 铺满容器，内容通过 <g> 变换定位 */}
       <svg
-        width={treeW}
-        height={treeH}
-        style={{ position: "absolute", top: 0, left: 0, transform: `translate(${panX}px,${panY}px)`, willChange: "transform" }}
+        width={canvasW || "100%"}
+        height={canvasH || "100%"}
+        style={{ position: "absolute", inset: 0 }}
       >
         <defs>
           <filter id="mtc-glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -185,94 +208,84 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
           </filter>
         </defs>
 
-        {/* 连线 */}
-        {positions.map(({ thread: t }) => {
-          if (!t.parent_thread_id) return null;
-          const from = posMap[t.parent_thread_id];
-          const to = posMap[t.id];
-          if (!from || !to) return null;
-          const isParentRoot = !from.thread.parent_thread_id;
-          const y1 = from.y + (isParentRoot ? rh : nh) / 2;
-          const y2 = to.y - nh / 2;
-          const mid = (y1 + y2) / 2;
-          const isSel = selected.has(t.id);
-          return (
-            <path
-              key={`edge-${t.id}`}
-              d={`M${from.x},${y1} C${from.x},${mid} ${to.x},${mid} ${to.x},${y2}`}
-              fill="none"
-              stroke={isSel ? "rgba(99,102,241,0.35)" : "rgba(255,255,255,0.06)"}
-              strokeWidth={isSel ? 1.5 : 1}
-              strokeDasharray={isSel ? undefined : "4,3"}
-            />
-          );
-        })}
-
-        {/* 节点 */}
-        {positions.map(({ thread: t, x, y }) => {
-          const isRoot = !t.parent_thread_id;
-          const w = isRoot ? rw : nw;
-          const h = isRoot ? rh : nh;
-          const isSel = isRoot || selected.has(t.id);
-          const titleChars = compact ? 8 : 11;
-          const anchorChars = compact ? 10 : 16;
-          const titleFontSize = compact ? 8.5 : 10;
-          const anchorFontSize = compact ? 7.5 : 8.5;
-
-          return (
-            <g
-              key={t.id}
-              transform={`translate(${x},${y})`}
-              data-node="1"
-              style={{ cursor: "pointer" }}
-              onClick={() => onToggle(t.id)}
-            >
-              {/* 外圈光晕 */}
-              {isSel && !isRoot && (
-                <rect x={-w/2-3} y={-h/2-3} width={w+6} height={h+6} rx={nr+3}
-                  fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth={2} />
-              )}
-
-              {/* 卡片背景 */}
-              <rect
-                x={-w/2} y={-h/2} width={w} height={h} rx={isRoot ? (compact ? 8 : 12) : nr}
-                fill={isSel ? "#1e1b4b" : "#18181b"}
-                stroke={isRoot ? "rgba(99,102,241,0.5)" : isSel ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"}
-                strokeWidth={isRoot ? 1.5 : 1}
-                filter={isSel ? "url(#mtc-glow)" : undefined}
+        <g transform={groupTransform} style={{ willChange: "transform" }}>
+          {/* 连线 */}
+          {positions.map(({ thread: t }) => {
+            if (!t.parent_thread_id) return null;
+            const from = posMap[t.parent_thread_id];
+            const to = posMap[t.id];
+            if (!from || !to) return null;
+            const isParentRoot = !from.thread.parent_thread_id;
+            const y1 = from.y + (isParentRoot ? rh : nh) / 2;
+            const y2 = to.y - nh / 2;
+            const mid = (y1 + y2) / 2;
+            const isSel = selected.has(t.id);
+            return (
+              <path
+                key={`edge-${t.id}`}
+                d={`M${from.x},${y1} C${from.x},${mid} ${to.x},${mid} ${to.x},${y2}`}
+                fill="none"
+                stroke={isSel ? "rgba(99,102,241,0.35)" : "rgba(255,255,255,0.06)"}
+                strokeWidth={isSel ? 1.5 : 1}
+                strokeDasharray={isSel ? undefined : "4,3"}
               />
+            );
+          })}
 
-              {isRoot ? (
-                <text x={0} y={compact ? 4 : 5} textAnchor="middle" fill="#c7d2fe" fontSize={compact ? 9 : 11} fontWeight={600}
-                  style={{ pointerEvents: "none", userSelect: "none" }}>
-                  {trunc(t.title ?? "主线对话", compact ? 8 : 12)}
-                </text>
-              ) : (
-                <>
-                  {/* 状态点 */}
-                  {!compact && <circle cx={w/2-8} cy={-h/2+8} r={3.5} fill={isSel ? "#4ade80" : "#3f3f46"} />}
+          {/* 节点 */}
+          {positions.map(({ thread: t, x, y }) => {
+            const isRoot = !t.parent_thread_id;
+            const w = isRoot ? rw : nw;
+            const h = isRoot ? rh : nh;
+            const isSel = isRoot || selected.has(t.id);
 
-                  {/* 相关性进度条背景 */}
-                  {!compact && <rect x={-w/2+10} y={h/2-7} width={w-20} height={2.5} rx={1.25} fill="rgba(255,255,255,0.04)" />}
-
-                  {/* Title */}
-                  <text x={-w/2+6} y={compact ? 3 : -4} fill={isSel ? "#c7d2fe" : "#52525b"} fontSize={titleFontSize} fontWeight={600}
+            return (
+              <g
+                key={t.id}
+                transform={`translate(${x},${y})`}
+                data-node="1"
+                style={{ cursor: "pointer" }}
+                onClick={() => onToggle(t.id)}
+              >
+                {isSel && !isRoot && (
+                  <rect x={-w/2-3} y={-h/2-3} width={w+6} height={h+6} rx={nr+3}
+                    fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth={2} />
+                )}
+                <rect
+                  x={-w/2} y={-h/2} width={w} height={h} rx={isRoot ? (compact ? 8 : 12) : nr}
+                  fill={isSel ? "#1e1b4b" : "#18181b"}
+                  stroke={isRoot ? "rgba(99,102,241,0.5)" : isSel ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"}
+                  strokeWidth={isRoot ? 1.5 : 1}
+                  filter={isSel ? "url(#mtc-glow)" : undefined}
+                />
+                {isRoot ? (
+                  <text x={0} y={compact ? 4 : 5} textAnchor="middle" fill="#c7d2fe"
+                    fontSize={compact ? 9 : 11} fontWeight={600}
                     style={{ pointerEvents: "none", userSelect: "none" }}>
-                    {trunc(t.title ?? t.anchor_text, titleChars)}
+                    {trunc(t.title ?? "主线对话", compact ? 8 : 12)}
                   </text>
-
-                  {/* Anchor */}
-                  {t.anchor_text && !compact && (
-                    <text x={-w/2+11} y={10} fill={isSel ? "rgba(165,180,252,0.55)" : "rgba(82,82,91,0.6)"} fontSize={anchorFontSize}
+                ) : (
+                  <>
+                    {!compact && <circle cx={w/2-8} cy={-h/2+8} r={3.5} fill={isSel ? "#4ade80" : "#3f3f46"} />}
+                    {!compact && <rect x={-w/2+10} y={h/2-7} width={w-20} height={2.5} rx={1.25} fill="rgba(255,255,255,0.04)" />}
+                    <text x={-w/2+6} y={compact ? 3 : -4} fill={isSel ? "#c7d2fe" : "#52525b"}
+                      fontSize={titleFontSize} fontWeight={600}
                       style={{ pointerEvents: "none", userSelect: "none" }}>
-                      {trunc(t.anchor_text, anchorChars)}
+                      {trunc(t.title ?? t.anchor_text, titleChars)}
                     </text>
-                  )}
-                </>
-              )}
-            </g>
-          );
-        })}
+                    {t.anchor_text && !compact && (
+                      <text x={-w/2+11} y={10} fill={isSel ? "rgba(165,180,252,0.55)" : "rgba(82,82,91,0.6)"}
+                        fontSize={anchorFontSize}
+                        style={{ pointerEvents: "none", userSelect: "none" }}>
+                        {trunc(t.anchor_text, anchorChars)}
+                      </text>
+                    )}
+                  </>
+                )}
+              </g>
+            );
+          })}
+        </g>
       </svg>
     </div>
   );
