@@ -137,7 +137,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   };
 
   return (
-    <div className="border-t border-subtle bg-base px-4 py-3">
+    <div className="border-t border-subtle bg-base px-4 pt-3 pb-5">
       <div className={`bg-surface rounded-2xl border overflow-hidden transition-all ${
         disabled
           ? "border-subtle"

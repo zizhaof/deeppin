@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThreadCardItem } from "./SideColumn";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT } from "@/stores/useLangStore";
+import { getThreadSubtree, deleteThread } from "@/lib/api";
 
 interface Props {
   items: ThreadCardItem[];
@@ -18,6 +19,7 @@ interface Props {
   onCardHover?: (threadId: string | null) => void;
   onSelectThread: (threadId: string) => void;
   onSendSuggestion: (threadId: string, question: string) => void;
+  onDeleteThread?: (threadId: string) => void;
 }
 
 const CFG = [
@@ -66,9 +68,32 @@ export default function PinRoll({
   onCardHover,
   onSelectThread,
   onSendSuggestion,
+  onDeleteThread,
 }: Props) {
   const t = useT();
-  const { consumeSuggestion } = useThreadStore();
+  const { consumeSuggestion, removeThreadAndDescendants, streamingByThread } = useThreadStore();
+
+  const handleDelete = useCallback(async (threadId: string) => {
+    if (streamingByThread[threadId]) return; // 生成中不可删除
+    try {
+      const subtree = await getThreadSubtree(threadId);
+      const collectTitles = (node: { title?: string | null; children?: unknown[] }): string[] => {
+        const title = node.title ?? "（无标题）";
+        const children = (node.children ?? []) as { title?: string | null; children?: unknown[] }[];
+        return [title, ...children.flatMap(collectTitles)];
+      };
+      const titles = collectTitles(subtree);
+      const msg = titles.length > 1
+        ? `将删除以下 ${titles.length} 个子线程：\n${titles.map((s, i) => (i > 0 ? "  " : "") + "• " + s).join("\n")}\n\n确认删除？`
+        : `确认删除子线程「${titles[0]}」？`;
+      if (!window.confirm(msg)) return;
+      await deleteThread(threadId);
+      removeThreadAndDescendants(threadId);
+      onDeleteThread?.(threadId);
+    } catch (err) {
+      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+    }
+  }, [streamingByThread, removeThreadAndDescendants, onDeleteThread]);
   const sorted = items;
 
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -236,6 +261,17 @@ export default function PinRoll({
               </p>
               {item.unreadCount > 0 && (
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500/80 flex-shrink-0" />
+              )}
+              {isFocused && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(item.thread.id); }}
+                  className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-ph hover:text-red-400 transition-colors rounded"
+                  title="删除子线程"
+                >
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                  </svg>
+                </button>
               )}
             </div>
 
