@@ -703,11 +703,10 @@ export default function ChatPage() {
         {(
           <div style={{ width: rightW, flexShrink: 0 }} className="min-w-0 border-l border-subtle flex flex-col">
             <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center gap-2">
-              <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">
+              <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em]">
                 {t.overview}
               </h2>
-              <span className="text-[9px] text-ph tabular-nums select-none">{threads.length}</span>
-              {/* 视图切换 */}
+              {/* 视图切换：紧跟「概览」文字 */}
               <div className="flex gap-0.5 bg-surface-80 border border-subtle rounded-lg p-0.5">
                 <button
                   onClick={() => switchRightView("dots")}
@@ -730,6 +729,7 @@ export default function ChatPage() {
                   </svg>
                 </button>
               </div>
+              <span className="text-[9px] text-ph tabular-nums select-none flex-1">{threads.length}</span>
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowMerge(true)}
@@ -756,6 +756,7 @@ export default function ChatPage() {
                 <MergeTreeCanvas
                   threads={threads}
                   selected={new Set(threads.map(t => t.id))}
+                  activeThreadId={activeThreadId}
                   onToggle={handleNavigateTo}
                   compact
                 />

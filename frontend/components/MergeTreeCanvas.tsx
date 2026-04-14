@@ -10,6 +10,8 @@ interface Props {
   threads: Thread[];
   selected: Set<string>;
   onToggle: (threadId: string) => void;
+  /** 当前正在查看的线程 id，在树中高亮显示 */
+  activeThreadId?: string | null;
   /** 显式传入宽高（px），用于弹窗等固定尺寸场景；省略时组件自行测量 */
   canvasWidth?: number;
   canvasHeight?: number;
@@ -76,6 +78,7 @@ function computeLayout(
 
 export default function MergeTreeCanvas({
   threads, selected, onToggle,
+  activeThreadId,
   canvasWidth: propW, canvasHeight: propH,
   compact = false,
 }: Props) {
@@ -206,6 +209,11 @@ export default function MergeTreeCanvas({
             <feGaussianBlur stdDeviation="3" result="blur"/>
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
+          {/* 当前激活节点的强发光 */}
+          <filter id="mtc-active-glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
         </defs>
 
         <g transform={groupTransform} style={{ willChange: "transform" }}>
@@ -238,6 +246,7 @@ export default function MergeTreeCanvas({
             const w = isRoot ? rw : nw;
             const h = isRoot ? rh : nh;
             const isSel = isRoot || selected.has(t.id);
+            const isActive = t.id === activeThreadId;
 
             return (
               <g
@@ -247,19 +256,43 @@ export default function MergeTreeCanvas({
                 style={{ cursor: "pointer" }}
                 onClick={() => onToggle(t.id)}
               >
-                {isSel && !isRoot && (
+                {/* 普通选中外圈 */}
+                {isSel && !isRoot && !isActive && (
                   <rect x={-w/2-3} y={-h/2-3} width={w+6} height={h+6} rx={nr+3}
                     fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth={2} />
                 )}
+                {/* 当前激活节点：双层亮环 */}
+                {isActive && (
+                  <>
+                    <rect x={-w/2-6} y={-h/2-6} width={w+12} height={h+12} rx={nr+6}
+                      fill="none" stroke="rgba(99,102,241,0.12)" strokeWidth={3} />
+                    <rect x={-w/2-3} y={-h/2-3} width={w+6} height={h+6} rx={nr+3}
+                      fill="none" stroke="rgba(129,140,248,0.7)" strokeWidth={1.5} />
+                  </>
+                )}
                 <rect
                   x={-w/2} y={-h/2} width={w} height={h} rx={isRoot ? (compact ? 8 : 12) : nr}
-                  fill={isSel ? "#1e1b4b" : "#18181b"}
-                  stroke={isRoot ? "rgba(99,102,241,0.5)" : isSel ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"}
-                  strokeWidth={isRoot ? 1.5 : 1}
-                  filter={isSel ? "url(#mtc-glow)" : undefined}
+                  fill={isActive ? "#2e2770" : isSel ? "#1e1b4b" : "#18181b"}
+                  stroke={
+                    isActive
+                      ? "rgba(129,140,248,0.9)"
+                      : isRoot
+                        ? "rgba(99,102,241,0.5)"
+                        : isSel
+                          ? "rgba(99,102,241,0.3)"
+                          : "rgba(255,255,255,0.06)"
+                  }
+                  strokeWidth={isActive ? 1.5 : isRoot ? 1.5 : 1}
+                  filter={isActive ? "url(#mtc-active-glow)" : isSel ? "url(#mtc-glow)" : undefined}
                 />
+                {/* 激活节点顶部小圆点指示器 */}
+                {isActive && (
+                  <circle cx={0} cy={-h/2 - (compact ? 6 : 8)} r={compact ? 2.5 : 3}
+                    fill="#818cf8" />
+                )}
                 {isRoot ? (
-                  <text x={0} y={compact ? 4 : 5} textAnchor="middle" fill="#c7d2fe"
+                  <text x={0} y={compact ? 4 : 5} textAnchor="middle"
+                    fill={isActive ? "#e0e7ff" : "#c7d2fe"}
                     fontSize={compact ? 9 : 11} fontWeight={600}
                     style={{ pointerEvents: "none", userSelect: "none" }}>
                     {trunc(t.title ?? "主线对话", compact ? 8 : 12)}
@@ -268,13 +301,15 @@ export default function MergeTreeCanvas({
                   <>
                     {!compact && <circle cx={w/2-8} cy={-h/2+8} r={3.5} fill={isSel ? "#4ade80" : "#3f3f46"} />}
                     {!compact && <rect x={-w/2+10} y={h/2-7} width={w-20} height={2.5} rx={1.25} fill="rgba(255,255,255,0.04)" />}
-                    <text x={-w/2+6} y={compact ? 3 : -4} fill={isSel ? "#c7d2fe" : "#52525b"}
-                      fontSize={titleFontSize} fontWeight={600}
+                    <text x={-w/2+6} y={compact ? 3 : -4}
+                      fill={isActive ? "#e0e7ff" : isSel ? "#c7d2fe" : "#52525b"}
+                      fontSize={titleFontSize} fontWeight={isActive ? 700 : 600}
                       style={{ pointerEvents: "none", userSelect: "none" }}>
                       {trunc(t.title ?? t.anchor_text, titleChars)}
                     </text>
                     {t.anchor_text && !compact && (
-                      <text x={-w/2+11} y={10} fill={isSel ? "rgba(165,180,252,0.55)" : "rgba(82,82,91,0.6)"}
+                      <text x={-w/2+11} y={10}
+                        fill={isActive ? "rgba(199,210,254,0.7)" : isSel ? "rgba(165,180,252,0.55)" : "rgba(82,82,91,0.6)"}
                         fontSize={anchorFontSize}
                         style={{ pointerEvents: "none", userSelect: "none" }}>
                         {trunc(t.anchor_text, anchorChars)}
