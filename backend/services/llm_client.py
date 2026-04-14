@@ -52,6 +52,16 @@ CHAT_MODELS = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
 ]
 
+# merge 梯队：仅包含 TPM ≥ 10K 的模型，用于合并输出（输入通常 8K+ tokens）
+# Merge tier: only models with TPM ≥ 10K; used for merge output (input often 8K+ tokens)
+# 排除 openai/gpt-oss-120b (8K TPM) 和 qwen/qwen3-32b (6K TPM)
+MERGE_MODELS = [
+    "moonshotai/kimi-k2-instruct",           # 10K TPM
+    "moonshotai/kimi-k2-instruct-0905",      # 10K TPM
+    "llama-3.3-70b-versatile",               # 12K TPM
+    "meta-llama/llama-4-scout-17b-16e-instruct",  # 30K TPM
+]
+
 # summarizer 梯队：轻量任务（摘要、分类、格式化）
 # Summarizer tier: lightweight tasks (summarization, classification, formatting)
 SUMMARIZER_MODELS = [
@@ -76,6 +86,11 @@ def _build_model_list() -> list[dict]:
                 "model_name": "chat",
                 "litellm_params": {"model": f"groq/{model}", "api_key": key},
             })
+        for model in MERGE_MODELS:
+            model_list.append({
+                "model_name": "merge",
+                "litellm_params": {"model": f"groq/{model}", "api_key": key},
+            })
         for model in SUMMARIZER_MODELS:
             model_list.append({
                 "model_name": "summarizer",
@@ -90,8 +105,12 @@ def _build_model_list() -> list[dict]:
 
 def _build_router() -> Router:
     """
-    构建 LiteLLM Router，配置 usage-based 路由和 chat → summarizer fallback。
-    Build the LiteLLM Router with usage-based routing and chat → summarizer fallback.
+    构建 LiteLLM Router，配置 usage-based 路由和 fallback 链。
+    Build the LiteLLM Router with usage-based routing and fallback chain.
+
+    fallback 链 / Fallback chain:
+      chat  → summarizer  （chat 全部耗尽时）
+      merge → chat        （merge 全部耗尽时降级到全量 chat 组）
     """
     model_list = _build_model_list()
     total_chat = len(GROQ_API_KEYS) * len(CHAT_MODELS)
@@ -100,7 +119,10 @@ def _build_router() -> Router:
         routing_strategy="usage-based-routing",  # 优先选剩余额度最多的 / Prefer the model with most remaining quota
         num_retries=3,
         retry_after=5,
-        fallbacks=[{"chat": ["summarizer"]}],  # 所有 chat 组合耗尽才触发 / Only triggered when all chat combos are exhausted
+        fallbacks=[
+            {"chat": ["summarizer"]},  # chat 全部耗尽才触发 / Triggered only when all chat combos are exhausted
+            {"merge": ["chat"]},       # merge 组耗尽时降级到 chat / Degrade to chat when merge group is exhausted
+        ],
         allowed_fails=total_chat,
     )
 
@@ -428,9 +450,9 @@ async def merge_threads(
     if sub_section:
         user_content += sub_section
 
-    # 硬截断兜底：中英混合约 2 chars/token，6 000 TPM 下内容上限 ~4 000 tokens = 8 000 chars
-    # Hard cap: ~2 chars/token for CJK+ASCII mix; keep under 8K chars to stay within 6K TPM
-    _HARD_CAP_CHARS = 8_000
+    # 安全网截断：merge 组最小 TPM 10K，系统消息约 200 tokens，输出预留 1K
+    # Safety net: merge group min TPM is 10K; reserve ~200 tokens for system + ~1K for output
+    _HARD_CAP_CHARS = 17_000  # ~8500 tokens at 2 chars/token (well within 10K TPM)
     if len(user_content) > _HARD_CAP_CHARS:
         user_content = user_content[:_HARD_CAP_CHARS] + "\n\n…（内容过长，已截断）"
 
@@ -451,7 +473,9 @@ async def merge_threads(
         },
     ]
 
-    async for chunk in chat_stream(messages, inject_meta=False):
+    # 使用 merge 模型组（TPM ≥ 10K），避免大请求被小 TPM 模型拒绝
+    # Use the merge model group (TPM ≥ 10K) to avoid large requests being rejected by low-TPM models
+    async for chunk in chat_stream(messages, model_type="merge", inject_meta=False):
         yield chunk
 
 

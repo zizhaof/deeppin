@@ -28,9 +28,9 @@ from dependencies.auth import get_current_user
 from services.llm_client import merge_threads, summarize
 
 # ── Token 预算常量 ────────────────────────────────────────────────────
-# 最保守的模型（qwen/qwen3-32b）TPM 上限 6 000；系统消息 + 输出预留 ~2 000 tokens
-# Most restrictive model (qwen/qwen3-32b) has 6K TPM; reserve ~2K for system + output
-_CONTENT_BUDGET_TOKENS = 3_500   # 输入内容的 token 预算
+# merge 组最小 TPM = 10K（kimi-k2）；系统消息约 200 tokens，输出预留 1K → 内容预算 8K
+# Merge group min TPM = 10K (kimi-k2); reserve ~200 tokens for system + ~1K for output → 8K budget
+_CONTENT_BUDGET_TOKENS = 8_000
 # 中英混合文本：汉字约 1.5 token/字，英文约 0.25 token/字，综合取 2 chars/token
 # Mixed Chinese/English: ~1.5 token per CJK char, ~0.25 per ASCII; overall ~2 chars/token
 _CHARS_PER_TOKEN = 2
