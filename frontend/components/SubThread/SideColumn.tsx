@@ -56,10 +56,10 @@ function PinChip({
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs transition-colors select-none ${
         isActive
           ? "bg-indigo-950/30 border-indigo-500/40 text-indigo-300"
-          : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300"
+          : "bg-surface border-base text-lo hover:border-strong hover:text-md"
       }`}
     >
-      <span className="text-zinc-600 flex-shrink-0 text-[10px]">
+      <span className="text-faint flex-shrink-0 text-[10px]">
         {direction === "up" ? "↑" : "↓"}
       </span>
       <span className="truncate max-w-[120px]">
@@ -144,11 +144,11 @@ export default function SideColumn({
 
   // 视图切换 toggle（始终显示在顶部）
   const viewToggle = items.length > 0 && (
-    <div className="absolute top-2 right-2 z-10 flex gap-0.5 bg-zinc-900/80 border border-white/6 rounded-lg p-0.5">
+    <div className="absolute top-2 right-2 z-10 flex gap-0.5 bg-surface-80 border border-subtle rounded-lg p-0.5">
       <button
         onClick={() => switchView("cards")}
         title="卡片视图"
-        className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors ${viewMode === "cards" ? "bg-white/8 text-zinc-300" : "text-zinc-600 hover:text-zinc-400"}`}
+        className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors ${viewMode === "cards" ? "bg-glass-md text-md" : "text-faint hover:text-lo"}`}
       >
         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
@@ -157,7 +157,7 @@ export default function SideColumn({
       <button
         onClick={() => switchView("tree")}
         title="树形视图"
-        className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors ${viewMode === "tree" ? "bg-white/8 text-zinc-300" : "text-zinc-600 hover:text-zinc-400"}`}
+        className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors ${viewMode === "tree" ? "bg-glass-md text-md" : "text-faint hover:text-lo"}`}
       >
         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
@@ -169,7 +169,7 @@ export default function SideColumn({
   if (items.length === 0) {
     return (
       <div className="h-full flex items-start justify-center pt-16">
-        <p className="text-xs text-gray-200 [writing-mode:vertical-rl] select-none">
+        <p className="text-xs text-lo [writing-mode:vertical-rl] select-none">
           选中文字 → 插针
         </p>
       </div>
@@ -189,9 +189,9 @@ export default function SideColumn({
           <div key="main">
             <button
               onClick={() => onSelectThread(mainThread.id)}
-              className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors ${activeThreadId === mainThread.id ? "bg-indigo-950/40 text-indigo-300" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]"}`}
+              className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors ${activeThreadId === mainThread.id ? "bg-indigo-950/40 text-indigo-300" : "text-dim hover:text-md hover:bg-glass"}`}
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
+              <div className="w-1.5 h-1.5 rounded-full bg-faint flex-shrink-0" />
               <span className="truncate font-medium">主线</span>
             </button>
             {subThreads.filter((t) => t.parent_thread_id === mainThread.id).map((t) => renderSubNode(t, 1))}
@@ -212,10 +212,10 @@ export default function SideColumn({
         <div key={thread.id}>
           <button
             onClick={() => onSelectThread(thread.id)}
-            className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors ${isActive ? "bg-indigo-950/40 text-indigo-300" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]"}`}
+            className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors ${isActive ? "bg-indigo-950/40 text-indigo-300" : "text-dim hover:text-md hover:bg-glass"}`}
             style={{ paddingLeft: depth * 12 + 8 }}
           >
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? "bg-indigo-400" : "bg-zinc-700"}`} />
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? "bg-indigo-400" : "bg-ph"}`} />
             <span className="truncate flex-1">{title}</span>
             {unread > 0 && (
               <span className="flex-shrink-0 w-3.5 h-3.5 rounded-full bg-indigo-500 text-white text-[8px] flex items-center justify-center font-semibold">

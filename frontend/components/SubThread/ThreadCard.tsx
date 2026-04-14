@@ -40,7 +40,7 @@ export default function ThreadCard({
 
   const baseCls = isActive
     ? "border-indigo-500/30 bg-indigo-950/20"
-    : "border-white/6 bg-zinc-900/70 hover:border-white/10 hover:bg-zinc-900";
+    : "border-subtle bg-surface-70 hover:border-base hover:bg-surface";
 
   // ── 折叠态 ──────────────────────────────────────────────────
   if (collapsed) {
@@ -51,7 +51,7 @@ export default function ThreadCard({
       >
         <span
           onPointerDown={onDragHandlePointerDown}
-          className="text-zinc-700 hover:text-zinc-500 cursor-grab select-none flex-shrink-0"
+          className="text-ph hover:text-dim cursor-grab select-none flex-shrink-0"
           title="拖拽移动"
         >
           <svg className="w-3 h-3" viewBox="0 0 10 16" fill="currentColor">
@@ -62,7 +62,7 @@ export default function ThreadCard({
           </svg>
         </span>
         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 flex-shrink-0" />
-        <p className="font-medium text-zinc-400 text-xs truncate flex-1">{title}</p>
+        <p className="font-medium text-lo text-xs truncate flex-1">{title}</p>
         {unreadCount > 0 && (
           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -70,7 +70,7 @@ export default function ThreadCard({
         )}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 text-zinc-700 hover:text-zinc-400 transition-colors"
+          className="flex-shrink-0 text-ph hover:text-lo transition-colors"
           title="展开"
         >
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -104,7 +104,7 @@ export default function ThreadCard({
       <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
         <span
           onPointerDown={onDragHandlePointerDown}
-          className="text-zinc-700 hover:text-zinc-500 cursor-grab select-none flex-shrink-0"
+          className="text-ph hover:text-dim cursor-grab select-none flex-shrink-0"
           title="拖拽移动"
         >
           <svg className="w-3 h-3" viewBox="0 0 10 16" fill="currentColor">
@@ -115,7 +115,7 @@ export default function ThreadCard({
           </svg>
         </span>
         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 flex-shrink-0" />
-        <p className="font-medium text-zinc-300 leading-snug truncate flex-1">{title}</p>
+        <p className="font-medium text-md leading-snug truncate flex-1">{title}</p>
         {unreadCount > 0 && (
           <span className="flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -123,7 +123,7 @@ export default function ThreadCard({
         )}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 text-zinc-700 hover:text-zinc-400 transition-colors"
+          className="flex-shrink-0 text-ph hover:text-lo transition-colors"
           title="折叠"
         >
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -134,7 +134,7 @@ export default function ThreadCard({
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             disabled={isStreaming}
-            className="flex-shrink-0 text-zinc-700 hover:text-red-400 disabled:opacity-30 transition-colors"
+            className="flex-shrink-0 text-ph hover:text-red-400 disabled:opacity-30 transition-colors"
             title={isStreaming ? "生成中，不可删除" : "删除子线程"}
           >
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -148,7 +148,7 @@ export default function ThreadCard({
       {(isStreaming || lastMsg) && (
         <div className="px-3 pb-2">
           <p className={`leading-snug line-clamp-2 text-[11px] ${
-            isStreaming ? "text-indigo-400/80" : "text-zinc-600"
+            isStreaming ? "text-indigo-400/80" : "text-faint"
           }`}>
             {preview}
             {isStreaming && (

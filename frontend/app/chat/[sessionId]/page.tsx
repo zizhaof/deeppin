@@ -541,12 +541,12 @@ export default function ChatPage() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-zinc-950">
+      <div className="h-screen flex items-center justify-center bg-base">
         <div className="flex items-center gap-2.5">
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="w-1.5 h-1.5 rounded-full bg-zinc-700 animate-bounce"
+              className="w-1.5 h-1.5 rounded-full bg-ph animate-bounce"
               style={{ animationDelay: `${i * 150}ms`, animationDuration: "900ms" }}
             />
           ))}
@@ -557,7 +557,7 @@ export default function ChatPage() {
 
   if (error) {
     return (
-      <div className="h-screen flex items-center justify-center bg-zinc-950">
+      <div className="h-screen flex items-center justify-center bg-base">
         <div className="flex items-center gap-2 text-sm">
           <svg className="w-4 h-4 text-red-500/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
@@ -569,7 +569,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-zinc-950 overflow-hidden">
+    <div className="h-screen flex flex-col bg-base overflow-hidden">
       <ThreadNav
         threads={threads}
         activeThreadId={activeThreadId}
@@ -593,10 +593,10 @@ export default function ChatPage() {
 
         {/* 左侧：子问题面板 */}
         {hasContent && (
-          <div className={`${rollItems.length > 0 ? "flex-[1]" : "w-8"} min-w-0 border-r border-white/[0.04] flex flex-col transition-[width,flex] duration-200`}>
+          <div className={`${rollItems.length > 0 ? "flex-[1]" : "w-8"} min-w-0 border-r border-subtle flex flex-col transition-[width,flex] duration-200`}>
             {rollItems.length > 0 && (
-              <div className="px-3 py-2 border-b border-white/[0.04] flex-shrink-0 flex items-center">
-                <h2 className="text-[9px] font-semibold text-zinc-600 uppercase tracking-[0.12em] flex-1">
+              <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center">
+                <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">
                   {t.subQuestions}
                 </h2>
               </div>
@@ -644,12 +644,12 @@ export default function ChatPage() {
 
         {/* 右侧：概览面板 */}
         {hasContent && (
-          <div className="flex-[1] min-w-0 border-l border-white/[0.04] flex flex-col">
-            <div className="px-3 py-2 border-b border-white/[0.04] flex-shrink-0 flex items-center gap-2">
-              <h2 className="text-[9px] font-semibold text-zinc-600 uppercase tracking-[0.12em] flex-1">
+          <div className="flex-[1] min-w-0 border-l border-subtle flex flex-col">
+            <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center gap-2">
+              <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">
                 {t.overview}
               </h2>
-              <span className="text-[9px] text-zinc-700 tabular-nums select-none">{threads.length}</span>
+              <span className="text-[9px] text-ph tabular-nums select-none">{threads.length}</span>
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowMerge(true)}

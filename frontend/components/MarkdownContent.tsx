@@ -172,33 +172,33 @@ export default function MarkdownContent({ content, anchors = [], onAnchorClick, 
       components={{
         // ── 块级元素 / Block elements ─────────────────────────────────
         p:          ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{hl(children)}</p>,
-        h1:         ({ children }) => <h1 className="text-lg font-bold mt-4 mb-2 border-b border-zinc-700 pb-1">{hl(children)}</h1>,
+        h1:         ({ children }) => <h1 className="text-lg font-bold mt-4 mb-2 border-b border-base pb-1">{hl(children)}</h1>,
         h2:         ({ children }) => <h2 className="text-base font-bold mt-3 mb-1.5">{hl(children)}</h2>,
-        h3:         ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1 text-zinc-300">{hl(children)}</h3>,
+        h3:         ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1 text-md">{hl(children)}</h3>,
         ul:         ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-0.5">{children}</ul>,
         ol:         ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-0.5">{children}</ol>,
         li:         ({ children }) => <li className="leading-relaxed">{hl(children)}</li>,
         blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-zinc-600 pl-3 my-2 text-zinc-400 italic">
+          <blockquote className="border-l-2 border-strong pl-3 my-2 text-lo italic">
             {children}
           </blockquote>
         ),
-        hr: () => <hr className="border-zinc-700 my-3" />,
+        hr: () => <hr className="border-base my-3" />,
 
         // ── 表格 / Table ──────────────────────────────────────────────
         table: ({ children }) => (
           <div className="overflow-x-auto my-3">
-            <table className="min-w-full text-xs border border-zinc-700 rounded">{children}</table>
+            <table className="min-w-full text-xs border border-base rounded">{children}</table>
           </div>
         ),
-        thead: ({ children }) => <thead className="bg-zinc-800">{children}</thead>,
-        th:    ({ children }) => <th className="px-3 py-1.5 text-left font-semibold border-b border-zinc-700 text-zinc-300">{hl(children)}</th>,
-        td:    ({ children }) => <td className="px-3 py-1.5 border-b border-zinc-800 text-zinc-200">{hl(children)}</td>,
+        thead: ({ children }) => <thead className="bg-elevated">{children}</thead>,
+        th:    ({ children }) => <th className="px-3 py-1.5 text-left font-semibold border-b border-base text-md">{hl(children)}</th>,
+        td:    ({ children }) => <td className="px-3 py-1.5 border-b border-subtle text-hi">{hl(children)}</td>,
 
         // ── 行内元素 / Inline elements ────────────────────────────────
-        strong: ({ children }) => <strong className="font-semibold text-zinc-100">{hl(children)}</strong>,
-        em:     ({ children }) => <em className="italic text-zinc-300">{hl(children)}</em>,
-        del:    ({ children }) => <del className="line-through text-zinc-500">{hl(children)}</del>,
+        strong: ({ children }) => <strong className="font-semibold text-hi">{hl(children)}</strong>,
+        em:     ({ children }) => <em className="italic text-md">{hl(children)}</em>,
+        del:    ({ children }) => <del className="line-through text-dim">{hl(children)}</del>,
         a:      ({ href, children }) => (
           <a
             href={href}
@@ -220,14 +220,14 @@ export default function MarkdownContent({ content, anchors = [], onAnchorClick, 
           const lang = (className ?? "").replace("language-", "");
           if (isBlock) {
             return (
-              <div className="my-3 rounded-lg overflow-hidden border border-zinc-700">
+              <div className="my-3 rounded-lg overflow-hidden border border-base">
                 {lang && (
-                  <div className="flex items-center justify-between bg-zinc-900 px-3 py-1 border-b border-zinc-700">
-                    <span className="text-[11px] text-zinc-500 font-mono">{lang}</span>
+                  <div className="flex items-center justify-between bg-surface px-3 py-1 border-b border-base">
+                    <span className="text-[11px] text-dim font-mono">{lang}</span>
                   </div>
                 )}
-                <pre className="bg-zinc-950 px-4 py-3 overflow-x-auto">
-                  <code className="text-sm font-mono text-zinc-200 whitespace-pre">{children}</code>
+                <pre className="bg-base px-4 py-3 overflow-x-auto">
+                  <code className="text-sm font-mono text-hi whitespace-pre">{children}</code>
                 </pre>
               </div>
             );
@@ -235,7 +235,7 @@ export default function MarkdownContent({ content, anchors = [], onAnchorClick, 
           // 行内代码 / Inline code
           return (
             <code
-              className="bg-zinc-700/70 text-zinc-200 rounded px-1 py-0.5 text-[0.85em] font-mono"
+              className="bg-elevated text-hi rounded px-1 py-0.5 text-[0.85em] font-mono border border-subtle"
               {...rest}
             >
               {children}

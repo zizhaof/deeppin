@@ -127,6 +127,10 @@ body {
   /* Placeholder */
   .placeholder-ph::placeholder { color: var(--t-ph); }
 
+  /* 文字色对应的背景色（用于小装饰元素）*/
+  .bg-faint { background-color: var(--t-faint); }
+  .bg-ph    { background-color: var(--t-ph); }
+
   /* 禁用 */
   .bg-disabled  { background-color: var(--s-disabled); }
   .text-disabled { color: var(--t-disabled); }

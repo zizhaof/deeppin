@@ -93,7 +93,7 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
   if (flat.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-[10px] text-zinc-700 select-none tracking-wider">{t.noThreads}</p>
+        <p className="text-[10px] text-ph select-none tracking-wider">{t.noThreads}</p>
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
                 key={`line-${node.thread.id}`}
                 d={`M ${x1} ${y1} L ${x1} ${y2} L ${x2} ${y2}`}
                 fill="none"
-                stroke="#27272a"
+                stroke="var(--b-base)"
                 strokeWidth={1}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -142,8 +142,8 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
               : hasUnread
               ? "#f87171"
               : isRoot
-              ? "#52525b"
-              : "#3f3f46";
+              ? "var(--t-dim)"
+              : "var(--t-faint)";
 
             return (
               <g key={`dot-${node.thread.id}`}>
@@ -180,7 +180,7 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
               onClick={() => onSelect(node.thread.id)}
               style={{ position: "absolute", top: node.row * ROW_H, left: 0, right: 0, height: ROW_H }}
               className={`flex items-center rounded-md transition-colors ${
-                isActive ? "bg-indigo-950/40" : "hover:bg-white/[0.03]"
+                isActive ? "bg-indigo-950/40" : "hover:bg-glass"
               }`}
             >
               <div className="flex-shrink-0" style={{ width: labelOffset }} />
@@ -189,8 +189,8 @@ export default function ThreadTree({ threads, activeThreadId, unreadCounts, mess
                   isActive
                     ? "text-indigo-300 font-medium"
                     : hasUnread
-                    ? "text-zinc-300 font-medium"
-                    : "text-zinc-600"
+                    ? "text-md font-medium"
+                    : "text-faint"
                 }`}
               >
                 {label}

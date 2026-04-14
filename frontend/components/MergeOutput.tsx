@@ -155,24 +155,24 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="flex flex-col bg-zinc-950 border border-white/8 rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
+        className="flex flex-col bg-surface border border-base rounded-2xl shadow-2xl shadow-black/20 overflow-hidden"
         style={{ width: modalW, maxWidth: "90vw", height: modalH, maxHeight: "85vh" }}
       >
         {/* ── 顶栏 ── */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-subtle flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
               <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l8 9M20 4l-8 9m0 0v7" />
               </svg>
             </div>
-            <h2 className="font-semibold text-zinc-200 text-sm">{t.mergeTitle}</h2>
+            <h2 className="font-semibold text-hi text-sm">{t.mergeTitle}</h2>
             {subThreads.length > 0 && (
-              <span className="text-[11px] text-zinc-600 tabular-nums">{subThreads.length} {t.mergeAngles}</span>
+              <span className="text-[11px] text-faint tabular-nums">{subThreads.length} {t.mergeAngles}</span>
             )}
           </div>
           <button onClick={onClose}
-            className="text-zinc-600 hover:text-zinc-400 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/5">
+            className="text-faint hover:text-lo transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -180,7 +180,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
         </div>
 
         {/* ── 格式选择 ── */}
-        <div className="flex flex-col gap-2 px-5 py-3 border-b border-white/5 flex-shrink-0">
+        <div className="flex flex-col gap-2 px-5 py-3 border-b border-subtle flex-shrink-0">
           <div className="flex gap-2">
             {FORMAT_OPTIONS.map((opt) => (
               <button key={opt.value} onClick={() => setFormat(opt.value)}
@@ -188,7 +188,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                 className={`flex-1 rounded-xl px-2.5 py-2.5 text-xs transition-all border ${
                   format === opt.value
                     ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
-                    : "bg-zinc-900/60 border-white/5 text-zinc-500 hover:border-white/10 hover:text-zinc-400"
+                    : "bg-surface-60 border-subtle text-dim hover:border-base hover:text-lo"
                 } disabled:opacity-40 disabled:cursor-not-allowed`}>
                 <div className="font-semibold text-left">{opt.label}</div>
                 <div className="text-[10px] mt-0.5 opacity-60 text-left leading-snug">{opt.desc}</div>
@@ -202,7 +202,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               disabled={isGenerating}
               placeholder={t.mergeCustomPromptPlaceholder}
               rows={3}
-              className="w-full bg-zinc-900/60 border border-white/8 rounded-xl px-3 py-2.5 text-xs text-zinc-300 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-indigo-500/40 transition-colors disabled:opacity-40"
+              className="w-full bg-surface-60 border border-base rounded-xl px-3 py-2.5 text-xs text-md placeholder:text-faint resize-none focus:outline-none focus:border-indigo-500/40 transition-colors disabled:opacity-40"
             />
           )}
         </div>
@@ -212,7 +212,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
 
           {/* 加载相关性 */}
           {state === "loading-relevance" && (
-            <div className="flex items-center justify-center h-full gap-2 text-zinc-600 text-sm">
+            <div className="flex items-center justify-center h-full gap-2 text-faint text-sm">
               {[0,1,2].map(i => (
                 <span key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 animate-bounce"
                   style={{ animationDelay: `${i*150}ms`, animationDuration: "900ms" }} />
@@ -225,7 +225,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           {isSelecting && (
             <div className="h-full flex flex-col">
               <div className="px-5 pt-3 pb-1 flex-shrink-0">
-                <span className="text-[9px] text-zinc-600 uppercase tracking-wider">选择要合并的子问题 · 点击节点反选</span>
+                <span className="text-[9px] text-faint uppercase tracking-wider">选择要合并的子问题 · 点击节点反选</span>
               </div>
               <div className="flex-1 min-h-0">
                 <MergeTreeCanvas
@@ -236,12 +236,12 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                   canvasHeight={canvasH}
                 />
               </div>
-              <div className="px-5 py-1.5 flex-shrink-0 flex items-center justify-between border-t border-white/[0.03]">
-                <span className="text-[10px] text-zinc-600">
+              <div className="px-5 py-1.5 flex-shrink-0 flex items-center justify-between border-t border-subtle">
+                <span className="text-[10px] text-faint">
                   已选 {selCount} / {subThreads.length} 个子问题
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] text-zinc-700">滚轮平移 · 拖拽移动</span>
+                  <span className="text-[9px] text-ph">滚轮平移 · 拖拽移动</span>
                 </div>
               </div>
             </div>
@@ -249,22 +249,22 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
 
           {/* 生成中 */}
           {state === "generating" && (
-            <div className="flex items-center gap-2.5 text-zinc-600 text-sm py-4 px-5">
+            <div className="flex items-center gap-2.5 text-faint text-sm py-4 px-5">
               {[0,1,2].map(i => (
                 <span key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500/70 animate-bounce"
                   style={{ animationDelay: `${i*150}ms`, animationDuration: "900ms" }} />
               ))}
-              <span className="ml-1 text-zinc-600">{status || "正在生成合并报告…"}</span>
+              <span className="ml-1 text-faint">{status || "正在生成合并报告…"}</span>
             </div>
           )}
 
           {/* 流式输出 / 完成 */}
           {(state === "streaming" || state === "done") && (
             <div ref={scrollRef} className="h-full overflow-y-auto px-5 py-4 scrollbar-thin">
-              <div className="text-sm text-zinc-200">
+              <div className="text-sm text-hi">
                 <MarkdownContent content={content} />
                 {state === "streaming" && (
-                  <span className="inline-block w-0.5 h-3.5 bg-zinc-600 ml-0.5 align-middle animate-pulse" />
+                  <span className="inline-block w-0.5 h-3.5 bg-faint ml-0.5 align-middle animate-pulse" />
                 )}
               </div>
             </div>
@@ -282,20 +282,20 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
         </div>
 
         {/* ── 底栏 ── */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-white/5 gap-3 flex-shrink-0">
-          <span className="text-[11px] text-zinc-700 truncate flex-1">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-subtle gap-3 flex-shrink-0">
+          <span className="text-[11px] text-ph truncate flex-1">
             {state === "streaming" && status ? status : ""}
           </span>
           <div className="flex items-center gap-2 flex-shrink-0">
             {hasContent && (
               <button onClick={handleCopy}
-                className="text-xs text-zinc-500 hover:text-zinc-300 px-2.5 py-1.5 rounded-lg border border-white/6 hover:border-white/12 transition-all">
+                className="text-xs text-dim hover:text-md px-2.5 py-1.5 rounded-lg border border-subtle hover:border-base transition-all">
                 {t.mergeCopyMd}
               </button>
             )}
             {hasContent && state === "done" && (
               <button onClick={handleDownload}
-                className="text-xs text-zinc-500 hover:text-zinc-300 px-2.5 py-1.5 rounded-lg border border-white/6 hover:border-white/12 transition-all">
+                className="text-xs text-dim hover:text-md px-2.5 py-1.5 rounded-lg border border-subtle hover:border-base transition-all">
                 {t.mergeDownload}
               </button>
             )}
@@ -313,7 +313,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                   }
                 }}
                 disabled={!mainThread || saving || saved}
-                className="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-40 px-2.5 py-1.5 rounded-lg border border-white/6 hover:border-white/12 transition-all"
+                className="text-xs text-dim hover:text-md disabled:opacity-40 px-2.5 py-1.5 rounded-lg border border-base hover:border-strong transition-all"
               >
                 {saved ? "已保存" : saving ? "保存中…" : "保存到对话"}
               </button>
@@ -322,20 +322,20 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               <button
                 onClick={handleGenerate}
                 disabled={selCount === 0 || (format === "custom" && !customPrompt.trim())}
-                className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white px-4 py-1.5 rounded-lg transition-colors"
+                className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white px-4 py-1.5 rounded-lg transition-colors"
               >
                 合并 {selCount} 个子问题
               </button>
             )}
             {(state === "done" || state === "error") && (
               <button onClick={() => setState("selecting")}
-                className="text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-1.5 rounded-lg transition-colors">
+                className="text-xs font-semibold bg-elevated hover:bg-glass-lg text-md px-4 py-1.5 rounded-lg transition-colors border border-subtle">
                 重新选择
               </button>
             )}
             {isGenerating && (
               <button disabled
-                className="text-xs font-semibold bg-zinc-800/80 text-zinc-700 px-4 py-1.5 rounded-lg cursor-not-allowed">
+                className="text-xs font-semibold bg-disabled text-disabled px-4 py-1.5 rounded-lg cursor-not-allowed">
                 生成中…
               </button>
             )}

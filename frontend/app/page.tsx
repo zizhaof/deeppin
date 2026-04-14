@@ -16,9 +16,9 @@ import SessionDrawer from "@/components/SessionDrawer";
 function Divider({ label }: { label: string }) {
   return (
     <div className="w-full max-w-[420px] flex items-center gap-3">
-      <div className="flex-1 h-px bg-zinc-800/80" />
-      <span className="text-[9px] font-semibold text-zinc-700 uppercase tracking-[0.18em]">{label}</span>
-      <div className="flex-1 h-px bg-zinc-800/80" />
+      <div className="flex-1 h-px bg-base" />
+      <span className="text-[9px] font-semibold text-ph uppercase tracking-[0.18em]">{label}</span>
+      <div className="flex-1 h-px bg-base" />
     </div>
   );
 }
@@ -29,7 +29,7 @@ function ProblemStatement({ t }: { t: T }) {
   return (
     <div className="w-full max-w-[420px] space-y-3">
       {/* 情景铺垫 */}
-      <p className="text-[13px] text-zinc-400 leading-relaxed mb-4">{t.problemSetup}</p>
+      <p className="text-[13px] text-lo leading-relaxed mb-4">{t.problemSetup}</p>
 
       {/* 两个坏选择 */}
       <div className="grid grid-cols-2 gap-2">
@@ -37,16 +37,16 @@ function ProblemStatement({ t }: { t: T }) {
           { label: t.badChoice1Label, desc: t.badChoice1Desc },
           { label: t.badChoice2Label, desc: t.badChoice2Desc },
         ].map((item, i) => (
-          <div key={i} className="relative rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 overflow-hidden">
+          <div key={i} className="relative rounded-xl border border-base bg-surface-60 p-4 overflow-hidden">
             {/* 顶部红线 */}
             <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-red-500/50 to-red-500/10" />
             <div className="flex items-center gap-1.5 mb-2">
               <svg className="w-3 h-3 text-red-500/50 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
-              <span className="text-xs font-medium text-zinc-500 line-through decoration-red-500/40 decoration-1">{item.label}</span>
+              <span className="text-xs font-medium text-dim line-through decoration-red-500/40 decoration-1">{item.label}</span>
             </div>
-            <p className="text-[11px] text-zinc-600 leading-relaxed">{item.desc}</p>
+            <p className="text-[11px] text-faint leading-relaxed">{item.desc}</p>
           </div>
         ))}
       </div>
@@ -65,7 +65,7 @@ function ProblemStatement({ t }: { t: T }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-indigo-300 mb-1">{t.solutionLabel}</p>
-            <p className="text-xs text-zinc-400 leading-relaxed">{t.solutionDesc}</p>
+            <p className="text-xs text-lo leading-relaxed">{t.solutionDesc}</p>
           </div>
         </div>
       </div>
@@ -87,19 +87,19 @@ function HowItWorks({ t }: { t: T }) {
     <div className="w-full max-w-[420px]">
       <div className="relative pl-[52px]">
         {/* 竖向连接线 */}
-        <div className="absolute left-[19px] top-5 bottom-5 w-px bg-zinc-800" />
+        <div className="absolute left-[19px] top-5 bottom-5 w-px bg-base" />
 
         <div className="space-y-1">
           {steps.map((step, i) => (
             <div key={i} className="relative flex items-start gap-0 pb-6 last:pb-0">
               {/* 数字圆点 */}
-              <div className="absolute left-[-33px] w-[26px] h-[26px] rounded-full border border-zinc-800 bg-zinc-950 flex items-center justify-center z-10">
-                <span className="font-mono text-[9px] text-zinc-600 tracking-tight">{step.num}</span>
+              <div className="absolute left-[-33px] w-[26px] h-[26px] rounded-full border border-base bg-base flex items-center justify-center z-10">
+                <span className="font-mono text-[9px] text-faint tracking-tight">{step.num}</span>
               </div>
               {/* 内容 */}
               <div className="pt-0.5">
-                <p className="text-[13px] font-medium text-zinc-300 leading-snug mb-1">{step.title}</p>
-                <p className="text-[11px] text-zinc-600 leading-relaxed">{step.desc}</p>
+                <p className="text-[13px] font-medium text-md leading-snug mb-1">{step.title}</p>
+                <p className="text-[11px] text-faint leading-relaxed">{step.desc}</p>
               </div>
             </div>
           ))}
@@ -210,14 +210,14 @@ export default function HomePage() {
   });
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col relative overflow-x-hidden">
+    <div className="min-h-screen bg-base flex flex-col relative overflow-x-hidden">
 
       {/* 背景：点网格 + 顶部光晕 */}
       <div className="absolute inset-0 pointer-events-none select-none" aria-hidden>
         <div
           className="absolute inset-0 opacity-100"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='28' height='28' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='14' cy='14' r='0.7' fill='rgba(255,255,255,0.032)'/%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='28' height='28' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='14' cy='14' r='0.7' fill='rgba(128,128,128,0.15)'/%3E%3C/svg%3E")`,
           }}
         />
         <div
@@ -230,11 +230,11 @@ export default function HomePage() {
       <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} />
 
       {/* 顶栏 */}
-      <header className="relative z-10 border-b border-white/[0.05] px-4 py-3 flex items-center justify-between">
+      <header className="relative z-10 border-b border-subtle px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-faint hover:text-md hover:bg-glass transition-colors"
             title={t.recentSessions}
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
@@ -242,12 +242,12 @@ export default function HomePage() {
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-zinc-900 border border-white/8 flex items-center justify-center">
+            <div className="w-6 h-6 rounded-md bg-surface border border-base flex items-center justify-center">
               <svg className="w-3 h-3 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
               </svg>
             </div>
-            <span className="text-sm font-semibold text-zinc-200 tracking-tight">Deeppin</span>
+            <span className="text-sm font-semibold text-md tracking-tight">Deeppin</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -257,12 +257,12 @@ export default function HomePage() {
                 <img
                   src={user.avatar_url}
                   alt="avatar"
-                  className="w-7 h-7 rounded-full border border-white/10 object-cover"
+                  className="w-7 h-7 rounded-full border border-base object-cover"
                 />
               )}
               <button
                 onClick={handleLogout}
-                className="text-[11px] font-medium text-zinc-600 hover:text-zinc-300 px-2 py-1 rounded-lg border border-white/[0.08] hover:border-white/15 transition-colors"
+                className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
               >
                 退出
               </button>
@@ -270,7 +270,7 @@ export default function HomePage() {
           )}
           <button
             onClick={toggleLang}
-            className="text-[11px] font-medium text-zinc-600 hover:text-zinc-300 px-2 py-1 rounded-lg border border-white/8 hover:border-white/15 transition-colors"
+            className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
           >
             {t.toggleLang}
           </button>
@@ -295,17 +295,17 @@ export default function HomePage() {
           {/* 图标 + 光晕 */}
           <div className="relative">
             <div className="absolute inset-0 rounded-2xl blur-xl bg-indigo-500/20 scale-110" />
-            <div className="relative w-14 h-14 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_32px_rgba(0,0,0,0.4)]">
+            <div className="relative w-14 h-14 rounded-2xl bg-surface border border-base flex items-center justify-center shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_32px_rgba(0,0,0,0.15)]">
               <svg className="w-6 h-6 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
               </svg>
             </div>
           </div>
 
-          <h1 className="text-[22px] font-semibold text-zinc-100 tracking-tight leading-tight">{t.welcomeTitle}</h1>
+          <h1 className="text-[22px] font-semibold text-hi tracking-tight leading-tight">{t.welcomeTitle}</h1>
 
           {/* 首页输入框 */}
-          <div className="w-full max-w-[360px] bg-zinc-900 rounded-2xl border border-white/8 focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
+          <div className="w-full max-w-[360px] bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
             <textarea
               value={heroText}
               onChange={(e) => setHeroText(e.target.value)}
@@ -325,13 +325,13 @@ export default function HomePage() {
               placeholder={t.inputPlaceholder}
               disabled={creating}
               rows={1}
-              className="w-full bg-transparent resize-none outline-none text-sm text-zinc-200 placeholder-zinc-700 px-4 pt-3 pb-2 max-h-[120px] disabled:opacity-30 leading-relaxed"
+              className="w-full bg-transparent resize-none outline-none text-sm text-hi placeholder-ph px-4 pt-3 pb-2 max-h-[120px] disabled:opacity-30 leading-relaxed"
             />
             <div className="flex justify-end px-3 pb-2.5">
               <button
                 onClick={() => { if (heroText.trim() && !creating) handleNewChat(heroText); }}
                 disabled={!heroText.trim() || creating}
-                className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white flex items-center justify-center transition-colors shadow-sm shadow-indigo-950/50"
+                className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white flex items-center justify-center transition-colors shadow-sm shadow-indigo-950/50"
                 aria-label="开始对话"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>

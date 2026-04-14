@@ -141,7 +141,7 @@ export default function PinRoll({
   if (sorted.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-[10px] text-zinc-700 [writing-mode:vertical-rl] select-none tracking-[0.15em]">
+        <p className="text-[10px] text-ph [writing-mode:vertical-rl] select-none tracking-[0.15em]">
           {t.selectToPin}
         </p>
       </div>
@@ -221,8 +221,8 @@ export default function PinRoll({
               ${isActive
                 ? "border-indigo-500/30 bg-indigo-950/15"
                 : isFocused
-                ? "border-white/10 bg-zinc-800/90"
-                : "border-white/[0.05] bg-zinc-900/70"
+                ? "border-base bg-elevated-80"
+                : "border-subtle bg-surface-70"
               }
             `}
           >
@@ -230,7 +230,7 @@ export default function PinRoll({
             <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 flex-shrink-0">
               <div className="w-1 h-1 rounded-full bg-indigo-500/50 flex-shrink-0" />
               <p className={`font-medium truncate flex-1 leading-tight ${
-                isFocused ? `text-zinc-200 ${titleSizeCls}` : `text-zinc-400 ${titleSizeCls}`
+                isFocused ? `text-hi ${titleSizeCls}` : `text-lo ${titleSizeCls}`
               }`}>
                 {title}
               </p>
@@ -244,7 +244,7 @@ export default function PinRoll({
               <div className="flex-1 min-h-0 flex flex-col px-3 pb-2.5 gap-1.5 overflow-hidden">
                 {(preview || isStreaming || hasStatus) && (
                   <div className={`flex-1 min-h-0 leading-snug overflow-hidden ${previewSizeCls} ${
-                    isStreaming ? "text-indigo-400/80" : "text-zinc-600"
+                    isStreaming ? "text-indigo-400/80" : "text-faint"
                   }`}>
                     <p className="overflow-hidden break-words" style={{ wordBreak: "break-word" }}>
                       {preview || "…"}
@@ -255,7 +255,7 @@ export default function PinRoll({
                     {hasStatus && (
                       <span className="flex gap-0.5 items-center mt-0.5">
                         {[0, 1, 2].map((j) => (
-                          <span key={j} className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce"
+                          <span key={j} className="w-1 h-1 rounded-full bg-faint animate-bounce"
                             style={{ animationDelay: `${j * 150}ms`, animationDuration: "900ms" }} />
                         ))}
                       </span>

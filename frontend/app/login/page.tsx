@@ -25,7 +25,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+    <div className="min-h-screen bg-base flex items-center justify-center">
       {/* 背景光晕 */}
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] blur-[80px] opacity-50 pointer-events-none"
@@ -38,7 +38,7 @@ export default function LoginPage() {
       <div className="relative flex flex-col items-center gap-8 px-6">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center shadow-[0_0_0_1px_rgba(99,102,241,0.2)]">
+          <div className="w-12 h-12 rounded-2xl bg-surface border border-base flex items-center justify-center shadow-[0_0_0_1px_rgba(99,102,241,0.2)]">
             <svg
               className="w-5 h-5 text-indigo-400"
               viewBox="0 0 24 24"
@@ -47,16 +47,16 @@ export default function LoginPage() {
               <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
             </svg>
           </div>
-          <span className="text-lg font-semibold text-zinc-100 tracking-tight">
+          <span className="text-lg font-semibold text-hi tracking-tight">
             Deeppin
           </span>
         </div>
 
         {/* 卡片 */}
-        <div className="w-full max-w-[320px] rounded-2xl border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-6 flex flex-col gap-5">
+        <div className="w-full max-w-[320px] rounded-2xl border border-base bg-surface-60 backdrop-blur p-6 flex flex-col gap-5">
           <div className="text-center">
-            <p className="text-sm font-medium text-zinc-200">欢迎回来</p>
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-sm font-medium text-hi">欢迎回来</p>
+            <p className="text-xs text-dim mt-1">
               登录以保存和管理你的深度对话
             </p>
           </div>
@@ -64,7 +64,7 @@ export default function LoginPage() {
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border border-white/10 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 transition-colors text-sm font-medium text-zinc-200"
+            className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border border-base bg-elevated hover:bg-glass-lg disabled:opacity-50 transition-colors text-sm font-medium text-hi"
           >
             {/* Google SVG logo */}
             <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
@@ -89,7 +89,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <p className="text-[11px] text-zinc-600 text-center max-w-[260px]">
+        <p className="text-[11px] text-faint text-center max-w-[260px]">
           登录即代表你同意 Deeppin 的服务条款和隐私政策
         </p>
       </div>
