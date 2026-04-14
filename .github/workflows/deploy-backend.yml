@@ -18,6 +18,7 @@ jobs:
           host: ${{ secrets.ORACLE_HOST }}
           username: ubuntu
           key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 20m
           script: |
             cd /home/ubuntu/deeppin
             git pull origin main
