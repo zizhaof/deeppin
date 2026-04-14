@@ -1,8 +1,84 @@
 @import "tailwindcss";
 
+/* ── 设计系统颜色 token（浅色模式默认，深色模式 override）────────────────
+   Design system color tokens — light mode defaults, dark mode overrides.
+   组件使用 @utility 类名，CSS 变量随 prefers-color-scheme 自动切换。
+   Components use @utility class names; CSS vars auto-switch with prefers-color-scheme.
+   ──────────────────────────────────────────────────────────────────────── */
+
 :root {
+  /* — 表面背景 / Surface backgrounds — */
+  --s-base:       #f4f4f5;          /* 页面底色 / page: zinc-100 */
+  --s-surface:    #ffffff;           /* 卡片/面板 / card: white */
+  --s-elevated:   #fafafa;           /* 抬起层 / raised: off-white */
+
+  /* — 半透明表面 / Semi-transparent surfaces — */
+  --s-surface-95: rgba(255,255,255,0.95);
+  --s-surface-80: rgba(255,255,255,0.80);
+  --s-surface-70: rgba(255,255,255,0.70);
+  --s-surface-60: rgba(255,255,255,0.60);
+  --s-elevated-80: rgba(250,250,250,0.80);
+
+  /* — 悬停/玻璃层 / Hover / glass overlays — */
+  --s-glass:    rgba(0,0,0,0.04);
+  --s-glass-md: rgba(0,0,0,0.07);
+  --s-glass-lg: rgba(0,0,0,0.12);
+
+  /* — 边框 / Borders — */
+  --b-subtle: rgba(0,0,0,0.06);
+  --b-base:   rgba(0,0,0,0.10);
+  --b-strong: rgba(0,0,0,0.16);
+
+  /* — 文字 / Text — */
+  --t-hi:    #18181b;   /* zinc-900 — 主文字 */
+  --t-md:    #3f3f46;   /* zinc-700 — 次要 */
+  --t-lo:    #52525b;   /* zinc-600 — 三级 */
+  --t-dim:   #71717a;   /* zinc-500 — 元数据 */
+  --t-faint: #a1a1aa;   /* zinc-400 — 弱提示 */
+  --t-ph:    #d4d4d8;   /* zinc-300 — placeholder */
+
+  /* — 禁用状态 / Disabled states — */
+  --s-disabled:   #e4e4e7;   /* zinc-200 */
+  --t-disabled:   #a1a1aa;   /* zinc-400 */
+
+  /* Legacy vars (keep for body/font) */
   --background: #ffffff;
   --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --s-base:       #09090b;           /* zinc-950 */
+    --s-surface:    #18181b;            /* zinc-900 */
+    --s-elevated:   #27272a;            /* zinc-800 */
+
+    --s-surface-95: rgba(24,24,27,0.95);
+    --s-surface-80: rgba(24,24,27,0.80);
+    --s-surface-70: rgba(24,24,27,0.70);
+    --s-surface-60: rgba(24,24,27,0.60);
+    --s-elevated-80: rgba(39,39,42,0.80);
+
+    --s-glass:    rgba(255,255,255,0.04);
+    --s-glass-md: rgba(255,255,255,0.08);
+    --s-glass-lg: rgba(255,255,255,0.12);
+
+    --b-subtle: rgba(255,255,255,0.05);
+    --b-base:   rgba(255,255,255,0.08);
+    --b-strong: rgba(255,255,255,0.14);
+
+    --t-hi:    #f4f4f5;   /* zinc-100 */
+    --t-md:    #d4d4d8;   /* zinc-300 */
+    --t-lo:    #a1a1aa;   /* zinc-400 */
+    --t-dim:   #71717a;   /* zinc-500 */
+    --t-faint: #52525b;   /* zinc-600 */
+    --t-ph:    #3f3f46;   /* zinc-700 */
+
+    --s-disabled:   #27272a;   /* zinc-800 */
+    --t-disabled:   #3f3f46;   /* zinc-700 */
+
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
 }
 
 @theme inline {
@@ -12,20 +88,51 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* 隐藏滚动条但保留滚动功能 */
+/* ── 语义化工具类 / Semantic utility classes ──────────────────────────── */
+@layer utilities {
+  /* 表面 */
+  .bg-base       { background-color: var(--s-base); }
+  .bg-surface    { background-color: var(--s-surface); }
+  .bg-elevated   { background-color: var(--s-elevated); }
+
+  .bg-surface-95 { background-color: var(--s-surface-95); }
+  .bg-surface-80 { background-color: var(--s-surface-80); }
+  .bg-surface-70 { background-color: var(--s-surface-70); }
+  .bg-surface-60 { background-color: var(--s-surface-60); }
+  .bg-elevated-80 { background-color: var(--s-elevated-80); }
+
+  .bg-glass      { background-color: var(--s-glass); }
+  .bg-glass-md   { background-color: var(--s-glass-md); }
+  .bg-glass-lg   { background-color: var(--s-glass-lg); }
+
+  /* 边框 */
+  .border-subtle { border-color: var(--b-subtle); }
+  .border-base   { border-color: var(--b-base); }
+  .border-strong { border-color: var(--b-strong); }
+
+  /* 文字 */
+  .text-hi    { color: var(--t-hi); }
+  .text-md    { color: var(--t-md); }
+  .text-lo    { color: var(--t-lo); }
+  .text-dim   { color: var(--t-dim); }
+  .text-faint { color: var(--t-faint); }
+  .text-ph    { color: var(--t-ph); }
+
+  /* Placeholder */
+  .placeholder-ph::placeholder { color: var(--t-ph); }
+
+  /* 禁用 */
+  .bg-disabled  { background-color: var(--s-disabled); }
+  .text-disabled { color: var(--t-disabled); }
+}
+
+/* ── 滚动条 / Scrollbars ─────────────────────────────────────────────── */
 .scrollbar-hide {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -34,10 +141,9 @@ body {
   display: none;
 }
 
-/* 细滚动条，匹配深色主题 */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent;
+  scrollbar-color: var(--b-base) transparent;
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 4px;
@@ -46,9 +152,9 @@ body {
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--s-elevated);
   border-radius: 9999px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--t-dim);
 }

@@ -137,11 +137,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   };
 
   return (
-    <div className="border-t border-white/[0.04] bg-zinc-950 px-4 py-3">
-      <div className={`bg-zinc-900 rounded-2xl border overflow-hidden transition-all ${
+    <div className="border-t border-subtle bg-base px-4 py-3">
+      <div className={`bg-surface rounded-2xl border overflow-hidden transition-all ${
         disabled
-          ? "border-white/[0.04]"
-          : "border-white/8 focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)]"
+          ? "border-subtle"
+          : "border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)]"
       }`}>
 
         {/* 附件 chips */}
@@ -150,15 +150,15 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             {attachments.map((a, i) => (
               <span
                 key={i}
-                className="flex items-center gap-1.5 text-[11px] bg-zinc-800/80 text-zinc-400 rounded-full pl-2.5 pr-1 py-0.5 border border-white/6"
+                className="flex items-center gap-1.5 text-[11px] bg-elevated-80 text-lo rounded-full pl-2.5 pr-1 py-0.5 border border-subtle"
               >
-                <svg className="w-3 h-3 text-zinc-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-3 h-3 text-faint flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
                 <span className="max-w-[160px] truncate">{a.label}</span>
                 <button
                   onClick={() => removeAttachment(i)}
-                  className="ml-0.5 w-4 h-4 rounded-full hover:bg-zinc-700 flex items-center justify-center text-zinc-600 hover:text-zinc-400 flex-shrink-0 transition-colors"
+                  className="ml-0.5 w-4 h-4 rounded-full hover:bg-glass-md flex items-center justify-center text-faint hover:text-lo flex-shrink-0 transition-colors"
                 >
                   <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M18 6L6 18M6 6l12 12" />
@@ -176,7 +176,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={disabled || uploading}
-            className="w-7 h-7 rounded-lg hover:bg-white/5 disabled:opacity-20 text-zinc-700 hover:text-zinc-500 flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+            className="w-7 h-7 rounded-lg hover:bg-glass disabled:opacity-20 text-ph hover:text-dim flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
             aria-label="添加附件"
           >
             {uploading ? (
@@ -210,7 +210,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             placeholder={uploading ? t.extracting : webSearch ? t.webSearchPlaceholder : t.inputPlaceholder}
             disabled={disabled || uploading}
             rows={1}
-            className="flex-1 bg-transparent resize-none outline-none text-sm text-zinc-200 placeholder-zinc-700 max-h-40 disabled:opacity-30 leading-relaxed"
+            className="flex-1 bg-transparent resize-none outline-none text-sm text-hi placeholder-ph max-h-40 disabled:opacity-30 leading-relaxed"
           />
 
           {/* 联网搜索 toggle */}
@@ -222,7 +222,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 disabled:opacity-20 ${
               webSearch
                 ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/20"
-                : "hover:bg-white/5 text-zinc-700 hover:text-zinc-500"
+                : "hover:bg-glass text-ph hover:text-dim"
             }`}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -236,7 +236,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800/80 disabled:text-zinc-700 text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 shadow-sm shadow-indigo-950/50"
+            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 shadow-sm shadow-indigo-950/50"
             aria-label="发送"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>

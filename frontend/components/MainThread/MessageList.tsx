@@ -56,16 +56,16 @@ export default function MessageList({
               {anchorText && (
                 <div className="flex gap-3">
                   <div className="w-0.5 flex-shrink-0 bg-indigo-500/30 rounded-full mt-0.5 mb-0.5" />
-                  <p className="text-sm text-zinc-500 leading-relaxed italic">{anchorText}</p>
+                  <p className="text-sm text-dim leading-relaxed italic">{anchorText}</p>
                 </div>
               )}
-              <p className="text-[10px] text-zinc-600 font-semibold tracking-[0.1em] uppercase">{t.chooseQuestion}</p>
+              <p className="text-[10px] text-faint font-semibold tracking-[0.1em] uppercase">{t.chooseQuestion}</p>
               <div className="flex flex-col gap-2">
                 {suggestions.map((q, i) => (
                   <button
                     key={i}
                     onClick={() => onSendSuggestion?.(q)}
-                    className="text-left text-sm text-zinc-400 bg-zinc-900/60 hover:bg-zinc-900 border border-white/5 hover:border-white/10 rounded-xl px-4 py-3 leading-snug transition-all"
+                    className="text-left text-sm text-lo bg-surface-60 hover:bg-surface border border-subtle hover:border-base rounded-xl px-4 py-3 leading-snug transition-all"
                   >
                     {q}
                   </button>
@@ -82,8 +82,8 @@ export default function MessageList({
                   </svg>
                 </div>
               </div>
-              <h2 className="text-sm font-semibold text-zinc-300 tracking-tight">{t.welcomeTitle}</h2>
-              <p className="text-xs text-zinc-600 leading-relaxed">{t.welcomeSub}</p>
+              <h2 className="text-sm font-semibold text-md tracking-tight">{t.welcomeTitle}</h2>
+              <p className="text-xs text-faint leading-relaxed">{t.welcomeSub}</p>
             </div>
           )}
         </div>
@@ -106,17 +106,17 @@ export default function MessageList({
           {/* status 占位：无 streaming 内容时显示后台状态提示 */}
           {statusText && !streamingText && (
             <div className="flex justify-start mb-5 pl-9">
-              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-zinc-900/70 border border-white/5 max-w-xs">
+              <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-surface-70 border border-subtle max-w-xs">
                 <span className="flex gap-1 items-center">
                   {[0, 1, 2].map((i) => (
                     <span
                       key={i}
-                      className="w-1 h-1 rounded-full bg-zinc-600 animate-bounce"
+                      className="w-1 h-1 rounded-full bg-faint animate-bounce"
                       style={{ animationDelay: `${i * 150}ms`, animationDuration: "900ms" }}
                     />
                   ))}
                 </span>
-                <span className="text-xs text-zinc-600">{statusText}</span>
+                <span className="text-xs text-faint">{statusText}</span>
               </div>
             </div>
           )}

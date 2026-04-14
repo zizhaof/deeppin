@@ -1,9 +1,18 @@
 "use client";
 // components/MainThread/MessageBubble.tsx
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import MarkdownContent from "@/components/MarkdownContent";
 import { useT } from "@/stores/useLangStore";
+
+/** 当前存活的选中高亮 span 的清理函数（全局唯一，一次只有一个选区） */
+let _activeHighlightCleanup: (() => void) | null = null;
+
+/** 供外部（PinMenu onClose）调用，移除临时选中高亮 */
+export function clearActiveHighlight() {
+  _activeHighlightCleanup?.();
+  _activeHighlightCleanup = null;
+}
 
 const COLLAPSE_THRESHOLD = 300;
 
@@ -136,6 +145,18 @@ export default function MessageBubble({
   const [expanded, setExpanded] = useState(false);
   /** AI 消息的原始/渲染模式切换 */
   const [rawMode, setRawMode] = useState(false);
+  /** 选中高亮临时 span，PinMenu 弹出期间保留视觉选区 */
+  const tempHighlightRef = useRef<HTMLSpanElement | null>(null);
+
+  /** 移除临时高亮 span，将子节点原地还原 */
+  const removeHighlight = useCallback(() => {
+    const span = tempHighlightRef.current;
+    if (!span || !span.parentNode) { tempHighlightRef.current = null; return; }
+    const parent = span.parentNode;
+    while (span.firstChild) parent.insertBefore(span.firstChild, span);
+    parent.removeChild(span);
+    tempHighlightRef.current = null;
+  }, []);
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
@@ -151,9 +172,29 @@ export default function MessageBubble({
 
     const startOffset = getCharOffset(bubble, range.startContainer, range.startOffset);
     const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
-
     const rect = range.getBoundingClientRect();
-    onSelect(sel.toString().trim(), messageId, rect, startOffset, endOffset);
+    const selectedText = sel.toString().trim();
+
+    // 移除上一次残留的高亮（包括其他 bubble 的）
+    clearActiveHighlight();
+    removeHighlight();
+
+    // 用临时 span 保留选区高亮（PinMenu 弹出后浏览器会清除 selection）
+    try {
+      const span = document.createElement("span");
+      span.style.cssText = "background:rgba(99,102,241,0.25);border-radius:2px;";
+      range.surroundContents(span);
+      tempHighlightRef.current = span;
+      // 注册模块级清理函数，供 PinMenu onClose 调用
+      _activeHighlightCleanup = removeHighlight;
+    } catch {
+      // surroundContents 在跨块级元素时会抛异常，降级不高亮
+    }
+
+    // 清除浏览器原生选区（PinMenu 已接管视觉）
+    sel.removeAllRanges();
+
+    onSelect(selectedText, messageId, rect, startOffset, endOffset);
   };
 
   return (
@@ -167,7 +208,7 @@ export default function MessageBubble({
     >
       {/* AI 头像 */}
       {!isUser && (
-        <div className="w-6 h-6 flex items-center justify-center mr-3 mt-0.5 flex-shrink-0 rounded-lg bg-zinc-900 border border-indigo-500/15 shadow-sm">
+        <div className="w-6 h-6 flex items-center justify-center mr-3 mt-0.5 flex-shrink-0 rounded-lg bg-surface border border-indigo-500/15 shadow-sm">
           <svg className="w-3 h-3 text-indigo-400/80" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
           </svg>
@@ -180,7 +221,7 @@ export default function MessageBubble({
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
             isUser
               ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/30"
-              : "bg-zinc-900 text-zinc-100 border border-white/5"
+              : "bg-surface text-hi border border-subtle"
           }`}
         >
           {isUser ? (
@@ -191,7 +232,7 @@ export default function MessageBubble({
               )}
             </>
           ) : rawMode ? (
-            <pre className="whitespace-pre-wrap text-sm text-zinc-300 font-mono leading-relaxed">
+            <pre className="whitespace-pre-wrap text-sm text-md font-mono leading-relaxed">
               {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
             </pre>
           ) : (
@@ -203,13 +244,13 @@ export default function MessageBubble({
             />
           )}
           {streaming && (
-            <span className="inline-block w-0.5 h-3.5 bg-zinc-500 ml-0.5 align-middle animate-pulse" />
+            <span className="inline-block w-0.5 h-3.5 bg-dim ml-0.5 align-middle animate-pulse" />
           )}
           {needsCollapse && (
             <div className="mt-2">
               <button
                 onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors select-none"
+                className="text-[11px] text-dim hover:text-md transition-colors select-none"
               >
                 {expanded ? t.collapse : `${t.expandFull}（共 ${content.length} ${t.chars}）`}
               </button>
@@ -221,7 +262,7 @@ export default function MessageBubble({
         {!isUser && !streaming && (
           <button
             onClick={(e) => { e.stopPropagation(); setRawMode((r) => !r); }}
-            className="absolute -bottom-5 right-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-[10px] text-zinc-700 hover:text-zinc-400 flex items-center gap-1 select-none"
+            className="absolute -bottom-5 right-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-[10px] text-ph hover:text-lo flex items-center gap-1 select-none"
             title={rawMode ? t.showMd : t.showRaw}
           >
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -238,7 +279,7 @@ export default function MessageBubble({
 
       {/* 用户头像 */}
       {isUser && (
-        <div className="w-8 h-8 ml-3 mt-0.5 flex-shrink-0 rounded-full overflow-hidden border border-white/10">
+        <div className="w-8 h-8 ml-3 mt-0.5 flex-shrink-0 rounded-full overflow-hidden border border-base">
           {userAvatarUrl ? (
             <img src={userAvatarUrl} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (

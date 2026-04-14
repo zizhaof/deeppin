@@ -16,6 +16,7 @@ import type { SelectionInfo } from "@/components/PinMenu";
 import PinStartDialog from "@/components/PinStartDialog";
 import type { PinDialogInfo } from "@/components/PinStartDialog";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
+import { clearActiveHighlight } from "@/components/MainThread/MessageBubble";
 import PinRoll from "@/components/SubThread/PinRoll";
 import type { ThreadCardItem } from "@/components/SubThread/SideColumn";
 import ThreadNav from "@/components/Layout/ThreadNav";
@@ -434,6 +435,7 @@ export default function ChatPage() {
   );
 
   const handlePin = async (info: SelectionInfo) => {
+    clearActiveHighlight();
     setSelection(null);
     window.getSelection()?.removeAllRanges();
 
@@ -808,7 +810,7 @@ export default function ChatPage() {
       <PinMenu
         selection={selection}
         onPin={handlePin}
-        onClose={() => setSelection(null)}
+        onClose={() => { clearActiveHighlight(); setSelection(null); }}
       />
 
       <PinStartDialog

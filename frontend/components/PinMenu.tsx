@@ -56,22 +56,22 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
     <div
       ref={menuRef}
       style={{ top, left }}
-      className="fixed z-50 -translate-x-1/2 flex items-center gap-0.5 bg-zinc-900/95 backdrop-blur-md border border-white/10 text-zinc-100 rounded-xl px-1.5 py-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.03)] text-sm select-none"
+      className="fixed z-50 -translate-x-1/2 flex items-center gap-0.5 bg-surface-95 backdrop-blur-md border border-base text-hi rounded-xl px-1.5 py-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.15),0_0_0_1px_rgba(0,0,0,0.04)] text-sm select-none"
     >
       {/* 复制 */}
       <button
         onClick={handleCopy}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-white/5 transition-colors whitespace-nowrap"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-glass transition-colors whitespace-nowrap"
         title="复制选中文字"
       >
-        <svg className="w-3.5 h-3.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <svg className="w-3.5 h-3.5 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
           <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
         </svg>
-        <span className="text-xs text-zinc-500">{t.copy ?? "复制"}</span>
+        <span className="text-xs text-dim">{t.copy ?? "复制"}</span>
       </button>
 
-      <div className="w-px h-4 bg-white/8 mx-0.5" />
+      <div className="w-px h-4 bg-glass-md mx-0.5" />
 
       {/* 插针 */}
       <button
