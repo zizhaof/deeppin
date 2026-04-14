@@ -10,9 +10,9 @@ interface Props {
   threads: Thread[];
   selected: Set<string>;
   onToggle: (threadId: string) => void;
-  /** 画布容器宽高（px），由父组件根据弹窗尺寸传入 */
-  canvasWidth: number;
-  canvasHeight: number;
+  /** 画布容器宽高（px），由父组件根据弹窗尺寸传入；省略时组件自行测量 */
+  canvasWidth?: number;
+  canvasHeight?: number;
   /** 紧凑模式：节点更小，适合窄侧栏 */
   compact?: boolean;
 }
@@ -69,12 +69,34 @@ function computeLayout(threads: Thread[], compact: boolean): { positions: NodePo
   return { positions, posMap, treeW, treeH };
 }
 
-export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWidth, canvasHeight, compact = false }: Props) {
+export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWidth: propW, canvasHeight: propH, compact = false }: Props) {
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  // 自测量尺寸：若父组件未传入 canvasWidth/canvasHeight，则用 ResizeObserver 自行量
+  // Self-measured size: if parent doesn't provide explicit dimensions, measure via ResizeObserver
+  const [selfW, setSelfW] = useState(0);
+  const [selfH, setSelfH] = useState(0);
+  useEffect(() => {
+    if (propW !== undefined && propH !== undefined) return; // 外部传入时跳过
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setSelfW(el.clientWidth);
+      setSelfH(el.clientHeight);
+    });
+    ro.observe(el);
+    // 立即读一次，不等下一帧 / Read immediately, don't wait for next frame
+    setSelfW(el.clientWidth);
+    setSelfH(el.clientHeight);
+    return () => ro.disconnect();
+  }, [propW, propH]);
+
+  const canvasWidth = propW ?? selfW;
+  const canvasHeight = propH ?? selfH;
 
   const nw = compact ? C_NODE_W : NODE_W;
   const nh = compact ? C_NODE_H : NODE_H;
@@ -89,6 +111,7 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
 
   // 初始居中 / Center on mount
   useEffect(() => {
+    if (!canvasWidth || !canvasHeight) return;
     const cx = treeW < canvasWidth ? (canvasWidth - treeW) / 2 : 0;
     const cy = treeH < canvasHeight ? (canvasHeight - treeH) / 2 : 0;
     setPanX(cx);
@@ -138,10 +161,16 @@ export default function MergeTreeCanvas({ threads, selected, onToggle, canvasWid
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [treeW, treeH, canvasWidth, canvasHeight]);
 
+  // 自测量模式下用 absolute inset-0，避免 height:100% 在 flex 子元素里失效
+  // In self-measure mode use absolute inset-0 — height:100% is unreliable inside flex items
+  const selfSizeStyle: React.CSSProperties = propW !== undefined
+    ? { width: propW, height: propH, position: "relative" }
+    : { position: "absolute", inset: 0 };
+
   return (
     <div
       ref={wrapRef}
-      style={{ width: canvasWidth, height: canvasHeight, overflow: "hidden", position: "relative", cursor: "grab" }}
+      style={{ ...selfSizeStyle, overflow: "hidden", cursor: "grab" }}
       onMouseDown={onMouseDown}
     >
       <svg

@@ -158,17 +158,13 @@ export default function ChatPage() {
     setRightView(v);
     localStorage.setItem("deeppin:right-view", v);
   };
-  const rightPanelBodyRef = useRef<HTMLDivElement>(null);
-  const [rightPanelSize, setRightPanelSize] = useState({ w: 200, h: 400 });
-  useEffect(() => {
-    const el = rightPanelBodyRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setRightPanelSize({ w: el.clientWidth, h: el.clientHeight });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+
+  // navigateTo 包装：记录上次访问的线程，下次进入 session 时恢复
+  // Wrapper around navigateTo: saves last visited thread so it can be restored on next session entry
+  const handleNavigateTo = useCallback((threadId: string) => {
+    navigateTo(threadId);
+    localStorage.setItem(`deeppin:last-thread:${sessionId}`, threadId);
+  }, [navigateTo, sessionId]);
 
   // 侧栏宽度（可拖拽调整）
   const [leftW, setLeftW] = useState(() =>
@@ -251,7 +247,11 @@ export default function ChatPage() {
         setThreads(allThreads);
 
         const main = allThreads.find((t) => t.parent_thread_id === null);
-        if (main) navigateTo(main.id);
+        const lastThreadId = localStorage.getItem(`deeppin:last-thread:${sessionId}`);
+        const target = lastThreadId && allThreads.find((t) => t.id === lastThreadId)
+          ? lastThreadId
+          : main?.id;
+        if (target) navigateTo(target);
 
         // 批量写入所有线程消息（O(1) 次请求，替代原来的 N 次串行请求）
         // Bulk-set all thread messages (O(1) requests, replaces the original N sequential requests)
@@ -404,8 +404,8 @@ export default function ChatPage() {
 
   // ── 点击锚点进入子线程 ──────────────────────────────────────────
   const handleAnchorClick = useCallback((threadId: string) => {
-    navigateTo(threadId);
-  }, [navigateTo]);
+    handleNavigateTo(threadId);
+  }, [handleNavigateTo]);
 
   // ── 打开 session 抽屉时懒加载列表 ──────────────────────────────
   const handleOpenSessions = useCallback(() => {
@@ -620,7 +620,7 @@ export default function ChatPage() {
         canForward={navIndex < navHistory.length - 1}
         onBack={navigateBack}
         onForward={navigateForward}
-        onSelect={navigateTo}
+        onSelect={handleNavigateTo}
         lang={lang}
         onToggleLang={toggleLang}
         onOpenSessions={handleOpenSessions}
@@ -651,7 +651,7 @@ export default function ChatPage() {
                   focusThreadId={hoverThreadId}
                   focusThreadIds={cardGuide ?? undefined}
                   onCardHover={handleCardHover}
-                  onSelectThread={navigateTo}
+                  onSelectThread={handleNavigateTo}
                   onSendSuggestion={handleSendSuggestion}
                 />
               </div>
@@ -749,16 +749,14 @@ export default function ChatPage() {
                 activeThreadId={activeThreadId}
                 unreadCounts={unreadCounts}
                 messagesByThread={messagesByThread}
-                onSelect={navigateTo}
+                onSelect={handleNavigateTo}
               />
             ) : (
-              <div ref={rightPanelBodyRef} className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 relative">
                 <MergeTreeCanvas
                   threads={threads}
                   selected={new Set(threads.map(t => t.id))}
-                  onToggle={navigateTo}
-                  canvasWidth={rightPanelSize.w}
-                  canvasHeight={rightPanelSize.h}
+                  onToggle={handleNavigateTo}
                   compact
                 />
               </div>
