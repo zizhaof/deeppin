@@ -28,11 +28,12 @@ from dependencies.auth import get_current_user
 from services.llm_client import merge_threads, summarize
 
 # ── Token 预算常量 ────────────────────────────────────────────────────
-# chat 梯队保守上下文窗口 8 000 tokens，取 80% 用于子线程内容
-# Conservative 8 000-token context window for chat tier; use 80% for thread content
-_CONTEXT_WINDOW = 8_000
-_CONTENT_BUDGET_TOKENS = int(_CONTEXT_WINDOW * 0.8)   # 6 400 tokens
-_CHARS_PER_TOKEN = 4  # rough estimate for Chinese/English mixed text
+# 最保守的模型（qwen/qwen3-32b）TPM 上限 6 000；系统消息 + 输出预留 ~2 000 tokens
+# Most restrictive model (qwen/qwen3-32b) has 6K TPM; reserve ~2K for system + output
+_CONTENT_BUDGET_TOKENS = 3_500   # 输入内容的 token 预算
+# 中英混合文本：汉字约 1.5 token/字，英文约 0.25 token/字，综合取 2 chars/token
+# Mixed Chinese/English: ~1.5 token per CJK char, ~0.25 per ASCII; overall ~2 chars/token
+_CHARS_PER_TOKEN = 2
 
 logger = logging.getLogger(__name__)
 

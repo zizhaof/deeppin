@@ -428,6 +428,12 @@ async def merge_threads(
     if sub_section:
         user_content += sub_section
 
+    # 硬截断兜底：中英混合约 2 chars/token，6 000 TPM 下内容上限 ~4 000 tokens = 8 000 chars
+    # Hard cap: ~2 chars/token for CJK+ASCII mix; keep under 8K chars to stay within 6K TPM
+    _HARD_CAP_CHARS = 8_000
+    if len(user_content) > _HARD_CAP_CHARS:
+        user_content = user_content[:_HARD_CAP_CHARS] + "\n\n…（内容过长，已截断）"
+
     messages = [
         {
             "role": "system",
