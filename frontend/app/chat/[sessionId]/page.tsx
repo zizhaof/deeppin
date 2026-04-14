@@ -147,6 +147,16 @@ export default function ChatPage() {
   const [cardGuide, setCardGuide] = useState<string[] | null>(null);
   /** 卡片展开动画结束后才显示 SVG（避免动画中出现错误位置的线） */
   const [svgReady, setSvgReady] = useState(false);
+  /** 右侧概览视图：dots（圆点树）或 list（文字列表） */
+  const [rightView, setRightView] = useState<"dots" | "list">(() =>
+    typeof window !== "undefined"
+      ? ((localStorage.getItem("deeppin:right-view") as "dots" | "list") ?? "dots")
+      : "dots"
+  );
+  const switchRightView = (v: "dots" | "list") => {
+    setRightView(v);
+    localStorage.setItem("deeppin:right-view", v);
+  };
   const anchorGuideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardGuideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 线程切换下拉
@@ -650,6 +660,28 @@ export default function ChatPage() {
                 {t.overview}
               </h2>
               <span className="text-[9px] text-ph tabular-nums select-none">{threads.length}</span>
+              {/* 视图切换 */}
+              <div className="flex gap-0.5 bg-surface-80 border border-subtle rounded-lg p-0.5">
+                <button
+                  onClick={() => switchRightView("dots")}
+                  title="圆点树"
+                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${rightView === "dots" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
+                >
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
+                    <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={() => switchRightView("list")}
+                  title="列表树"
+                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${rightView === "list" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
+                >
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+                  </svg>
+                </button>
+              </div>
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowMerge(true)}
@@ -663,13 +695,50 @@ export default function ChatPage() {
                 </button>
               )}
             </div>
-            <ThreadTree
-              threads={threads}
-              activeThreadId={activeThreadId}
-              unreadCounts={unreadCounts}
-              messagesByThread={messagesByThread}
-              onSelect={navigateTo}
-            />
+            {rightView === "dots" ? (
+              <ThreadTree
+                threads={threads}
+                activeThreadId={activeThreadId}
+                unreadCounts={unreadCounts}
+                messagesByThread={messagesByThread}
+                onSelect={navigateTo}
+              />
+            ) : (
+              <div className="flex-1 overflow-y-auto px-1 py-2 scrollbar-thin">
+                {threads.filter(t => t.parent_thread_id === null).map(main => (
+                  <div key={main.id}>
+                    <button
+                      onClick={() => navigateTo(main.id)}
+                      className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors ${activeThreadId === main.id ? "bg-indigo-950/40 text-indigo-300" : "text-dim hover:text-md hover:bg-glass"}`}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-faint flex-shrink-0" />
+                      <span className="truncate font-medium">{main.title ?? "主线"}</span>
+                    </button>
+                    {(function renderChildren(parentId: string, depth: number): React.ReactNode {
+                      return threads
+                        .filter(t => t.parent_thread_id === parentId)
+                        .map(t => {
+                          const unread = unreadCounts[t.id] ?? 0;
+                          return (
+                            <div key={t.id}>
+                              <button
+                                onClick={() => navigateTo(t.id)}
+                                style={{ paddingLeft: depth * 12 + 8 }}
+                                className={`w-full text-left flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-[11px] transition-colors ${activeThreadId === t.id ? "bg-indigo-950/40 text-indigo-300" : "text-dim hover:text-md hover:bg-glass"}`}
+                              >
+                                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeThreadId === t.id ? "bg-indigo-400" : "bg-ph"}`} />
+                                <span className="truncate flex-1">{t.title ?? t.anchor_text?.slice(0, 20) ?? "子线程"}</span>
+                                {unread > 0 && <span className="flex-shrink-0 w-3.5 h-3.5 rounded-full bg-indigo-500 text-white text-[8px] flex items-center justify-center font-semibold">{unread > 9 ? "9+" : unread}</span>}
+                              </button>
+                              {renderChildren(t.id, depth + 1)}
+                            </div>
+                          );
+                        });
+                    })(main.id, 1)}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
