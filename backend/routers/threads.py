@@ -110,7 +110,7 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
             _generate_and_patch(
                 thread_id_str,
                 body.anchor_text,
-                str(body.parent_thread_id) if body.parent_thread_id else None,
+                str(body.anchor_message_id) if body.anchor_message_id else None,
             )
         )
 
@@ -120,37 +120,32 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
 async def _generate_and_patch(
     thread_id: str,
     anchor_text: str,
-    parent_thread_id: str | None,
+    anchor_message_id: str | None,
 ) -> None:
     """
-    后台任务：取父线程背景 → 生成标题和建议追问 → 回写 DB。
-    Background task: fetch parent thread context → generate title and suggestions → write back to DB.
+    后台任务：取锚点所在的完整消息作为背景 → 生成标题和建议追问 → 回写 DB。
+    Background task: fetch the full message containing the anchor → generate title and suggestions → write back to DB.
 
     失败静默处理，不影响子线程正常使用（标题/建议可为空）。
     Failures are silent; they do not affect normal sub-thread use (title/suggestions may be empty).
     """
-    # 取父线程近 6 条消息作为背景，帮助 LLM 理解锚点含义
-    # Fetch the most recent 6 parent thread messages as context to help the LLM understand the anchor
+    # 取锚点所在的完整消息，帮助 LLM 在完整段落语境中理解锚点含义
+    # Fetch the full message containing the anchor so the LLM understands it in its paragraph context
     context_summary = ""
-    if parent_thread_id:
+    if anchor_message_id:
         try:
             sb = get_supabase()
-            msgs_res = await _db(lambda: (
+            msg_res = await _db(lambda: (
                 sb.table("messages")
-                .select("role, content")
-                .eq("thread_id", str(parent_thread_id))
-                .order("created_at", desc=True)
-                .limit(6)
+                .select("content")
+                .eq("id", str(anchor_message_id))
+                .maybe_single()
                 .execute()
             ))
-            msgs = list(reversed(msgs_res.data or []))
-            if msgs:
-                context_summary = " | ".join(
-                    f"{'用户' if m['role'] == 'user' else 'AI'}：{m['content'][:80]}"
-                    for m in msgs
-                )
+            if msg_res and msg_res.data:
+                context_summary = msg_res.data["content"]
         except Exception:
-            logger.warning("_generate_and_patch 取父线程消息失败（thread=%s）/ Failed to fetch parent thread messages (thread=%s)", thread_id, thread_id)
+            logger.warning("_generate_and_patch 取锚点消息失败（thread=%s）/ Failed to fetch anchor message (thread=%s)", thread_id, thread_id)
 
     try:
         title, suggestions = await generate_title_and_suggestions(anchor_text, context_summary)
@@ -229,21 +224,19 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
     # Cache still missing: generate in real time (fallback for historical threads)
     anchor = thread.get("anchor_text") or ""
     context_summary = ""
-    if thread.get("parent_thread_id"):
-        msgs_res = await _db(lambda: (
-            sb.table("messages")
-            .select("role, content")
-            .eq("thread_id", str(thread["parent_thread_id"]))
-            .order("created_at", desc=True)
-            .limit(6)
-            .execute()
-        ))
-        msgs = list(reversed(msgs_res.data or []))
-        if msgs:
-            context_summary = " | ".join(
-                f"{'用户' if m['role'] == 'user' else 'AI'}：{m['content'][:80]}"
-                for m in msgs
-            )
+    if thread.get("anchor_message_id"):
+        try:
+            msg_res = await _db(lambda: (
+                sb.table("messages")
+                .select("content")
+                .eq("id", str(thread["anchor_message_id"]))
+                .maybe_single()
+                .execute()
+            ))
+            if msg_res and msg_res.data:
+                context_summary = msg_res.data["content"]
+        except Exception:
+            pass
 
     try:
         _, questions = await generate_title_and_suggestions(anchor, context_summary)

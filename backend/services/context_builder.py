@@ -38,7 +38,7 @@ from services.llm_client import summarize
 
 # 各嵌套深度对应的摘要 token 预算（越深越小）
 # Summary token budgets per nesting depth (decreases with depth)
-_BUDGETS_BY_DEPTH = [300, 200, 100, 50]
+_BUDGETS_BY_DEPTH = [800, 500, 300, 150]
 
 # 主线和子线程均取最近 N 条消息（user + assistant 合计）
 # Number of most recent messages fetched for both main and sub-threads
@@ -297,7 +297,9 @@ async def build_context(
     # 反转为从根到父的顺序：[主线, 第1层, 第2层, ...]
     # Reverse to root-first order: [main thread, depth-1, depth-2, ...]
     ancestors_root_first = list(reversed(ancestor_chain))
-    budgets = [_budget_for_depth(i) for i in range(len(ancestors_root_first))]
+    # 越近的祖先越相关，分配越大的 budget；reversed 让直接父节点拿最大值
+    # Closer ancestors are more relevant; reversed() gives the direct parent the largest budget
+    budgets = [_budget_for_depth(i) for i in reversed(range(len(ancestors_root_first)))]
 
     # 并发获取所有祖先摘要
     # Concurrently fetch all ancestor summaries

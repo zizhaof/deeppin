@@ -149,7 +149,11 @@ async def chat_stream(
     if inject_meta:
         # 构造 META 指令：要求模型在回答末尾输出摘要（和标题）
         # Build the META instruction: ask the model to output summary (and title) at the end of its reply
-        fields = f'"summary": "本轮对话核心内容，控制在 {summary_budget} 字以内"'
+        fields = (
+            f'"summary": "按话题分组记录对话内容，格式：[Topic: 话题名] 关键事实、结论、具体细节（数据/方案/观点）。'
+            f'最多 5 个话题；已有话题严格复用原标签，不得重命名；预算不足时压缩语言，不删话题条目。'
+            f'语言与用户保持一致。严格控制在 {summary_budget} 字以内"'
+        )
         if need_title:
             fields += ', "title": "6-12 个汉字的对话标题"'
         full_messages.append({
@@ -203,18 +207,18 @@ async def generate_title_and_suggestions(
     Uses the summarizer tier; does not consume chat RPD quota.
     """
     import re
-    bg = f"\n\n（对话背景，仅供理解锚点含义：{context_summary}）" if context_summary else ""
+    bg = f"\n\n【锚点所在的完整消息】\n{context_summary}" if context_summary else ""
     raw = await _summarizer_call(
         messages=[{
             "role": "user",
             "content": (
-                f"用户在阅读中选中了这段文字作为追问锚点：\n\"{anchor_text}\"\n"
-                f"请聚焦于锚点本身的含义和价值，生成标题和追问。{bg}\n\n"
+                f"用户在阅读 AI 回复时，选中了其中这段文字作为追问锚点：\n\"{anchor_text}\"\n"
+                f"请结合锚点在原文中的上下文语境，生成标题和深度追问。{bg}\n\n"
                 "请严格按以下格式输出，不要输出其他任何内容：\n"
-                "TITLE: <4-8 个字的中文小标题，直接描述锚点核心概念>\n"
-                "Q1: <针对锚点最值得深挖的追问>\n"
-                "Q2: <针对锚点的第二个追问>\n"
-                "Q3: <针对锚点的第三个追问>"
+                "TITLE: <4-8 个字的小标题，直接描述锚点核心概念>\n"
+                "Q1: <结合上下文，针对锚点最值得深挖的追问>\n"
+                "Q2: <针对锚点的第二个深度追问>\n"
+                "Q3: <针对锚点的第三个深度追问>"
             ),
         }],
         max_tokens=150,
@@ -259,15 +263,16 @@ async def generate_title_and_suggestions(
 
 async def summarize(text: str, max_tokens: int) -> str:
     """
-    将文本压缩为 max_tokens 以内的中文摘要。
-    Compress text into a Chinese summary within max_tokens.
+    将文本压缩为 max_tokens 以内的摘要，语言跟随原文。
+    Compress text into a summary within max_tokens, matching the source language.
     """
     return await _summarizer_call(
         messages=[{
             "role": "user",
             "content": (
                 f"请将以下内容压缩为不超过 {max_tokens} tokens 的摘要，"
-                f"保留核心信息，使用中文：\n\n{text}"
+                f"按话题分组，格式：[Topic: 话题名] 关键事实和具体细节。"
+                f"保留核心信息，语言与原文保持一致：\n\n{text}"
             ),
         }],
         max_tokens=max_tokens,
@@ -285,8 +290,9 @@ async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: in
             "role": "user",
             "content": (
                 f"以下是一段对话的现有摘要，以及刚发生的一轮新对话。\n"
-                f"请将新对话的核心内容融入摘要，更新后控制在 {max_tokens} tokens 以内，"
-                f"使用中文，只输出摘要本身：\n\n"
+                f"请将新对话的核心内容融入摘要，按话题分组，格式：[Topic: 话题名] 关键事实和具体细节。"
+                f"已有话题严格复用原标签，不得重命名。更新后控制在 {max_tokens} tokens 以内，"
+                f"语言与原文保持一致，只输出摘要本身：\n\n"
                 f"【现有摘要】\n{existing_summary}\n\n"
                 f"【新对话】\n{new_exchange}"
             ),

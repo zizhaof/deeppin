@@ -24,27 +24,27 @@ from unittest.mock import patch, AsyncMock, MagicMock
 # ── _budget_for_depth ─────────────────────────────────────────────────
 
 class TestBudgetForDepth:
-    def test_depth_0_is_300(self):
+    def test_depth_0_is_800(self):
         from services.context_builder import _budget_for_depth
-        assert _budget_for_depth(0) == 300
+        assert _budget_for_depth(0) == 800
 
-    def test_depth_1_is_200(self):
+    def test_depth_1_is_500(self):
         from services.context_builder import _budget_for_depth
-        assert _budget_for_depth(1) == 200
+        assert _budget_for_depth(1) == 500
 
-    def test_depth_2_is_100(self):
+    def test_depth_2_is_300(self):
         from services.context_builder import _budget_for_depth
-        assert _budget_for_depth(2) == 100
+        assert _budget_for_depth(2) == 300
 
-    def test_depth_3_is_50(self):
+    def test_depth_3_is_150(self):
         from services.context_builder import _budget_for_depth
-        assert _budget_for_depth(3) == 50
+        assert _budget_for_depth(3) == 150
 
-    def test_depth_beyond_max_clamps_to_50(self):
-        """深度超过数组长度时固定为 50 / Depth beyond array length clamps to 50."""
+    def test_depth_beyond_max_clamps_to_150(self):
+        """深度超过数组长度时固定为 150 / Depth beyond array length clamps to 150."""
         from services.context_builder import _budget_for_depth
-        assert _budget_for_depth(10) == 50
-        assert _budget_for_depth(100) == 50
+        assert _budget_for_depth(10) == 150
+        assert _budget_for_depth(100) == 150
 
 
 # ── _messages_to_text ─────────────────────────────────────────────────
