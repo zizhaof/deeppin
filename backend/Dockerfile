@@ -5,6 +5,7 @@ WORKDIR /app
 # 安装系统依赖（kreuzberg 需要 libmagic）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 先复制依赖文件，利用 Docker 缓存层
