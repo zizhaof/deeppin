@@ -169,6 +169,27 @@ export default function ChatPage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // 侧栏宽度（可拖拽调整）
+  const [leftW, setLeftW] = useState(() =>
+    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:left-w")) || 200 : 200
+  );
+  const [rightW, setRightW] = useState(() =>
+    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:right-w")) || 200 : 200
+  );
+  const MIN_SIDE = 120, MAX_SIDE = 480;
+
+  const startResize = useCallback((side: "left" | "right", startX: number, startW: number) => {
+    const onMove = (e: MouseEvent) => {
+      const delta = e.clientX - startX;
+      const next = Math.min(MAX_SIDE, Math.max(MIN_SIDE, startW + (side === "left" ? delta : -delta)));
+      if (side === "left") { setLeftW(next); localStorage.setItem("deeppin:left-w", String(next)); }
+      else { setRightW(next); localStorage.setItem("deeppin:right-w", String(next)); }
+    };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
   const anchorGuideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardGuideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 线程切换下拉
@@ -614,31 +635,40 @@ export default function ChatPage() {
       >
 
         {/* 左侧：子问题面板 */}
-        {hasContent && (
-          <div className={`${rollItems.length > 0 ? "flex-[1]" : "w-8"} min-w-0 border-r border-subtle flex flex-col transition-[width,flex] duration-200`}>
-            {rollItems.length > 0 && (
+        <div style={{ width: leftW, flexShrink: 0 }} className="min-w-0 border-r border-subtle flex flex-col">
+          {rollItems.length > 0 ? (
+            <>
               <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center">
-                <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">
-                  {t.subQuestions}
-                </h2>
+                <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">{t.subQuestions}</h2>
               </div>
-            )}
-            <div ref={leftCardsRef} className="flex-1 overflow-hidden">
-              <PinRoll
-                items={rollItems}
-                activeThreadId={activeThreadId}
-                mainScrollTop={scrollTop}
-                mainHeight={sideMetrics.mainHeight}
-                rollHeight={sideMetrics.height}
-                focusThreadId={hoverThreadId}
-                focusThreadIds={cardGuide ?? undefined}
-                onCardHover={handleCardHover}
-                onSelectThread={navigateTo}
-                onSendSuggestion={handleSendSuggestion}
-              />
+              <div ref={leftCardsRef} className="flex-1 overflow-hidden">
+                <PinRoll
+                  items={rollItems}
+                  activeThreadId={activeThreadId}
+                  mainScrollTop={scrollTop}
+                  mainHeight={sideMetrics.mainHeight}
+                  rollHeight={sideMetrics.height}
+                  focusThreadId={hoverThreadId}
+                  focusThreadIds={cardGuide ?? undefined}
+                  onCardHover={handleCardHover}
+                  onSelectThread={navigateTo}
+                  onSendSuggestion={handleSendSuggestion}
+                />
+              </div>
+            </>
+          ) : (
+            <div ref={leftCardsRef} className="flex-1 flex items-center justify-center">
+              <p className="text-[10px] text-ph [writing-mode:vertical-rl] select-none tracking-[0.15em]">
+                选中文字 → 插针
+              </p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        {/* 左侧拖拽手柄 */}
+        <div
+          className="w-1 flex-shrink-0 hover:bg-indigo-500/30 cursor-col-resize transition-colors"
+          onMouseDown={(e) => { e.preventDefault(); startResize("left", e.clientX, leftW); }}
+        />
 
         {/* 中间：主对话 */}
         <div className="flex-[3.5] flex flex-col min-w-0 relative">
@@ -664,9 +694,14 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {/* 右侧拖拽手柄 */}
+        <div
+          className="w-1 flex-shrink-0 hover:bg-indigo-500/30 cursor-col-resize transition-colors"
+          onMouseDown={(e) => { e.preventDefault(); startResize("right", e.clientX, rightW); }}
+        />
         {/* 右侧：概览面板 */}
-        {hasContent && (
-          <div className="flex-[1] min-w-0 border-l border-subtle flex flex-col">
+        {(
+          <div style={{ width: rightW, flexShrink: 0 }} className="min-w-0 border-l border-subtle flex flex-col">
             <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center gap-2">
               <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">
                 {t.overview}
@@ -724,6 +759,7 @@ export default function ChatPage() {
                   onToggle={navigateTo}
                   canvasWidth={rightPanelSize.w}
                   canvasHeight={rightPanelSize.h}
+                  compact
                 />
               </div>
             )}
