@@ -201,23 +201,24 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         except Exception:
             pass  # 缓存损坏，走实时生成 / Cache corrupt; fall through to real-time generation
 
-    # _generate_and_patch 可能仍在后台跑，等 300ms 再查一次
-    # _generate_and_patch may still be running; wait 300ms and re-check
-    await asyncio.sleep(0.3)
-    thread_res2 = await _db(lambda: (
-        sb.table("threads")
-        .select("suggestions")
-        .eq("id", str(thread_id))
-        .maybe_single()
-        .execute()
-    ))
-    cached2 = (thread_res2.data or {}).get("suggestions") if thread_res2 else None
-    if cached2:
-        try:
-            questions = cached2 if isinstance(cached2, list) else json.loads(cached2)
-            return {"questions": questions[:3]}
-        except Exception:
-            pass
+    # _generate_and_patch 可能仍在后台跑，短轮询最多等 600ms（每 100ms 查一次，最多 6 次）
+    # _generate_and_patch may still be running; poll every 100ms up to 600ms total (6 attempts)
+    for _ in range(6):
+        await asyncio.sleep(0.1)
+        thread_res2 = await _db(lambda: (
+            sb.table("threads")
+            .select("suggestions")
+            .eq("id", str(thread_id))
+            .maybe_single()
+            .execute()
+        ))
+        cached2 = (thread_res2.data or {}).get("suggestions") if thread_res2 else None
+        if cached2:
+            try:
+                questions = cached2 if isinstance(cached2, list) else json.loads(cached2)
+                return {"questions": questions[:3]}
+            except Exception:
+                break  # 缓存损坏，直接实时生成 / Cache corrupt; fall through to real-time generation
 
     # 缓存仍缺失：实时生成（历史线程兜底）
     # Cache still missing: generate in real time (fallback for historical threads)

@@ -48,15 +48,22 @@ async def chat(thread_id: uuid.UUID, body: ChatRequest, auth=Depends(get_current
     _user_id, sb = auth
 
     # RLS: 若线程不属于该用户，maybe_single() 返回 None → 404
+    # 同时取 depth/title/session_id，避免 stream_manager 再发一次 DB 请求（节省一次 round-trip）
     thread_res = await _db(lambda: (
-        sb.table("threads").select("id").eq("id", str(thread_id)).maybe_single().execute()
+        sb.table("threads")
+        .select("id, depth, title, session_id")
+        .eq("id", str(thread_id))
+        .maybe_single()
+        .execute()
     ))
     if not thread_res or not thread_res.data:
         raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
 
+    thread_meta = thread_res.data  # 传给 stream_and_save，省去内部重复查询
+
     # stream_and_save 内部使用 service_role 写消息（背景任务模式，绕过 RLS 是预期行为）
     return StreamingResponse(
-        stream_and_save(str(thread_id), body.content, body.attachment_filename),
+        stream_and_save(str(thread_id), body.content, body.attachment_filename, thread_meta=thread_meta),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

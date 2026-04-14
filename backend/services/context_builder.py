@@ -277,7 +277,10 @@ async def build_context(
     # Sub-thread: fetch all threads in the session in one query, then build the ancestor chain in memory
     session_id = thread["session_id"]
     all_threads_res = await _db(
-        lambda: sb.table("threads").select("*").eq("session_id", session_id).execute()
+        lambda: sb.table("threads")
+        .select("id, parent_thread_id, depth, anchor_text, session_id, title")
+        .eq("session_id", session_id)
+        .execute()
     )
     all_threads: dict[str, dict] = {
         t["id"]: t for t in (all_threads_res.data or [])

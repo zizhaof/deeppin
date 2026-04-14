@@ -191,6 +191,7 @@ async def stream_and_save(
     thread_id: str,
     user_content: str,
     attachment_filename: str | None = None,
+    thread_meta: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     核心 SSE 生成器：保存消息 → 构建 context → 流式生成 → 后台写摘要/标题/embedding。
@@ -215,20 +216,23 @@ async def stream_and_save(
         yield _sse("error", {"message": f"保存消息失败 / Failed to save message: {exc}"})
         return
 
-    # 查询线程元数据（在流式前一次性获取，减少 DB 往返）
-    # Fetch thread metadata once before streaming to minimize DB round-trips
-    try:
-        thread_res = await _db(lambda: (
-            sb.table("threads")
-            .select("depth, title, session_id")
-            .eq("id", thread_id)
-            .single()
-            .execute()
-        ))
-        thread_data = thread_res.data or {}
-    except Exception as exc:
-        yield _sse("error", {"message": f"查询线程失败 / Failed to query thread: {exc}"})
-        return
+    # 线程元数据：优先使用调用方传入的（stream.py 已查过，避免重复 DB 往返）
+    # Thread metadata: prefer caller-supplied data (stream.py already fetched it, skip redundant query)
+    if thread_meta:
+        thread_data = thread_meta
+    else:
+        try:
+            thread_res = await _db(lambda: (
+                sb.table("threads")
+                .select("depth, title, session_id")
+                .eq("id", thread_id)
+                .single()
+                .execute()
+            ))
+            thread_data = thread_res.data or {}
+        except Exception as exc:
+            yield _sse("error", {"message": f"查询线程失败 / Failed to query thread: {exc}"})
+            return
 
     depth: int = thread_data.get("depth", 0)
     session_id: str | None = thread_data.get("session_id")
@@ -375,25 +379,28 @@ async def stream_and_save(
         asyncio.create_task(_save_title(thread_id, session_id, title))
         yield _sse("thread_title", {"thread_id": thread_id, "title": title})
 
-    # 3. 对话记忆向量化（节流：每 N 轮一次）
-    #    Vectorize conversation memory (throttled: every N rounds)
+    # 3. 对话记忆向量化（节流：每 N 轮一次，计数放后台避免阻塞 SSE 关闭）
+    #    Vectorize conversation memory (throttled; count runs in background to avoid blocking SSE teardown)
     if session_id:
-        try:
-            count_res = await _db(lambda: (
-                sb.table("messages")
-                .select("id", count="exact")
-                .eq("thread_id", thread_id)
-                .eq("role", "assistant")
-                .execute()
-            ))
-            assistant_count = count_res.count or 0
-            if assistant_count % EMBED_EVERY_N_ROUNDS == 0:
-                from services.memory_service import store_conversation_memory
-                asyncio.create_task(
-                    store_conversation_memory(session_id, thread_id, user_content, full_content)
-                )
-        except Exception:
-            pass  # 记忆向量化失败不影响主流程 / Memory embedding failure must not affect the main flow
+        _sid, _tid, _uc, _fc = session_id, thread_id, user_content, full_content
+
+        async def _maybe_embed() -> None:
+            try:
+                count_res = await _db(lambda: (
+                    sb.table("messages")
+                    .select("id", count="exact")
+                    .eq("thread_id", _tid)
+                    .eq("role", "assistant")
+                    .execute()
+                ))
+                assistant_count = count_res.count or 0
+                if assistant_count % EMBED_EVERY_N_ROUNDS == 0:
+                    from services.memory_service import store_conversation_memory
+                    await store_conversation_memory(_sid, _tid, _uc, _fc)
+            except Exception:
+                pass
+
+        asyncio.create_task(_maybe_embed())
 
 
 def _sse(event_type: str, data: dict) -> str:
