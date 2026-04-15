@@ -12,7 +12,34 @@ on:
       - 'scripts/**'
 
 jobs:
+  # ── Job 1: 单元测试（在 GitHub runner 上跑，不需要真实外部依赖）────────
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"                          # 缓存 pip，避免每次重装 sentence-transformers
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run unit tests
+        run: pytest tests/ --ignore=tests/integration -q
+        working-directory: backend
+        env:
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          SUPABASE_ANON_KEY: placeholder
+          GROQ_API_KEYS: '["placeholder"]'
+
+  # ── Job 2: 部署（等单元测试通过才运行）──────────────────────────────────
   deploy:
+    needs: unit-test
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to Oracle Cloud
@@ -31,7 +58,6 @@ jobs:
             docker compose --env-file compose.env up -d --build backend searxng
 
             # 等待 backend 进入 healthy 状态（backend /health 已聚合检查所有依赖）
-            # Wait for backend to become healthy (backend /health checks all dependencies)
             echo "等待 backend healthy... / Waiting for backend to become healthy..."
             for i in $(seq 1 24); do
               STATUS=$(docker inspect --format='{{.State.Health.Status}}' deeppin-backend-1 2>/dev/null || echo "unknown")
@@ -56,7 +82,7 @@ jobs:
 
             # Smoke test：端到端连通性验证
             echo "运行 smoke test... / Running smoke test..."
-            sleep 5   # 给 nginx 一点时间完成启动
+            sleep 5
             bash scripts/smoke_test.sh https://deeppin.duckdns.org || {
               echo "=== Smoke test 失败，打印日志 / Smoke test failed, dumping logs ==="
               docker compose --env-file compose.env logs --tail 50
@@ -64,3 +90,27 @@ jobs:
             }
 
             echo "部署完成 / Deployment complete"
+
+  # ── Job 3: 集成测试（部署完成后，从 GitHub runner 打真实 API）────────────
+  integration-test:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest httpx       # 只装轻量依赖，不装完整 backend 依赖
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+        working-directory: backend
+        env:
+          TEST_BASE_URL: https://deeppin.duckdns.org
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
