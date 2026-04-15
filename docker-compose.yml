@@ -10,11 +10,14 @@ services:
     volumes:
       - ./logs:/app/logs   # 日志持久化到宿主机 / persist logs to host
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT}/health"]
+      # CMD-SHELL 走 shell，支持变量；backend /health 聚合检查所有依赖（含 searxng/supabase）
+      # CMD-SHELL runs via shell; backend /health aggregates all dependency checks
+      # 503 → unhealthy（degraded），200 → healthy（all ok）
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q '\"status\":\"ok\"'"]
       interval: 15s
-      timeout: 5s
+      timeout: 8s
       retries: 5
-      start_period: 40s    # 留时间给 LiteLLM Router 初始化 / allow time for LiteLLM Router init
+      start_period: 45s    # 给 LiteLLM Router 初始化留时间 / allow time for LiteLLM Router init
 
   searxng:
     image: searxng/searxng:latest
@@ -25,12 +28,10 @@ services:
       - ./searxng:/etc/searxng
     environment:
       - BASE_URL=http://localhost:${SEARXNG_PORT}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SEARXNG_PORT}/healthz"]
-      interval: 20s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    # SearXNG 无独立 healthcheck：bot detection 会拦截无 X-Forwarded-For 的内部 curl。
+    # backend /health 已包含 searxng 连通性检查，nginx 只需等 backend healthy 即可。
+    # No separate SearXNG healthcheck: bot detection blocks internal curl without X-Forwarded-For.
+    # The backend /health endpoint already checks searxng; nginx only needs to wait for backend.
 
   nginx:
     image: nginx:alpine
@@ -43,6 +44,4 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro  # Let's Encrypt 证书
     depends_on:
       backend:
-        condition: service_healthy   # 等 backend healthy 才启动 / wait until backend is healthy
-      searxng:
-        condition: service_healthy
+        condition: service_healthy   # backend healthy = backend + searxng + supabase 全部正常

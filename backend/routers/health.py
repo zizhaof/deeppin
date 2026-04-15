@@ -16,6 +16,7 @@ import os
 
 import httpx
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from db.supabase import get_supabase
 
@@ -52,6 +53,10 @@ async def health():
     """
     聚合健康检查：并发探测所有依赖，返回各组件状态。
     Aggregated health check: concurrently probe all dependencies and return per-component status.
+
+    全部正常 → HTTP 200，status: "ok"
+    任何依赖异常 → HTTP 503，status: "degraded"
+    （Docker healthcheck 根据 HTTP 状态码判断 healthy/unhealthy）
     """
     searxng_ok, supabase_ok = await asyncio.gather(
         _check_searxng(),
@@ -59,7 +64,7 @@ async def health():
     )
 
     all_ok = searxng_ok and supabase_ok
-    return {
+    body = {
         "status": "ok" if all_ok else "degraded",
         "components": {
             "backend": True,
@@ -67,3 +72,6 @@ async def health():
             "supabase": supabase_ok,
         },
     }
+    # 503 让 Docker 将容器标记为 unhealthy，CI/CD 能感知到
+    # Return 503 so Docker marks the container unhealthy when any dependency is down
+    return JSONResponse(content=body, status_code=200 if all_ok else 503)

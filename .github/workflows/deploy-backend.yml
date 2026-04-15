@@ -30,19 +30,19 @@ jobs:
             # backend + searxng 先启动（nginx 等它们 healthy 才起）
             docker compose --env-file compose.env up -d --build backend searxng
 
-            # 等待 backend 和 searxng 进入 healthy 状态（最多 90s）
-            echo "等待服务 healthy... / Waiting for services to become healthy..."
-            for i in $(seq 1 18); do
-              BACKEND=$(docker inspect --format='{{.State.Health.Status}}' deeppin-backend-1 2>/dev/null || echo "unknown")
-              SEARXNG=$(docker inspect --format='{{.State.Health.Status}}' deeppin-searxng-1 2>/dev/null || echo "unknown")
-              echo "  Attempt $i: backend=$BACKEND searxng=$SEARXNG"
-              if [ "$BACKEND" = "healthy" ] && [ "$SEARXNG" = "healthy" ]; then
-                echo "所有依赖已就绪 / All dependencies healthy"
+            # 等待 backend 进入 healthy 状态（backend /health 已聚合检查所有依赖）
+            # Wait for backend to become healthy (backend /health checks all dependencies)
+            echo "等待 backend healthy... / Waiting for backend to become healthy..."
+            for i in $(seq 1 24); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' deeppin-backend-1 2>/dev/null || echo "unknown")
+              echo "  Attempt $i: backend=$STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "Backend healthy，所有依赖就绪 / Backend healthy, all dependencies ready"
                 break
               fi
-              if [ "$i" -eq 18 ]; then
-                echo "超时：服务未能在 90s 内进入 healthy 状态 / Timeout waiting for healthy"
-                docker compose --env-file compose.env logs --tail 30
+              if [ "$i" -eq 24 ]; then
+                echo "超时：backend 未能在 120s 内进入 healthy 状态 / Timeout waiting for backend healthy"
+                docker compose --env-file compose.env logs backend --tail 30
                 exit 1
               fi
               sleep 5
