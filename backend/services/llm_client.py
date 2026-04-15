@@ -492,18 +492,29 @@ async def classify_search_intent(query: str) -> bool:
     """
     try:
         result = await _summarizer_call(
-            messages=[{
-                "role": "user",
-                "content": (
-                    "判断这个问题是否需要搜索最新信息（新闻、实时数据、当前价格、近期事件等）。\n"
-                    "只回复 YES 或 NO，不要解释。\n\n"
-                    f"问题：{query}"
-                ),
-            }],
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a classifier. Reply with only the single word YES or NO. "
+                        "No punctuation, no explanation."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Does answering this question require searching the internet for "
+                        "real-time or recent information (news, live prices, current events, "
+                        "recent facts, weather, people's latest info)?\n\n"
+                        f"Question: {query}"
+                    ),
+                },
+            ],
             max_tokens=5,
             timeout=8,
         )
-        return result.strip().upper().startswith("YES")
+        first_word = result.strip().split()[0].upper().rstrip(".,!?") if result.strip() else ""
+        return first_word == "YES"
     except Exception:
         return False
 
