@@ -58,6 +58,12 @@ _logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Deeppin API", version="0.1.0")
 
+# 启动时打印关键外部依赖配置，方便快速定位连接问题
+# Log critical external dependency config on startup for quick connection diagnosis
+from services.search_service import SEARXNG_URL as _SEARXNG_URL
+_logger.info("Config: SEARXNG_URL=%s", _SEARXNG_URL)
+_logger.info("Config: SUPABASE_URL=%s", os.getenv("SUPABASE_URL", "(not set)"))
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:

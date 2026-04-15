@@ -3,8 +3,10 @@
 SearXNG 搜索服务封装
 SearXNG search service wrapper.
 
-调用本地 SearXNG 实例（Docker，127.0.0.1:8888），完全免费无限次。
-Calls the local SearXNG instance (Docker, 127.0.0.1:8888); completely free and unlimited.
+地址由环境变量 SEARXNG_URL 控制，默认 http://searxng:8080（Docker Compose 服务名）。
+本地开发时可设 SEARXNG_URL=http://localhost:8888 覆盖。
+URL controlled by SEARXNG_URL env var; defaults to http://searxng:8080 (Docker Compose service name).
+For local development, override with SEARXNG_URL=http://localhost:8888.
 
 失败或超时时返回空列表，由调用方决定是否降级为普通 AI 回答。
 Returns an empty list on failure or timeout; the caller decides whether to degrade gracefully.
@@ -12,12 +14,16 @@ Returns an empty list on failure or timeout; the caller decides whether to degra
 from __future__ import annotations
 
 import logging
+import os
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-SEARXNG_URL = "http://searxng:8080"
+# 环境变量优先，默认使用 Docker Compose 服务名（容器内 localhost 指向自身，不能用）
+# Env var takes priority; default uses the Docker Compose service name
+# (localhost inside a container refers to itself, not other services)
+SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080")
 _TIMEOUT = 5.0  # 超时秒数，超时降级为普通对话 / Timeout in seconds; falls back to plain AI on timeout
 
 
@@ -53,10 +59,10 @@ async def search(query: str, max_results: int = 5) -> list[dict]:
         return results
 
     except httpx.TimeoutException:
-        logger.warning("SearXNG 搜索超时 / SearXNG search timed out (query=%r)", query)
+        logger.warning("SearXNG 搜索超时 (url=%s, query=%r) / timed out", SEARXNG_URL, query)
         return []
     except Exception:
-        logger.exception("SearXNG 搜索失败 / SearXNG search failed (query=%r)", query)
+        logger.exception("SearXNG 搜索失败 (url=%s, query=%r) / failed", SEARXNG_URL, query)
         return []
 
 
