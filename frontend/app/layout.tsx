@@ -27,6 +27,12 @@ export default function RootLayout({
       lang="zh"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      {/* 在 hydration 之前读取 localStorage 并设置主题 class，防止页面闪烁 */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){try{var s=localStorage.getItem('deeppin:theme');var t=s?JSON.parse(s).state?.theme:'system';if(t==='dark')document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.add('light');}catch(e){}})();`,
+        }}
+      />
       <body className="min-h-full flex flex-col bg-base">{children}</body>
     </html>
   );

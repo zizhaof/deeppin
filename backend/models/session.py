@@ -16,8 +16,13 @@ class CreateSessionRequest(BaseModel):
 
     title: 可选，不传时由首轮对话后自动生成。
     title: Optional; auto-generated after the first conversation round if omitted.
+
+    id: 可选，客户端预生成的 UUID。传入时后端直接使用该值，避免 DB 自动生成新 ID。
+    id: Optional client-pre-generated UUID. When provided, the backend uses it directly
+        instead of letting the DB auto-generate one.
     """
     title: str | None = None
+    id: uuid.UUID | None = None
 
 
 class Session(BaseModel):

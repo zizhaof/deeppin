@@ -4,12 +4,13 @@
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, createSession, deleteSession } from "@/lib/api";
+import { listSessions, createSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import { useT, useLangStore } from "@/stores/useLangStore";
 import type { T } from "@/lib/i18n";
 import SessionDrawer from "@/components/SessionDrawer";
+import ThemeToggle from "@/components/ThemeToggle";
 
 // ── 分隔线 ────────────────────────────────────────────────────────────
 
@@ -126,8 +127,12 @@ export default function HomePage() {
   // 预热：登录后立即在后台创建好一个 session，点击时直接跳转无需等待
   const prewarmedRef = useRef<string | null>(null);
 
+  // 预热：只预生成 UUID，不写 DB。
+  // 点击「新建对话」时才真正创建 session，在跳转前并行发出请求。
+  // Prewarm: generate a UUID client-side only — no DB write at all.
+  // The session is created on-demand when the chat page loads.
   const prewarm = () => {
-    createSession().then(s => { prewarmedRef.current = s.id; }).catch(() => {});
+    prewarmedRef.current = crypto.randomUUID();
   };
 
   // 先检查 auth，认证后再拉取 sessions（避免未登录时静默抛错）
@@ -144,21 +149,16 @@ export default function HomePage() {
           .then(setSessions)
           .catch(() => setSessions([]))
           .finally(() => setLoading(false));
-        // 后台预热一个 session
+        // 预生成 UUID（不写 DB）
         prewarm();
       } else {
         setLoading(false);
       }
     });
 
-    // 组件卸载时，若预热的 session 没被使用，删掉它，避免积累空对话
-    // On unmount: delete the prewarmed session if it was never used
-    return () => {
-      if (prewarmedRef.current) {
-        deleteSession(prewarmedRef.current).catch(() => {});
-        prewarmedRef.current = null;
-      }
-    };
+    // 卸载时清空 ref（UUID 从未写 DB，不需要删除）
+    // On unmount: just clear the ref — no DB record was created, nothing to delete
+    return () => { prewarmedRef.current = null; };
   }, []);
 
   useEffect(() => {
@@ -176,15 +176,18 @@ export default function HomePage() {
     if (initialMessage?.trim()) {
       sessionStorage.setItem("deeppin:pending-msg", initialMessage.trim());
     }
-    // 如果预热好了，直接跳转，同时后台预热下一个
+    // 使用预生成的 UUID 立即跳转（chat 页面 init 会完成实际的 DB 创建）
+    // Use the pre-generated UUID for instant navigation; chat page init() does the actual DB write
     if (prewarmedRef.current) {
       const id = prewarmedRef.current;
       prewarmedRef.current = null;
       router.push(`/chat/${id}`);
+      // 为下一次新建对话预生成 UUID
       prewarm();
       return;
     }
-    // 预热未完成（极少情况），fallback 正常创建
+    // 极少情况：ref 为空（组件刚挂载就立即点击），fallback 正常创建
+    // Rare fallback: ref is empty (click before prewarm ran) — create normally
     setCreating(true);
     try {
       const s = await createSession();
@@ -277,6 +280,7 @@ export default function HomePage() {
               </button>
             </>
           )}
+          <ThemeToggle />
           <button
             onClick={toggleLang}
             className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"

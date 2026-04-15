@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { getSession, getMessages, getAllMessages, createThread, getSuggestions, listSessions, deleteSession } from "@/lib/api";
+import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { sendMessageStream } from "@/lib/sse";
 import { useThreadStore } from "@/stores/useThreadStore";
@@ -184,6 +184,16 @@ export default function ChatPage() {
       setUserAvatarUrl(authSession.user.user_metadata?.avatar_url ?? null);
 
       try {
+        // 若 session 尚未写入 DB（首页预热只生成了 UUID），先创建再加载。
+        // If the session hasn't been persisted yet (prewarm only generated a UUID),
+        // create it now with the pre-generated ID, then load normally.
+        try {
+          await getSession(sessionId);
+        } catch {
+          // 404（或其他错误）：用预生成的 sessionId 在 DB 中创建 session
+          await createSession({ id: sessionId });
+        }
+
         // session（含 threads）和全部消息并行加载，1 次网络往返
         // Load session (with threads) and all messages in parallel — 1 round-trip total
         const [session, messageMap] = await Promise.all([

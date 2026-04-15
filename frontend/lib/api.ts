@@ -86,12 +86,17 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(`删除 session 失败: ${res.status}`);
 }
 
-/** 创建新 session，后端自动创建对应主线 thread */
-export async function createSession(title?: string): Promise<Session> {
+/** 创建新 session，后端自动创建对应主线 thread
+ *  可传入客户端预生成的 { id } 以避免 DB 自动分配新 UUID。
+ *  Pass a client-pre-generated { id } to reuse a UUID without a prior DB write.
+ */
+export async function createSession(opts?: string | { id?: string; title?: string }): Promise<Session> {
+  const title = typeof opts === "string" ? opts : opts?.title ?? null;
+  const id = typeof opts === "object" ? (opts.id ?? null) : null;
   const res = await fetch(`${BASE_URL}/api/sessions`, {
     method: "POST",
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ title: title ?? null }),
+    body: JSON.stringify({ title, id }),
   });
   await assertOk(res, "创建 session 失败");
   return res.json();

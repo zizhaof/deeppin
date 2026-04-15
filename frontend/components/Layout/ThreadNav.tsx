@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Thread } from "@/lib/api";
 import type { Lang } from "@/lib/i18n";
 import { useT } from "@/stores/useLangStore";
+import ThemeToggle from "@/components/ThemeToggle";
 
 interface Props {
   threads: Thread[];
@@ -121,6 +122,9 @@ export default function ThreadNav({
           </span>
         ))}
       </div>
+
+      {/* 主题切换 */}
+      <ThemeToggle />
 
       {/* 语言切换 */}
       <button

@@ -47,10 +47,10 @@ async def create_session(body: CreateSessionRequest, auth=Depends(get_current_us
     """创建新 session，并自动创建对应的主线 thread（depth=0）。"""
     user_id, sb = auth
 
-    session_res = await _db(lambda: sb.table("sessions").insert({
-        "title": body.title,
-        "user_id": user_id,
-    }).execute())
+    row: dict = {"title": body.title, "user_id": user_id}
+    if body.id:
+        row["id"] = str(body.id)
+    session_res = await _db(lambda: sb.table("sessions").insert(row).execute())
 
     if not session_res.data:
         raise HTTPException(status_code=500, detail="创建 session 失败 / Failed to create session")

@@ -81,6 +81,77 @@
   }
 }
 
+/* ── 手动主题覆盖（优先级高于 prefers-color-scheme）──────────────────────
+   html.dark  → 强制深色（无论系统设置）
+   html.light → 强制浅色（无论系统设置）
+   ──────────────────────────────────────────────────────────────────────── */
+
+html.dark :root {
+  --s-base:       #09090b;
+  --s-surface:    #18181b;
+  --s-elevated:   #27272a;
+
+  --s-surface-95: rgba(24,24,27,0.95);
+  --s-surface-80: rgba(24,24,27,0.80);
+  --s-surface-70: rgba(24,24,27,0.70);
+  --s-surface-60: rgba(24,24,27,0.60);
+  --s-elevated-80: rgba(39,39,42,0.80);
+
+  --s-glass:    rgba(255,255,255,0.04);
+  --s-glass-md: rgba(255,255,255,0.08);
+  --s-glass-lg: rgba(255,255,255,0.12);
+
+  --b-subtle: rgba(255,255,255,0.05);
+  --b-base:   rgba(255,255,255,0.08);
+  --b-strong: rgba(255,255,255,0.14);
+
+  --t-hi:    #f4f4f5;
+  --t-md:    #d4d4d8;
+  --t-lo:    #a1a1aa;
+  --t-dim:   #71717a;
+  --t-faint: #52525b;
+  --t-ph:    #3f3f46;
+
+  --s-disabled:   #27272a;
+  --t-disabled:   #3f3f46;
+
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+html.light :root {
+  --s-base:       #f4f4f5;
+  --s-surface:    #ffffff;
+  --s-elevated:   #fafafa;
+
+  --s-surface-95: rgba(255,255,255,0.95);
+  --s-surface-80: rgba(255,255,255,0.80);
+  --s-surface-70: rgba(255,255,255,0.70);
+  --s-surface-60: rgba(255,255,255,0.60);
+  --s-elevated-80: rgba(250,250,250,0.80);
+
+  --s-glass:    rgba(0,0,0,0.04);
+  --s-glass-md: rgba(0,0,0,0.07);
+  --s-glass-lg: rgba(0,0,0,0.12);
+
+  --b-subtle: rgba(0,0,0,0.06);
+  --b-base:   rgba(0,0,0,0.10);
+  --b-strong: rgba(0,0,0,0.16);
+
+  --t-hi:    #18181b;
+  --t-md:    #3f3f46;
+  --t-lo:    #52525b;
+  --t-dim:   #71717a;
+  --t-faint: #a1a1aa;
+  --t-ph:    #d4d4d8;
+
+  --s-disabled:   #e4e4e7;
+  --t-disabled:   #a1a1aa;
+
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
