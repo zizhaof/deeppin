@@ -62,7 +62,7 @@ class MergeRequest(BaseModel):
     @field_validator("format")
     @classmethod
     def validate_format(cls, v: str) -> str:
-        allowed = {"free", "bullets", "structured", "custom"}
+        allowed = {"free", "bullets", "structured", "custom", "transcript"}
         if v not in allowed:
             raise ValueError(f"format 必须是 {allowed} 之一 / format must be one of {allowed}")
         return v

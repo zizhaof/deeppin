@@ -38,7 +38,7 @@ export type SSEEvent =
   | { type: "error"; message: string }
   | { type: "thread_title"; thread_id: string; title: string };
 
-export type MergeFormat = "free" | "bullets" | "structured" | "custom";
+export type MergeFormat = "free" | "bullets" | "structured" | "custom" | "transcript";
 
 /**
  * 触发合并生成，通过 SSE 流式接收合并报告。

@@ -33,8 +33,8 @@ class TestMergeRequestValidation:
         assert r.format == "free"
 
     def test_valid_formats_accepted(self):
-        """三种合法格式均被接受 / All three valid formats are accepted."""
-        for fmt in ("free", "bullets", "structured"):
+        """五种合法格式均被接受 / All five valid formats are accepted."""
+        for fmt in ("free", "bullets", "structured", "custom", "transcript"):
             r = self._make(fmt)
             assert r.format == fmt
 

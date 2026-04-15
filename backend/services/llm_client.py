@@ -398,8 +398,33 @@ async def merge_threads(
       "structured" — 结构化分析（问题/方案/权衡/结论）
                      Structured analysis (problem / solution / trade-offs / conclusion)
       "custom"     — 用户自定义提示词 / User-supplied custom instruction
+      "transcript" — 对话原文直接输出，不经过 LLM / Raw transcript, no LLM call
     """
     if not threads_data:
+        return
+
+    # transcript：直接格式化原文输出，跳过 LLM 调用，节省 TPM 额度
+    # transcript: format raw content directly, skip LLM to preserve TPM quota
+    if format_type == "transcript":
+        parts: list[str] = ["# 对话原文\n"]
+        if main_content and main_content.strip():
+            parts.append(f"## 主线对话\n\n{main_content.strip()}\n")
+        for i, t in enumerate(threads_data, 1):
+            title = t.get("title") or f"子问题 {i}"
+            anchor = t.get("anchor", "")
+            content = t.get("content", "")
+            section = f"---\n\n## 子问题 {i}：{title}"
+            if anchor:
+                section += f"\n\n> 锚点：「{anchor}」"
+            if content:
+                section += f"\n\n{content.strip()}"
+            parts.append(section)
+        transcript_text = "\n\n".join(parts)
+        # 分块 yield，保留流式体验
+        # Yield in chunks to preserve the streaming UX
+        chunk_size = 400
+        for start in range(0, len(transcript_text), chunk_size):
+            yield transcript_text[start : start + chunk_size]
         return
 
     FORMAT_INSTRUCTIONS = {

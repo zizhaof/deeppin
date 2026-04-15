@@ -25,10 +25,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   const t = useT();
 
   const FORMAT_OPTIONS: { value: MergeFormat; label: string; desc: string }[] = [
-    { value: "free",       label: t.mergeFormatFree,       desc: t.mergeFormatFreeDesc },
-    { value: "bullets",    label: t.mergeFormatBullets,    desc: t.mergeFormatBulletsDesc },
-    { value: "structured", label: t.mergeFormatStructured, desc: t.mergeFormatStructuredDesc },
-    { value: "custom",     label: t.mergeFormatCustom,     desc: t.mergeFormatCustomDesc },
+    { value: "free",       label: t.mergeFormatFree,        desc: t.mergeFormatFreeDesc },
+    { value: "bullets",    label: t.mergeFormatBullets,     desc: t.mergeFormatBulletsDesc },
+    { value: "structured", label: t.mergeFormatStructured,  desc: t.mergeFormatStructuredDesc },
+    { value: "custom",     label: t.mergeFormatCustom,      desc: t.mergeFormatCustomDesc },
+    { value: "transcript", label: t.mergeFormatTranscript,  desc: t.mergeFormatTranscriptDesc },
   ];
 
   const [format, setFormat] = useState<MergeFormat>("free");

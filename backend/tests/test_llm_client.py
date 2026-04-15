@@ -304,6 +304,34 @@ class TestMergeThreads:
         assert result == "hello world"
 
     @pytest.mark.asyncio
+    async def test_transcript_format_skips_llm(self):
+        """format_type='transcript' 直接输出原文，不调用 chat_stream
+        format_type='transcript' outputs raw text without calling chat_stream."""
+        from services.llm_client import merge_threads
+
+        called = {"count": 0}
+
+        async def fake_stream(_messages, **_kwargs):
+            called["count"] += 1
+            yield "should not be called"
+
+        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+            result = await self._collect(merge_threads(
+                [{"title": "问题一", "anchor": "锚点文本", "content": "用户：hi\nAI：hello"}],
+                main_content="用户：主线\nAI：回复",
+                format_type="transcript",
+            ))
+
+        # LLM 未被调用 / LLM should not have been called
+        assert called["count"] == 0
+        # 原文内容包含在输出中 / Raw content present in output
+        assert "对话原文" in result
+        assert "主线对话" in result
+        assert "问题一" in result
+        assert "锚点文本" in result
+        assert "用户：主线" in result
+
+    @pytest.mark.asyncio
     async def test_unknown_format_falls_back_to_free(self):
         """未知 format_type 时使用自由总结指令作为兜底
         Unknown format_type falls back to the free-form instruction."""

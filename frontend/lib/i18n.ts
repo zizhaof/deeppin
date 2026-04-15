@@ -80,6 +80,8 @@ const zh = {
   mergeFormatStructuredDesc: "问题 → 方案 → 权衡 → 结论",
   mergeFormatCustom: "自定义",
   mergeFormatCustomDesc: "按你的想法总结",
+  mergeFormatTranscript: "对话原文",
+  mergeFormatTranscriptDesc: "直接输出原始对话内容",
   mergeCustomPromptPlaceholder: "描述你想要的总结方式，例如：用一封信的口吻写给团队，重点突出行动项…",
   // 首页问题陈述
   problemSetup: "和 AI 对话时，想深挖某个细节，你只有两条路：",
@@ -168,6 +170,8 @@ const en = {
   mergeFormatStructuredDesc: "Problem → Solution → Trade-offs → Conclusion",
   mergeFormatCustom: "Custom",
   mergeFormatCustomDesc: "Summarize your way",
+  mergeFormatTranscript: "Raw Transcript",
+  mergeFormatTranscriptDesc: "Output the original conversation verbatim",
   mergeCustomPromptPlaceholder: "Describe how you want it summarized, e.g. write as a memo for the team, focus on action items…",
   problemSetup: "When reading an AI reply and you want to dig deeper into one part, you have two bad options:",
   badChoice1Label: "Start a new chat",
