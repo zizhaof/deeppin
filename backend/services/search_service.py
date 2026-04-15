@@ -17,7 +17,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SEARXNG_URL = "http://localhost:8888"
+SEARXNG_URL = "http://searxng:8080"
 _TIMEOUT = 5.0  # 超时秒数，超时降级为普通对话 / Timeout in seconds; falls back to plain AI on timeout
 
 

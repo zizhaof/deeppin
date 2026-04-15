@@ -495,37 +495,52 @@ async def classify_search_intent(query: str) -> bool:
     """
     import logging as _logging
     _log = _logging.getLogger(__name__)
+    _messages = [
+        {
+            "role": "system",
+            "content": "You are a binary classifier. Reply with only YES or NO, nothing else.",
+        },
+        {
+            "role": "user",
+            "content": (
+                "Should this question trigger an internet search? Answer YES if any of these apply:\n"
+                "- The user explicitly asks to search / look up / go online\n"
+                "- The question needs real-time data (prices, weather, live scores, current news)\n"
+                "- The question is about a specific person, company, or event the AI may not know\n"
+                "- The question asks for the 'latest' or 'most recent' information\n"
+                "Otherwise answer NO.\n\n"
+                f"Question: {query}"
+            ),
+        },
+    ]
+
+    def _parse(raw: str) -> bool:
+        first = raw.strip().split()[0].upper().rstrip(".,!?") if raw.strip() else ""
+        return first == "YES"
+
+    # 先用 summarizer；若失败（RPD 耗尽、429 等）降级到 chat 模型重试一次
+    # Try summarizer first; fall back to chat if it fails (RPD exhausted, 429, etc.)
     try:
-        result = await _summarizer_call(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a binary classifier. Reply with only YES or NO, nothing else."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Should this question trigger an internet search? Answer YES if any of these apply:\n"
-                        "- The user explicitly asks to search / look up / go online\n"
-                        "- The question needs real-time data (prices, weather, live scores, current news)\n"
-                        "- The question is about a specific person, company, or event the AI may not know\n"
-                        "- The question asks for the 'latest' or 'most recent' information\n"
-                        "Otherwise answer NO.\n\n"
-                        f"Question: {query}"
-                    ),
-                },
-            ],
+        result = await _summarizer_call(_messages, max_tokens=5, timeout=8)
+        decision = _parse(result)
+        _log.info("search_intent[summarizer]: query=%r → raw=%r decision=%s", query[:60], result[:20], decision)
+        return decision
+    except Exception as exc:
+        _log.warning("search_intent summarizer failed (query=%r): %s — retrying with chat", query[:60], exc)
+
+    try:
+        response = await router.acompletion(
+            model="chat",
+            messages=_messages,
             max_tokens=5,
             timeout=8,
         )
-        first_word = result.strip().split()[0].upper().rstrip(".,!?") if result.strip() else ""
-        decision = first_word == "YES"
-        _log.info("search_intent: query=%r → raw=%r decision=%s", query[:60], result[:20], decision)
+        result = (response.choices[0].message.content or "").strip()
+        decision = _parse(result)
+        _log.info("search_intent[chat]: query=%r → raw=%r decision=%s", query[:60], result[:20], decision)
         return decision
     except Exception as exc:
-        _log.warning("search_intent failed (query=%r): %s", query[:60], exc)
+        _log.warning("search_intent chat fallback also failed (query=%r): %s", query[:60], exc)
         return False
 
 
