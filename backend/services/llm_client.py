@@ -481,31 +481,38 @@ async def merge_threads(
 
 async def classify_search_intent(query: str) -> bool:
     """
-    判断用户问题是否需要联网搜索（新闻、实时数据、近期事件等）。
-    Determine whether the user's question requires a web search (news, real-time data, recent events, etc.).
+    判断用户问题是否需要联网搜索。触发条件：
+      1. 用户明确要求联网搜索（"上网查"、"search for" 等）
+      2. 问题涉及实时/近期数据（股价、天气、新闻等）
+      3. 涉及 AI 可能不了解的人物、事件或网页内容
+    Determine whether the user's question warrants a web search.
 
     使用 summarizer 梯队，节省 chat RPD。
     Uses the summarizer tier to preserve chat RPD quota.
 
-    任何异常静默返回 False，不阻断主对话。
-    Any exception silently returns False; must not block the main conversation.
+    任何异常记录警告并返回 False，不阻断主对话。
+    Any exception logs a warning and returns False; must not block the main conversation.
     """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     try:
         result = await _summarizer_call(
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are a classifier. Reply with only the single word YES or NO. "
-                        "No punctuation, no explanation."
+                        "You are a binary classifier. Reply with only YES or NO, nothing else."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Does answering this question require searching the internet for "
-                        "real-time or recent information (news, live prices, current events, "
-                        "recent facts, weather, people's latest info)?\n\n"
+                        "Should this question trigger an internet search? Answer YES if any of these apply:\n"
+                        "- The user explicitly asks to search / look up / go online\n"
+                        "- The question needs real-time data (prices, weather, live scores, current news)\n"
+                        "- The question is about a specific person, company, or event the AI may not know\n"
+                        "- The question asks for the 'latest' or 'most recent' information\n"
+                        "Otherwise answer NO.\n\n"
                         f"Question: {query}"
                     ),
                 },
@@ -514,8 +521,11 @@ async def classify_search_intent(query: str) -> bool:
             timeout=8,
         )
         first_word = result.strip().split()[0].upper().rstrip(".,!?") if result.strip() else ""
-        return first_word == "YES"
-    except Exception:
+        decision = first_word == "YES"
+        _log.info("search_intent: query=%r → raw=%r decision=%s", query[:60], result[:20], decision)
+        return decision
+    except Exception as exc:
+        _log.warning("search_intent failed (query=%r): %s", query[:60], exc)
         return False
 
 

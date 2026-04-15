@@ -117,9 +117,9 @@ class TestBuildModelList:
             assert "api_key" in entry["litellm_params"]
 
     def test_model_names_are_valid_groups(self):
-        """model_name 只能是 chat / summarizer / vision / model_name must be chat, summarizer, or vision."""
+        """model_name 只能是已知分组 / model_name must be one of the known groups."""
         from services.llm_client import _build_model_list
-        valid_names = {"chat", "summarizer", "vision"}
+        valid_names = {"chat", "merge", "summarizer", "vision"}
         for entry in _build_model_list():
             assert entry["model_name"] in valid_names
 
