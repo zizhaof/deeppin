@@ -15,14 +15,20 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # ── 分块参数 / Chunking parameters ───────────────────────────────────
-CHUNK_SIZE    = 350   # 约 512 token（中文字符约 1.5 token/字）/ ~512 tokens (Chinese ~1.5 token/char)
-CHUNK_OVERLAP = 50    # 块间重叠字符数，保证语义边界连续 / Overlap between chunks for semantic continuity
+CHUNK_SIZE    = 350   # 固定切分的 fallback chunk 大小 / Chunk size for fixed-size fallback
+CHUNK_OVERLAP = 50    # 固定切分块间重叠字符数 / Overlap for fixed-size fallback
 BATCH_INSERT  = 100   # Supabase PostgREST 单次 payload 上限 / Max rows per Supabase PostgREST insert
+
+# 语义切分参数 / Semantic chunking parameters
+SEMANTIC_THRESHOLD = 0.75   # 相邻句子余弦相似度低于此值时切断 / Cut when adjacent-sentence cosine similarity drops below this
+MAX_CHUNK_CHARS    = 600    # 单个 chunk 最大字符数（防止合并过长）/ Max chars per chunk to avoid oversized chunks
+MIN_CHUNK_CHARS    = 50     # chunk 最小字符数，过短则继续合并 / Min chars; shorter chunks are merged into the next
 
 # 内联阈值：提取文本不超过此长度时直接作为消息 context，不进 RAG
 # Inline threshold: text shorter than this is passed as message context, not fed into RAG
@@ -121,35 +127,114 @@ def _extract_docx(content: bytes) -> str:
 
 # ── 文本分块 / Text chunking ──────────────────────────────────────────
 
-def chunk_text(text: str) -> list[str]:
-    """
-    使用 LangChain RecursiveCharacterTextSplitter 按语义边界切块。
-    Split text into chunks using LangChain's RecursiveCharacterTextSplitter (semantic boundaries).
+# 句子切分正则：中英文句末标点后切断
+# Sentence-splitting regex: cut after Chinese/English sentence-ending punctuation
+_SENT_SPLIT_RE = re.compile(r'(?<=[。！？.!?])\s*')
 
-    fallback 为简单滑动窗口（langchain 未安装时使用）。
-    Falls back to a simple sliding-window chunker if langchain is not available.
+
+def _split_sentences(text: str) -> list[str]:
     """
+    将文本按段落和句子边界切成句子列表（中英文混合）。
+    Split text into sentences at paragraph and sentence-ending punctuation boundaries.
+
+    先按空行分段，再在每段内按句末标点切句，过滤空串。
+    First splits on blank lines (paragraph breaks), then on sentence-ending punctuation within each paragraph.
+    """
+    sentences: list[str] = []
+    for para in re.split(r'\n\s*\n', text):
+        para = para.strip()
+        if not para:
+            continue
+        for sent in _SENT_SPLIT_RE.split(para):
+            sent = sent.strip()
+            if sent:
+                sentences.append(sent)
+    return sentences
+
+
+async def chunk_text_semantic(text: str) -> list[str]:
+    """
+    基于 embedding 余弦相似度的语义切分。
+    Semantic chunking based on embedding cosine similarity.
+
+    流程 / Flow:
+      1. 按句子边界切分 → sentences
+      2. 一次批量 embed 所有句子（bge-m3 已 normalize，点积 = 余弦相似度）
+      3. 相邻句子相似度 < SEMANTIC_THRESHOLD 时视为语义断点，切断
+      4. 合并句子成 chunk，控制最大长度 MAX_CHUNK_CHARS
+
+    出错时 fallback 到固定大小切分。
+    Falls back to fixed-size chunking on any error.
+    """
+    from services.embedding_service import embed_texts
+
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+    if len(sentences) == 1:
+        return [sentences[0]] if len(sentences[0]) >= MIN_CHUNK_CHARS else []
+
     try:
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=CHUNK_SIZE,
-            chunk_overlap=CHUNK_OVERLAP,
-            separators=["\n\n", "\n", "。", "！", "？", ". ", "! ", "? ", " ", ""],
-        )
-        return [c for c in splitter.split_text(text) if c.strip()]
-    except ImportError:
-        pass
+        # 一次调用批量 embed，避免多次 executor 调度开销
+        # Single batch embed call — avoids repeated executor dispatch overhead
+        embeddings = await embed_texts(sentences)
 
-    # Fallback：简单滑动窗口 / Simple sliding-window fallback
+        chunks: list[str] = []
+        current: list[str] = [sentences[0]]
+        current_len: int = len(sentences[0])
+
+        for i in range(1, len(sentences)):
+            sent = sentences[i]
+            sent_len = len(sent)
+
+            # 点积即余弦相似度（向量已 L2 归一化）
+            # Dot product equals cosine similarity because vectors are L2-normalized
+            sim: float = sum(a * b for a, b in zip(embeddings[i - 1], embeddings[i]))
+
+            # 语义跳跃 或 chunk 会超长 → 切断（但当前 chunk 需达到最小长度才切）
+            # Break on semantic jump or size overflow (only if current chunk meets MIN_CHUNK_CHARS)
+            should_break = (
+                sim < SEMANTIC_THRESHOLD or current_len + sent_len > MAX_CHUNK_CHARS
+            ) and current_len >= MIN_CHUNK_CHARS
+
+            if should_break:
+                chunks.append("".join(current))
+                current = [sent]
+                current_len = sent_len
+            else:
+                current.append(sent)
+                current_len += sent_len
+
+        if current:
+            tail = "".join(current)
+            # 尾部 chunk 过短时合并到前一块，避免孤立的碎片进入向量库
+            # Merge a too-short tail chunk into the previous one to avoid tiny orphan chunks
+            if chunks and len(tail) < MIN_CHUNK_CHARS:
+                chunks[-1] += tail
+            else:
+                chunks.append(tail)
+
+        return [c for c in chunks if c.strip()]
+
+    except Exception as e:
+        logger.warning("语义切分失败，fallback 到固定切分 / Semantic chunking failed, falling back: %s", e)
+        return _chunk_fixed(text)
+
+
+def _chunk_fixed(text: str) -> list[str]:
+    """
+    固定大小滑动窗口切分（语义切分的 fallback）。
+    Fixed-size sliding-window chunker (fallback for semantic chunking).
+    """
     if len(text) <= CHUNK_SIZE:
         return [text.strip()] if text.strip() else []
-    chunks = []
+    chunks: list[str] = []
     start = 0
     while start < len(text):
         end = min(start + CHUNK_SIZE, len(text))
         chunks.append(text[start:end].strip())
         if end == len(text):
-            break  # 已到末尾，避免 start 不前进导致无限循环 / Reached end; break to avoid infinite loop
+            break
         start = end - CHUNK_OVERLAP
         if start <= 0:
             break
@@ -236,9 +321,9 @@ async def process_attachment(
                         filename, len(text), filename, len(text))
             return {"chunk_count": 0, "inline_text": text.strip()}
 
-        # 长文本：分块 → 向量化 → 存库
-        # Long text: chunk → embed → store
-        chunks = chunk_text(text)
+        # 长文本：语义分块 → 向量化 → 存库
+        # Long text: semantic chunk → embed → store
+        chunks = await chunk_text_semantic(text)
         if not chunks:
             return {"chunk_count": 0, "inline_text": None}
 
