@@ -221,21 +221,23 @@ async def chat_stream(
     full_messages = list(messages)
 
     if inject_meta:
-        # 构造 META 指令：要求模型在回答末尾输出摘要（和标题）
-        # Build the META instruction: ask the model to output summary (and title) at the end of its reply
-        fields = (
-            f'"summary": "按话题分组记录对话内容，格式：[Topic: 话题名] 关键事实、结论、具体细节（数据/方案/观点）。'
-            f'话题数量不限，每个话题单独一条；已有话题严格复用原标签，不得重命名；预算不足时压缩语言，不删话题条目。'
-            f'语言与用户保持一致。严格控制在 {summary_budget} 字以内"'
+        # 构造 META 指令：格式说明与 JSON 模板分离，避免模型把说明文字当摘要值输出
+        # Build the META instruction: keep format rules separate from the JSON template
+        # so models don't echo the instruction text as the summary value.
+        summary_rules = (
+            f"摘要规则：按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
+            f"话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 ≤ {summary_budget} 字。"
         )
+        json_template = '"summary": "<按上述规则生成的实际摘要>"'
         if need_title:
-            fields += ', "title": "6-12 个汉字的对话标题"'
+            json_template += ', "title": "<6-12 个汉字的对话标题>"'
         full_messages.append({
             "role": "system",
             "content": (
-                "完成回答后，必须在正文末尾（不换行说明）紧接输出：\n"
+                f"{summary_rules}\n\n"
+                "完成正文回答后，必须在末尾紧接输出以下 JSON（用真实内容替换尖括号占位符，不要输出其他文字）：\n"
                 f"{META_SENTINEL}\n"
-                f"{{{fields}}}"
+                f"{{{json_template}}}"
             ),
         })
 
