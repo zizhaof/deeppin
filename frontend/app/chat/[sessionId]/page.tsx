@@ -118,12 +118,15 @@ export default function ChatPage() {
   const [rightW, setRightW] = useState(() =>
     typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:right-w")) || 200 : 200
   );
-  const MIN_SIDE = 120, MAX_SIDE = 480;
+  const MIN_SIDE = 120;
+  // 上限 = 三栏 1:1:1 时每栏宽度，即窗口宽度的三分之一
+  // Max = one-third of window width (the 1:1:1 equal-column layout)
+  const maxSide = () => (typeof window !== "undefined" ? Math.floor(window.innerWidth / 3) : 640);
 
   const startResize = useCallback((side: "left" | "right", startX: number, startW: number) => {
     const onMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
-      const next = Math.min(MAX_SIDE, Math.max(MIN_SIDE, startW + (side === "left" ? delta : -delta)));
+      const next = Math.min(maxSide(), Math.max(MIN_SIDE, startW + (side === "left" ? delta : -delta)));
       if (side === "left") { setLeftW(next); localStorage.setItem("deeppin:left-w", String(next)); }
       else { setRightW(next); localStorage.setItem("deeppin:right-w", String(next)); }
     };

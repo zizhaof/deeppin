@@ -291,7 +291,7 @@ export default function HomePage() {
       <main className="relative z-10 flex-1 flex flex-col items-center px-6 py-16 gap-12 overflow-y-auto">
 
         {/* ── Hero ── */}
-        <div style={fadeUp(0)} className="flex flex-col items-center gap-5 text-center max-w-[320px]">
+        <div style={fadeUp(0)} className="flex flex-col items-center gap-5 text-center w-full max-w-[640px]">
           {/* 图标 + 光晕 */}
           <div className="relative">
             <div className="absolute inset-0 rounded-2xl blur-xl bg-indigo-500/20 scale-110" />
@@ -304,8 +304,8 @@ export default function HomePage() {
 
           <h1 className="text-[22px] font-semibold text-hi tracking-tight leading-tight">{t.welcomeTitle}</h1>
 
-          {/* 首页输入框 */}
-          <div className="w-full max-w-[560px] bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
+          {/* 首页输入框 — 与对话页主栏等宽 */}
+          <div className="w-full bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
             <textarea
               value={heroText}
               onChange={(e) => setHeroText(e.target.value)}
