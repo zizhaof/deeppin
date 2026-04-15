@@ -100,19 +100,20 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   // 保持 ref 与 state 同步，让 window 事件回调读到最新值
   useLayoutEffect(() => { maxInputHRef.current = maxInputH; }, [maxInputH]);
 
-  // 拖拽调整输入框最大高度 — 用 window 事件而非 pointer capture，更可靠
+  // 拖拽调整输入框高度 — 以 textarea 当前实际高度为起点，直接设置 style.height，立即可见
   const onResizeDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
-    const startH = maxInputHRef.current;
+    const el = textareaRef.current;
+    // 从 textarea 当前渲染高度出发，而不是 maxInputH
+    const startH = el ? el.offsetHeight : maxInputHRef.current;
 
     const onMove = (ev: MouseEvent) => {
-      const next = Math.max(60, Math.min(400, startH + (startY - ev.clientY)));
+      const next = Math.max(36, Math.min(400, startH + (startY - ev.clientY)));
       maxInputHRef.current = next;
       setMaxInputH(next);
-      // 立即收缩 textarea 如果比新上限高
-      const el = textareaRef.current;
-      if (el && parseFloat(el.style.height) > next) el.style.height = `${next}px`;
+      // 直接写 style.height，让效果立即反映在界面上
+      if (el) el.style.height = `${next}px`;
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
