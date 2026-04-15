@@ -36,6 +36,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: placeholder
           SUPABASE_ANON_KEY: placeholder
           GROQ_API_KEYS: '["placeholder"]'
+          LOG_DIR: /tmp/deeppin-logs   # main.py 默认写 /app/logs，CI 里重定向到 /tmp
 
   # ── Job 2: 部署（等单元测试通过才运行）──────────────────────────────────
   deploy:
