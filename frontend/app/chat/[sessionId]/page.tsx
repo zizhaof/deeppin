@@ -36,11 +36,12 @@ import SessionDrawer from "@/components/SessionDrawer";
 
 /** 客户端瞬时生成占位追问，供弹窗立即展示，稍后由 LLM 结果替换 */
 function makePlaceholders(anchorText: string): string[] {
-  const short = anchorText.slice(0, 12);
+  // 问题文本使用完整锚点，UI 显示由 CSS truncate 截断，发送给 AI 的内容不截断
+  // Use full anchor text; CSS `truncate` handles visual clipping — never truncate what's sent to the AI
   return [
-    `请详细解释「${short}」`,
-    `「${short}」有哪些应用场景？`,
-    `「${short}」的优缺点是什么？`,
+    `请详细解释「${anchorText}」`,
+    `「${anchorText}」有哪些应用场景？`,
+    `「${anchorText}」的优缺点是什么？`,
   ];
 }
 
