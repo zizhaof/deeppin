@@ -225,7 +225,8 @@ async def chat_stream(
         # Build the META instruction: keep format rules separate from the JSON template
         # so models don't echo the instruction text as the summary value.
         summary_rules = (
-            f"摘要规则：按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
+            f"内部摘要规则（仅用于下方 JSON，不得出现在正文回答中）："
+            f"按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
             f"话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 ≤ {summary_budget} 字。"
         )
         json_template = '"summary": "<按上述规则生成的实际摘要>"'
@@ -235,6 +236,7 @@ async def chat_stream(
             "role": "system",
             "content": (
                 f"{summary_rules}\n\n"
+                "重要：正文回答必须使用自然语言，禁止在正文中使用 [Topic:] 格式。\n\n"
                 "完成正文回答后，必须在末尾紧接输出以下 JSON（用真实内容替换尖括号占位符，不要输出其他文字）：\n"
                 f"{META_SENTINEL}\n"
                 f"{{{json_template}}}"
