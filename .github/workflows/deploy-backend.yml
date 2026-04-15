@@ -6,7 +6,10 @@ on:
     paths:
       - 'backend/**'
       - 'docker-compose.yml'
+      - 'compose.env'
       - 'searxng/**'
+      - 'nginx/**'
+      - 'scripts/**'
 
 jobs:
   deploy:
@@ -18,27 +21,46 @@ jobs:
           host: ${{ secrets.ORACLE_HOST }}
           username: ubuntu
           key: ${{ secrets.ORACLE_SSH_KEY }}
-          command_timeout: 20m
+          command_timeout: 10m
           script: |
+            set -e
             cd /home/ubuntu/deeppin
             git pull origin main
-            docker compose up -d --build backend
-            docker compose up -d searxng
-            # 清理旧镜像，节省磁盘空间
+
+            # backend + searxng 先启动（nginx 等它们 healthy 才起）
+            docker compose --env-file compose.env up -d --build backend searxng
+
+            # 等待 backend 和 searxng 进入 healthy 状态（最多 90s）
+            echo "等待服务 healthy... / Waiting for services to become healthy..."
+            for i in $(seq 1 18); do
+              BACKEND=$(docker inspect --format='{{.State.Health.Status}}' deeppin-backend-1 2>/dev/null || echo "unknown")
+              SEARXNG=$(docker inspect --format='{{.State.Health.Status}}' deeppin-searxng-1 2>/dev/null || echo "unknown")
+              echo "  Attempt $i: backend=$BACKEND searxng=$SEARXNG"
+              if [ "$BACKEND" = "healthy" ] && [ "$SEARXNG" = "healthy" ]; then
+                echo "所有依赖已就绪 / All dependencies healthy"
+                break
+              fi
+              if [ "$i" -eq 18 ]; then
+                echo "超时：服务未能在 90s 内进入 healthy 状态 / Timeout waiting for healthy"
+                docker compose --env-file compose.env logs --tail 30
+                exit 1
+              fi
+              sleep 5
+            done
+
+            # nginx 在依赖 healthy 后启动
+            docker compose --env-file compose.env up -d nginx
+
+            # 清理旧镜像
             docker image prune -f
 
-            # 健康检查：等待服务启动，最多重试 15 次（每次间隔 2s，共 30s）
-            echo "Waiting for backend to be healthy..."
-            for i in $(seq 1 15); do
-              STATUS=$(docker compose exec -T backend \
-                curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
-              if [ "$STATUS" = "200" ]; then
-                echo "Health check passed (attempt $i)"
-                exit 0
-              fi
-              echo "Attempt $i: got HTTP $STATUS, retrying..."
-              sleep 2
-            done
-            echo "Health check failed after 30s"
-            docker logs deeppin-backend-1 --tail 30
-            exit 1
+            # Smoke test：端到端连通性验证
+            echo "运行 smoke test... / Running smoke test..."
+            sleep 5   # 给 nginx 一点时间完成启动
+            bash scripts/smoke_test.sh https://deeppin.duckdns.org || {
+              echo "=== Smoke test 失败，打印日志 / Smoke test failed, dumping logs ==="
+              docker compose --env-file compose.env logs --tail 50
+              exit 1
+            }
+
+            echo "部署完成 / Deployment complete"

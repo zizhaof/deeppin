@@ -47,7 +47,7 @@ logging.basicConfig(
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from routers import sessions, threads, stream, attachments, search, merge, relevance, users
+from routers import sessions, threads, stream, attachments, search, merge, relevance, users, health
 
 # 从环境变量读取允许的跨域来源，同时支持本地开发和生产环境
 # Read allowed CORS origins from env var; supports both local dev and production
@@ -93,10 +93,4 @@ app.include_router(search.router, prefix="/api")
 app.include_router(merge.router, prefix="/api")
 app.include_router(relevance.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
-
-
-@app.get("/health")
-async def health():
-    # 健康检查端点，供负载均衡器和 CI/CD 探活使用
-    # Health check endpoint used by load balancers and CI/CD probes
-    return {"status": "ok"}
+app.include_router(health.router)  # /health — 聚合健康检查，无 /api 前缀
