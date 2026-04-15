@@ -7,6 +7,9 @@ import type { AnchorRange } from "./MessageBubble";
 import MessageBubble from "./MessageBubble";
 import { useT } from "@/stores/useLangStore";
 
+// 稳定的空数组引用，避免每次渲染产生新的 [] 绕过 React.memo
+const EMPTY_ANCHORS: AnchorRange[] = [];
+
 interface Props {
   messages: Message[];
   streamingText?: string;
@@ -95,7 +98,7 @@ export default function MessageList({
               messageId={msg.id}
               role={msg.role}
               content={msg.content}
-              anchors={anchorsByMessage[msg.id] ?? []}
+              anchors={anchorsByMessage[msg.id] ?? EMPTY_ANCHORS}
               userAvatarUrl={userAvatarUrl}
               onRef={(el) => onMessageRef?.(msg.id, el)}
               onSelect={onTextSelect}

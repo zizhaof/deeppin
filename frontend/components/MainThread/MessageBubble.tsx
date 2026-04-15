@@ -30,6 +30,58 @@ interface Props {
   onRef?: (el: HTMLDivElement | null) => void;
 }
 
+/**
+ * React re-render 后 cloneRange 引用的 DOM 节点可能已被替换，导致
+ * addRange 静默失败。此函数在当前 DOM 里用文本搜索重新定位并恢复选区。
+ * 多段落选中时取第一段作为恢复目标（与 highlightStr 策略一致）。
+ */
+function restoreSelectionByText(container: Element, selectedText: string): void {
+  const searchText = selectedText.includes("\n")
+    ? (selectedText.split("\n").find((s) => s.trim()) ?? selectedText)
+    : selectedText;
+  if (!searchText.trim()) return;
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let fullText = "";
+  const segments: { node: Text; start: number; end: number }[] = [];
+
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    const t = node.textContent ?? "";
+    segments.push({ node, start: fullText.length, end: fullText.length + t.length });
+    fullText += t;
+    node = walker.nextNode() as Text | null;
+  }
+
+  const matchIdx = fullText.indexOf(searchText);
+  if (matchIdx === -1) return;
+  const matchEnd = matchIdx + searchText.length;
+
+  let startNode: Text | null = null, startOffset = 0;
+  let endNode: Text | null = null, endOffset = 0;
+
+  for (const seg of segments) {
+    if (!startNode && matchIdx < seg.end && matchIdx >= seg.start) {
+      startNode = seg.node;
+      startOffset = matchIdx - seg.start;
+    }
+    if (matchEnd <= seg.end && matchEnd > seg.start) {
+      endNode = seg.node;
+      endOffset = matchEnd - seg.start;
+      break;
+    }
+  }
+
+  if (!startNode || !endNode) return;
+  try {
+    const range = document.createRange();
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset);
+    const sel = window.getSelection();
+    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+  } catch { /* ignore */ }
+}
+
 function getCharOffset(container: Element, targetNode: Node, targetOffset: number): number {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   let offset = 0;
@@ -163,18 +215,22 @@ export default function MessageBubble({
 
     onSelect(selectedText, messageId, rect, startOffset, endOffset);
 
-    // onSelect 会触发父组件 setState → React re-render → 浏览器选区丢失
-    // 在下一帧重新应用选区，确保 PinMenu 显示期间高亮仍然可见
-    // clearActiveHighlight() 会在用户 pin / 关闭时主动清除
+    // onSelect 触发父组件 setState → React re-render → 浏览器选区丢失
+    // 在下一帧恢复：先试 cloneRange（快），失败则用文本搜索重新定位（鲁棒）
     requestAnimationFrame(() => {
+      const s = window.getSelection();
+      if (!s || !s.isCollapsed) return; // 选区仍在，无需恢复
+
+      // 1. 先尝试直接恢复 cloneRange（DOM 节点未被替换时有效）
       try {
-        const s = window.getSelection();
-        if (s && s.isCollapsed) {
-          s.removeAllRanges();
-          s.addRange(savedRange);
-        }
-      } catch {
-        // savedRange 引用的 DOM 节点被 React 替换时忽略
+        s.removeAllRanges();
+        s.addRange(savedRange);
+      } catch { /* ignore */ }
+
+      // 2. 若仍为空（DOM 节点已被替换），在当前 DOM 里按文本重新定位
+      if (s.isCollapsed) {
+        const bubble = divRef.current;
+        if (bubble) restoreSelectionByText(bubble, selectedText);
       }
     });
   };
