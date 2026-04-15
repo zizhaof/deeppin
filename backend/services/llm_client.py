@@ -135,6 +135,57 @@ router: Router = _build_router()
 META_SENTINEL = "<<<META>>>"
 
 
+async def _strip_think_tags(
+    raw: AsyncGenerator[str, None],
+) -> AsyncGenerator[str, None]:
+    """
+    过滤推理模型输出的 <think>…</think> 块，避免内部推理暴露给用户。
+    流式处理：缓冲跨 chunk 的不完整标签，只 yield 标签外的内容。
+
+    Strip <think>…</think> blocks emitted by reasoning models (e.g. qwen3, deepseek-r1)
+    so users never see internal chain-of-thought.
+    Stateful: buffers partial tags that may span chunk boundaries.
+    """
+    in_think = False
+    buf = ""
+
+    async for chunk in raw:
+        buf += chunk
+        while True:
+            if in_think:
+                end = buf.find("</think>")
+                if end == -1:
+                    # 可能是 </think> 前缀，保留尾部以防跨 chunk
+                    # May be a partial </think> prefix — keep the tail to handle cross-chunk splits
+                    keep = max(0, len(buf) - len("</think>") + 1)
+                    buf = buf[keep:]
+                    break
+                else:
+                    buf = buf[end + len("</think>"):]
+                    in_think = False
+                    # 跳过 </think> 后的空白行（模型通常输出 \n\n 后再开始正文）
+                    # Skip blank lines right after </think> (models typically emit \n\n before the answer)
+                    buf = buf.lstrip("\n")
+            else:
+                start = buf.find("<think>")
+                if start == -1:
+                    # 保留可能是 <think> 前缀的尾部 / Keep tail that might be a partial <think> prefix
+                    keep = max(0, len(buf) - len("<think>") + 1)
+                    if keep > 0:
+                        yield buf[:keep]
+                    buf = buf[keep:]
+                    break
+                else:
+                    if start > 0:
+                        yield buf[:start]
+                    buf = buf[start + len("<think>"):]
+                    in_think = True
+
+    # 清空剩余缓冲（不在 think 块内）/ Flush remaining buffer if outside a think block
+    if buf and not in_think:
+        yield buf
+
+
 def pick_model(model_type: str = "chat") -> str:
     """
     返回当前 model_type 的首选模型 ID（用于日志/调试）。
@@ -194,10 +245,15 @@ async def chat_stream(
         stream=True,
         timeout=30,
     )
-    async for chunk in response:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
+
+    async def _raw_deltas() -> AsyncGenerator[str, None]:
+        async for chunk in response:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+    async for text in _strip_think_tags(_raw_deltas()):
+        yield text
 
 
 async def _summarizer_call(

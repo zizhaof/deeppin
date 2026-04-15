@@ -198,6 +198,66 @@ class TestClassifySearchIntent:
             assert await classify_search_intent("今天天气") is True
 
 
+# ── _strip_think_tags ─────────────────────────────────────────────────
+
+class TestStripThinkTags:
+    """_strip_think_tags 流式过滤器单元测试 / Unit tests for the <think> tag stripper."""
+
+    async def _collect(self, chunks: list[str]) -> str:
+        from services.llm_client import _strip_think_tags
+
+        async def _gen():
+            for c in chunks:
+                yield c
+
+        parts = []
+        async for text in _strip_think_tags(_gen()):
+            parts.append(text)
+        return "".join(parts)
+
+    @pytest.mark.asyncio
+    async def test_no_think_tags_passthrough(self):
+        """无 think 标签时原样输出 / Passes through unchanged when no think tags present."""
+        result = await self._collect(["hello", " ", "world"])
+        assert result == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_single_chunk_think_stripped(self):
+        """单 chunk 内完整 think 块被过滤 / Complete think block in one chunk is stripped."""
+        result = await self._collect(["<think>reasoning</think>answer"])
+        assert result == "answer"
+
+    @pytest.mark.asyncio
+    async def test_think_split_across_chunks(self):
+        """think 标签跨 chunk 拆分时仍正确过滤 / Think block split across chunks is still stripped."""
+        result = await self._collect(["<thi", "nk>rea", "soning</thi", "nk>answer"])
+        assert result == "answer"
+
+    @pytest.mark.asyncio
+    async def test_newline_after_close_tag_stripped(self):
+        """</think> 后的空行被剥离 / Blank lines after </think> are stripped."""
+        result = await self._collect(["<think>x</think>\n\nfinal"])
+        assert result == "final"
+
+    @pytest.mark.asyncio
+    async def test_content_before_think_preserved(self):
+        """think 块前的内容被保留 / Content before the think block is preserved."""
+        result = await self._collect(["prefix<think>skip</think>suffix"])
+        assert result == "prefixsuffix"
+
+    @pytest.mark.asyncio
+    async def test_multiple_think_blocks(self):
+        """多个 think 块均被过滤 / Multiple think blocks are all stripped."""
+        result = await self._collect(["<think>a</think>mid<think>b</think>end"])
+        assert result == "midend"
+
+    @pytest.mark.asyncio
+    async def test_empty_stream(self):
+        """空流输出空字符串 / Empty stream yields empty string."""
+        result = await self._collect([])
+        assert result == ""
+
+
 # ── merge_threads ─────────────────────────────────────────────────────
 
 class TestMergeThreads:
