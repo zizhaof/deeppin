@@ -2,7 +2,6 @@
 // components/SubThread/PinRoll.tsx
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import type { ThreadCardItem } from "./SideColumn";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT } from "@/stores/useLangStore";
@@ -48,32 +47,36 @@ function DeleteConfirmModal({
     1 + (n.children ?? []).reduce((s, c) => s + countNodes(c), 0);
   const total = countNodes(subtree);
 
-  return createPortal(
+  // position:fixed 直接挂在视口层，不依赖 createPortal，避免 Next.js SSR 边缘情况
+  return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      style={{ position: "fixed", inset: 0, zIndex: 9999 }}
+      className="flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={onCancel}
     >
       <div
-        className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-80 max-h-[70vh] flex flex-col overflow-hidden"
+        style={{ width: 320 }}
+        className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题 */}
-        <div className="px-5 pt-5 pb-3 border-b border-zinc-800 flex-shrink-0">
+        <div className="px-5 pt-5 pb-3 border-b border-zinc-800">
           <h3 className="text-sm font-semibold text-white">删除子线程</h3>
           <p className="text-xs text-zinc-400 mt-1">
-            {total > 1
-              ? `以下 ${total} 个线程将被永久删除`
-              : "以下线程将被永久删除"}
+            {total > 1 ? `以下 ${total} 个线程将被永久删除` : "以下线程将被永久删除"}
           </p>
         </div>
 
-        {/* 树形预览 */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+        {/* 树形预览 — 显式高度，保证内容可见 */}
+        <div
+          style={{ maxHeight: 320, overflowY: "auto" }}
+          className="px-5 py-4"
+        >
           <TreePreview node={subtree} />
         </div>
 
         {/* 操作按钮 */}
-        <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2 justify-end flex-shrink-0">
+        <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2 justify-end">
           <button
             onClick={onCancel}
             className="px-4 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -88,8 +91,7 @@ function DeleteConfirmModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
