@@ -1,17 +1,13 @@
 "use client";
 // components/MainThread/MessageBubble.tsx
 
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import MarkdownContent from "@/components/MarkdownContent";
 import { useT } from "@/stores/useLangStore";
 
-/** 当前存活的选中高亮 span 的清理函数（全局唯一，一次只有一个选区） */
-let _activeHighlightCleanup: (() => void) | null = null;
-
-/** 供外部（PinMenu onClose）调用，移除临时选中高亮 */
+/** 供外部（PinMenu onClose / handlePin）调用，清除原生文字选区 */
 export function clearActiveHighlight() {
-  _activeHighlightCleanup?.();
-  _activeHighlightCleanup = null;
+  window.getSelection()?.removeAllRanges();
 }
 
 const COLLAPSE_THRESHOLD = 300;
@@ -145,18 +141,6 @@ export default function MessageBubble({
   const [expanded, setExpanded] = useState(false);
   /** AI 消息的原始/渲染模式切换 */
   const [rawMode, setRawMode] = useState(false);
-  /** 选中高亮临时 span，PinMenu 弹出期间保留视觉选区 */
-  const tempHighlightRef = useRef<HTMLSpanElement | null>(null);
-
-  /** 移除临时高亮 span，将子节点原地还原 */
-  const removeHighlight = useCallback(() => {
-    const span = tempHighlightRef.current;
-    if (!span || !span.parentNode) { tempHighlightRef.current = null; return; }
-    const parent = span.parentNode;
-    while (span.firstChild) parent.insertBefore(span.firstChild, span);
-    parent.removeChild(span);
-    tempHighlightRef.current = null;
-  }, []);
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
@@ -175,28 +159,9 @@ export default function MessageBubble({
     const rect = range.getBoundingClientRect();
     const selectedText = sel.toString().trim();
 
-    // 移除上一次残留的高亮（包括其他 bubble 的）
-    clearActiveHighlight();
-    removeHighlight();
-
-    // 用临时 span 保留选区高亮（PinMenu 弹出后浏览器会清除 selection）
-    // 使用 extractContents + insertNode 替代 surroundContents，
-    // 因为 surroundContents 在跨块级元素（如 Markdown 渲染的 <p>/<strong> 跨边界）时会抛 HierarchyRequestError
-    try {
-      const span = document.createElement("span");
-      span.style.cssText = "background:rgba(99,102,241,0.25);border-radius:2px;display:inline;";
-      const frag = range.extractContents();
-      span.appendChild(frag);
-      range.insertNode(span);
-      tempHighlightRef.current = span;
-      // 注册模块级清理函数，供 PinMenu onClose 调用
-      _activeHighlightCleanup = removeHighlight;
-    } catch {
-      // fallback: 无高亮
-    }
-
-    // 清除浏览器原生选区（PinMenu 已接管视觉）
-    sel.removeAllRanges();
+    // 保留浏览器原生选区（不调用 removeAllRanges）
+    // PinMenu 容器的 onMouseDown 有 preventDefault，点击菜单不会 collapse 选区
+    // clearActiveHighlight() 会在 pin/close 时清除原生选区
 
     onSelect(selectedText, messageId, rect, startOffset, endOffset);
   };

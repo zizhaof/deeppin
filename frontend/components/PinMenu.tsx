@@ -56,6 +56,7 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
     <div
       ref={menuRef}
       style={{ top, left }}
+      onMouseDown={e => e.preventDefault()}
       className="fixed z-50 -translate-x-1/2 flex items-center gap-0.5 bg-surface-95 backdrop-blur-md border border-base text-hi rounded-xl px-1.5 py-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.15),0_0_0_1px_rgba(0,0,0,0.04)] text-sm select-none"
     >
       {/* 复制 */}
