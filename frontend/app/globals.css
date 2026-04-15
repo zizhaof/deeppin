@@ -86,7 +86,7 @@
    html.light → 强制浅色（无论系统设置）
    ──────────────────────────────────────────────────────────────────────── */
 
-html.dark :root {
+html.dark {
   --s-base:       #09090b;
   --s-surface:    #18181b;
   --s-elevated:   #27272a;
@@ -119,7 +119,7 @@ html.dark :root {
   --foreground: #ededed;
 }
 
-html.light :root {
+html.light {
   --s-base:       #f4f4f5;
   --s-surface:    #ffffff;
   --s-elevated:   #fafafa;
