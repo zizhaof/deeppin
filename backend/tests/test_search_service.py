@@ -66,17 +66,17 @@ class TestInjectSearchResults:
         assert output[0]["role"] == "system"
         assert "联网搜索结果" in output[0]["content"]
 
-    def test_content_truncated_to_200_chars(self):
-        """content 超过 200 字符时截断 / Content longer than 200 characters is truncated."""
+    def test_content_truncated_to_300_chars(self):
+        """content 超过 300 字符时截断 / Content longer than 300 characters is truncated."""
         from services.search_service import inject_search_results
         long_content = "X" * 500
         results = [{"title": "标题", "url": "http://example.com", "content": long_content}]
         output = inject_search_results([], results)
         injected = output[0]["content"]
-        # 截断后 content 部分最多 200 字符
-        # Truncated content should be at most 200 characters
-        assert "X" * 201 not in injected
-        assert "X" * 200 in injected
+        # 截断后 content 部分最多 300 字符
+        # Truncated content should be at most 300 characters
+        assert "X" * 301 not in injected
+        assert "X" * 300 in injected
 
     def test_multiple_results_all_appear(self):
         """多条结果全部出现在注入的 system 消息中 / All multiple results appear in the injected system message."""

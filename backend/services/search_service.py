@@ -74,11 +74,18 @@ def inject_search_results(context: list[dict], results: list[dict]) -> list[dict
     if not results:
         return context
 
-    lines = ["[联网搜索结果 / Web Search Results]"]
+    lines = [
+        "IMPORTANT: The system has performed a live web search on your behalf.",
+        "The following results contain real-time information retrieved right now.",
+        "You MUST use these results to answer the user's question directly.",
+        "Do NOT say you cannot access the internet or lack real-time data — you have it below.",
+        "",
+        "[联网搜索结果 / Live Web Search Results]",
+    ]
     for i, r in enumerate(results, 1):
         lines.append(f"{i}. {r['title']}")
         if r.get("content"):
-            lines.append(f"   {r['content'][:200]}")
+            lines.append(f"   {r['content'][:300]}")
         lines.append(f"   来源 / Source: {r['url']}")
 
     search_msg = {"role": "system", "content": "\n".join(lines)}
