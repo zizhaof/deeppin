@@ -4,15 +4,21 @@
 Integration tests against the live deployed API.
 
 运行方式 / How to run:
-  TEST_BASE_URL=https://deeppin.duckdns.org pytest tests/integration/ -v
+  TEST_BASE_URL=https://deeppin.duckdns.org \
+  SUPABASE_URL=https://xxx.supabase.co \
+  SUPABASE_ANON_KEY=... \
+  SUPABASE_SERVICE_ROLE_KEY=... \
+  pytest tests/integration/ -v
 
 TestHealth   — 无需认证，验证所有组件连通
 TestAuth     — 无需认证，验证认证中间件生效
-TestSession  — 需要 TEST_USER_EMAIL + TEST_USER_PASSWORD，测试完整 session CRUD
+TestSession  — 需要 Supabase 凭证，动态创建/删除临时测试用户，不依赖任何真实账号
 """
 from __future__ import annotations
 
 import os
+import secrets
+import uuid
 import pytest
 import httpx
 
@@ -24,30 +30,64 @@ BASE_URL = os.getenv("TEST_BASE_URL", "https://deeppin.duckdns.org").rstrip("/")
 @pytest.fixture(scope="session")
 def auth_headers():
     """
-    用测试账号登录 Supabase，返回带 JWT 的 Authorization header。
+    用 service_role_key 通过 admin API 动态创建临时测试用户，获取 JWT。
+    测试结束后自动删除该用户（yield fixture）。
     未配置凭证时跳过（不算失败）。
-    Log in with the test account; skip (not fail) if credentials are not configured.
+
+    Dynamically creates a temporary test user via the Supabase admin API using the
+    service_role_key, obtains a JWT, then deletes the user after the session ends.
+    Skips gracefully if credentials are not configured.
     """
-    email = os.getenv("TEST_USER_EMAIL")
-    password = os.getenv("TEST_USER_PASSWORD")
     supabase_url = os.getenv("SUPABASE_URL")
     anon_key = os.getenv("SUPABASE_ANON_KEY")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-    if not all([email, password, supabase_url, anon_key]):
-        pytest.skip("TEST_USER_EMAIL / TEST_USER_PASSWORD / SUPABASE_URL / SUPABASE_ANON_KEY not set")
+    if not all([supabase_url, anon_key, service_key]):
+        pytest.skip("SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY not set")
 
-    r = httpx.post(
-        f"{supabase_url}/auth/v1/token?grant_type=password",
-        headers={"apikey": anon_key, "Content-Type": "application/json"},
-        json={"email": email, "password": password},
+    admin_headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }
+
+    # 创建临时测试用户（随机 email + 强密码，email 直接标记为已验证）
+    # Create a temporary test user with a random email; mark email as confirmed immediately
+    test_email = f"ci-{uuid.uuid4().hex[:8]}@deeppin-ci.test"
+    test_password = secrets.token_urlsafe(24)
+
+    create_r = httpx.post(
+        f"{supabase_url}/auth/v1/admin/users",
+        headers=admin_headers,
+        json={"email": test_email, "password": test_password, "email_confirm": True},
         timeout=10,
     )
-    assert r.status_code == 200, f"Login failed ({r.status_code}): {r.text}"
-    token = r.json()["access_token"]
-    return {
+    assert create_r.status_code == 200, f"Failed to create test user: {create_r.text}"
+    user_id = create_r.json()["id"]
+
+    # 用 email/password 登录获取 JWT
+    # Sign in with email/password to obtain a JWT
+    signin_r = httpx.post(
+        f"{supabase_url}/auth/v1/token?grant_type=password",
+        headers={"apikey": anon_key, "Content-Type": "application/json"},
+        json={"email": test_email, "password": test_password},
+        timeout=10,
+    )
+    assert signin_r.status_code == 200, f"Sign-in failed: {signin_r.text}"
+    token = signin_r.json()["access_token"]
+
+    yield {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+
+    # 测试结束后删除临时用户（无论测试成功失败）
+    # Delete the temporary user after all tests finish (success or failure)
+    httpx.delete(
+        f"{supabase_url}/auth/v1/admin/users/{user_id}",
+        headers=admin_headers,
+        timeout=10,
+    )
 
 
 # ── TestHealth ─────────────────────────────────────────────────────────────
