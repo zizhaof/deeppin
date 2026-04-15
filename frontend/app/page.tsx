@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, createSession } from "@/lib/api";
+import { listSessions, createSession, deleteSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import { useT, useLangStore } from "@/stores/useLangStore";
