@@ -3,9 +3,9 @@
 // 合并输出面板 — 先展示线程树选择，再流式生成合并报告
 // Merge output panel — tree selection step, then streaming report generation.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { sendMergeStream, type MergeFormat } from "@/lib/sse";
-import { getRelevance, saveAssistantMessage } from "@/lib/api";
+import { saveAssistantMessage } from "@/lib/api";
 import type { Thread } from "@/lib/api";
 import { useThreadStore } from "@/stores/useThreadStore";
 import MarkdownContent from "@/components/MarkdownContent";
@@ -19,7 +19,7 @@ interface Props {
   onClose: () => void;
 }
 
-type State = "loading-relevance" | "selecting" | "generating" | "streaming" | "done" | "error";
+type State = "selecting" | "generating" | "streaming" | "done" | "error";
 
 export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   const t = useT();
@@ -34,8 +34,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
 
   const [format, setFormat] = useState<MergeFormat>("free");
   const [customPrompt, setCustomPrompt] = useState("");
-  const [state, setState] = useState<State>("loading-relevance");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [state, setState] = useState<State>("selecting");
+  // 默认全选所有子线程 / All sub-threads selected by default
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(threads.filter(t => t.parent_thread_id !== null).map(t => t.id))
+  );
   const [status, setStatus] = useState("");
   const [content, setContent] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -77,34 +80,47 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   };
   const onResizePointerUp = (_e: React.PointerEvent) => { resizing.current = false; };
 
-  // ── 打开时拉取相关性 ──────────────────────────────────────────────
-  useEffect(() => {
-    if (subThreads.length === 0) {
-      setSelected(new Set());
-      setState("selecting");
-      return;
+  // 构建父→子映射，用于 cascade 选择 / Build parent→children map for cascade selection
+  const childrenMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const t of threads) {
+      if (t.parent_thread_id) {
+        (map[t.parent_thread_id] ??= []).push(t.id);
+      }
     }
-    getRelevance(sessionId)
-      .then(items => {
-        const sel = new Set(items.filter(i => i.selected).map(i => i.thread_id));
-        setSelected(sel);
-        setState("selecting");
-      })
-      .catch(() => {
-        // 请求失败：默认全选
-        setSelected(new Set(subThreads.map(th => th.id)));
-        setState("selecting");
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+    return map;
+  }, [threads]);
+
+  /** 收集某节点的所有后代 id / Collect all descendant ids of a node */
+  const getDescendants = useCallback((id: string): string[] => {
+    const result: string[] = [];
+    const queue = [id];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      for (const child of (childrenMap[cur] ?? [])) {
+        result.push(child);
+        queue.push(child);
+      }
+    }
+    return result;
+  }, [childrenMap]);
 
   const handleToggle = useCallback((id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      const descendants = getDescendants(id);
+      if (next.has(id)) {
+        // 取消选中：cascade 取消所有后代 / Deselect: cascade deselect all descendants
+        next.delete(id);
+        for (const d of descendants) next.delete(d);
+      } else {
+        // 选中：cascade 选中所有后代 / Select: cascade select all descendants
+        next.add(id);
+        for (const d of descendants) next.add(d);
+      }
       return next;
     });
-  }, []);
+  }, [getDescendants]);
 
   const handleGenerate = useCallback(async () => {
     setContent("");
@@ -216,17 +232,6 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
         {/* ── 内容区 ── */}
         <div className="flex-1 overflow-hidden min-h-0 relative">
 
-          {/* 加载相关性 */}
-          {state === "loading-relevance" && (
-            <div className="flex items-center justify-center h-full gap-2 text-faint text-sm">
-              {[0,1,2].map(i => (
-                <span key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 animate-bounce"
-                  style={{ animationDelay: `${i*150}ms`, animationDuration: "900ms" }} />
-              ))}
-              <span className="ml-1">正在分析相关性…</span>
-            </div>
-          )}
-
           {/* 选择树形图 */}
           {isSelecting && (
             <div className="h-full flex flex-col">
@@ -244,8 +249,20 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                 <span className="text-[10px] text-faint">
                   已选 {selCount} / {subThreads.length} 个子问题
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <span className="text-[9px] text-ph">滚轮平移 · 拖拽移动</span>
+                  <button
+                    onClick={() => setSelected(new Set(subThreads.map(t => t.id)))}
+                    className="text-[9px] text-indigo-400/70 hover:text-indigo-300 transition-colors"
+                  >
+                    全选
+                  </button>
+                  <button
+                    onClick={() => setSelected(new Set())}
+                    className="text-[9px] text-faint hover:text-lo transition-colors"
+                  >
+                    全不选
+                  </button>
                 </div>
               </div>
             </div>
