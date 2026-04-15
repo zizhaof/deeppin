@@ -2,36 +2,43 @@
 // components/SubThread/PinRoll.tsx
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Thread } from "@/lib/api";
 import type { ThreadCardItem } from "./SideColumn";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT } from "@/stores/useLangStore";
 import { getThreadSubtree, deleteThread } from "@/lib/api";
+import MergeTreeCanvas from "@/components/MergeTreeCanvas";
 
-// ── 删除确认树形弹窗 ─────────────────────────────────────────────────
+// ── 删除确认：SubtreeNode → Thread[] 展平 ─────────────────────────
 interface SubtreeNode {
   id: string;
   title?: string | null;
   children?: SubtreeNode[];
 }
 
-function TreePreview({ node, depth = 0 }: { node: SubtreeNode; depth?: number }) {
-  const title = node.title ?? "（无标题）";
-  const children = node.children ?? [];
-  return (
-    <div>
-      <div className="flex items-start gap-1.5" style={{ paddingLeft: depth * 16 }}>
-        {depth > 0 && (
-          <span className="mt-1.5 flex-shrink-0 text-zinc-600 select-none">└</span>
-        )}
-        <span className={`text-sm leading-snug ${depth === 0 ? "text-indigo-300 font-medium" : "text-zinc-300"}`}>
-          {title}
-        </span>
-      </div>
-      {children.map((c) => (
-        <TreePreview key={c.id} node={c} depth={depth + 1} />
-      ))}
-    </div>
+/** 递归展平树，补全 Thread 所需字段，depth 相对根节点从 0 开始 */
+function flattenSubtree(
+  node: SubtreeNode,
+  parentId: string | null = null,
+  depth = 0,
+): Thread[] {
+  const self: Thread = {
+    id: node.id,
+    title: node.title ?? null,
+    parent_thread_id: parentId,
+    depth,
+    anchor_text: null,
+    anchor_message_id: null,
+    anchor_start_offset: null,
+    anchor_end_offset: null,
+    suggestions: null,
+    session_id: "",
+    created_at: "",
+  };
+  const children = (node.children ?? []).flatMap((c) =>
+    flattenSubtree(c, node.id, depth + 1),
   );
+  return [self, ...children];
 }
 
 function DeleteConfirmModal({
@@ -43,11 +50,9 @@ function DeleteConfirmModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const countNodes = (n: SubtreeNode): number =>
-    1 + (n.children ?? []).reduce((s, c) => s + countNodes(c), 0);
-  const total = countNodes(subtree);
+  const threads = flattenSubtree(subtree);
+  const total = threads.length;
 
-  // position:fixed 直接挂在视口层，不依赖 createPortal，避免 Next.js SSR 边缘情况
   return (
     <div
       style={{ position: "fixed", inset: 0, zIndex: 9999 }}
@@ -55,28 +60,30 @@ function DeleteConfirmModal({
       onClick={onCancel}
     >
       <div
-        style={{ width: 320 }}
+        style={{ width: 340 }}
         className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 标题 */}
-        <div className="px-5 pt-5 pb-3 border-b border-zinc-800">
+        <div className="px-5 pt-5 pb-3 border-b border-zinc-800 flex-shrink-0">
           <h3 className="text-sm font-semibold text-white">删除子线程</h3>
           <p className="text-xs text-zinc-400 mt-1">
             {total > 1 ? `以下 ${total} 个线程将被永久删除` : "以下线程将被永久删除"}
           </p>
         </div>
 
-        {/* 树形预览 — 显式高度，保证内容可见 */}
-        <div
-          style={{ maxHeight: 320, overflowY: "auto" }}
-          className="px-5 py-4"
-        >
-          <TreePreview node={subtree} />
+        {/* 节点树图 */}
+        <div style={{ height: 260, position: "relative" }}>
+          <MergeTreeCanvas
+            threads={threads}
+            selected={new Set(threads.map((t) => t.id))}
+            onToggle={() => {}}
+            compact
+          />
         </div>
 
         {/* 操作按钮 */}
-        <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2 justify-end">
+        <div className="px-5 pb-5 pt-3 border-t border-zinc-800 flex gap-2 justify-end flex-shrink-0">
           <button
             onClick={onCancel}
             className="px-4 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
