@@ -33,8 +33,12 @@ from __future__ import annotations
 
 import asyncio
 
-from db.supabase import get_supabase
+from db.supabase import get_supabase, reset_supabase
 from services.llm_client import summarize
+
+# httpx/httpcore 连接断开错误的特征字符串，用于判断是否应重建连接
+# Fingerprints of httpx/httpcore disconnection errors used to decide whether to reset the client
+_CONN_ERR_TAGS = ("Server disconnected", "RemoteProtocolError", "ConnectionReset", "ConnectError")
 
 # 各嵌套深度对应的摘要 token 预算（越深越小）
 # Summary token budgets per nesting depth (decreases with depth)
@@ -139,10 +143,20 @@ def _trim_context(messages: list[dict]) -> list[dict]:
 async def _db(fn):
     """
     将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
+    连接断开时自动重置单例并重试一次（修复长时间空闲后的 Server disconnected 错误）。
     Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
+    On connection errors, reset the singleton and retry once (fixes 'Server disconnected' after idle).
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, fn)
+    try:
+        return await loop.run_in_executor(None, fn)
+    except Exception as e:
+        err_str = str(e)
+        err_type = type(e).__name__
+        if any(tag in err_str or tag in err_type for tag in _CONN_ERR_TAGS):
+            reset_supabase()
+            return await loop.run_in_executor(None, fn)
+        raise
 
 
 async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
@@ -155,11 +169,9 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
     In normal operation summaries are maintained by stream_manager at write time.
     This function only triggers full generation for historical data migration or first access (fallback path).
     """
-    sb = get_supabase()
-
     # 检查缓存 / Check cache
     cached = await _db(
-        lambda: sb.table("thread_summaries")
+        lambda: get_supabase().table("thread_summaries")
         .select("summary, token_budget")
         .eq("thread_id", thread_id)
         .execute()
@@ -172,7 +184,7 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
     # 缓存缺失：全量生成（取最近 80 条，足够覆盖核心信息）
     # Cache miss: generate from scratch (take the most recent 80 messages)
     msgs_res = await _db(
-        lambda: sb.table("messages")
+        lambda: get_supabase().table("messages")
         .select("role, content")
         .eq("thread_id", thread_id)
         .order("created_at", desc=True)
@@ -186,7 +198,7 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
     summary_text = await summarize(_messages_to_text(messages), token_budget)
 
     await _db(
-        lambda: sb.table("thread_summaries").upsert({
+        lambda: get_supabase().table("thread_summaries").upsert({
             "thread_id": thread_id,
             "summary": summary_text,
             "token_budget": token_budget,
@@ -211,10 +223,8 @@ async def build_context(
     prefer_filename: 优先使用来自该文件的 RAG 块（用户刚上传文件时传入）。
     prefer_filename: Prefer RAG chunks from this file (passed when the user just uploaded it).
     """
-    sb = get_supabase()
-
     thread_result = await _db(
-        lambda: sb.table("threads").select("*").eq("id", thread_id).maybe_single().execute()
+        lambda: get_supabase().table("threads").select("*").eq("id", thread_id).maybe_single().execute()
     )
     thread = thread_result.data if thread_result else None
     if not thread:
@@ -242,7 +252,7 @@ async def build_context(
         # Concurrently fetch the most recent N messages and count total messages
         msgs_res, count_res = await asyncio.gather(
             _db(
-                lambda: sb.table("messages")
+                lambda: get_supabase().table("messages")
                 .select("role, content")
                 .eq("thread_id", thread_id)
                 .order("created_at", desc=True)
@@ -250,7 +260,7 @@ async def build_context(
                 .execute()
             ),
             _db(
-                lambda: sb.table("messages")
+                lambda: get_supabase().table("messages")
                 .select("id", count="exact")
                 .eq("thread_id", thread_id)
                 .execute()
@@ -277,7 +287,7 @@ async def build_context(
     # Sub-thread: fetch all threads in the session in one query, then build the ancestor chain in memory
     session_id = thread["session_id"]
     all_threads_res = await _db(
-        lambda: sb.table("threads")
+        lambda: get_supabase().table("threads")
         .select("id, parent_thread_id, depth, anchor_text, session_id, title")
         .eq("session_id", session_id)
         .execute()
@@ -333,7 +343,7 @@ async def build_context(
     # 当前子线程最近 N 条（desc 取后反转，保证时间顺序）
     # Most recent N messages in the current sub-thread (fetched desc, then reversed for chronological order)
     cur_msgs_res = await _db(
-        lambda: sb.table("messages")
+        lambda: get_supabase().table("messages")
         .select("role, content")
         .eq("thread_id", thread_id)
         .order("created_at", desc=True)

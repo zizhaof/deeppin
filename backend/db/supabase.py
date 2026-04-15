@@ -28,3 +28,15 @@ def get_supabase() -> Client:
                 key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
                 _client = create_client(url, key)
     return _client
+
+
+def reset_supabase() -> None:
+    """
+    清除 Supabase 客户端单例，下次 get_supabase() 调用时重建连接。
+    用于连接断开（Server disconnected）后的自动恢复。
+    Clear the singleton so the next get_supabase() call recreates the connection.
+    Used for automatic recovery after a 'Server disconnected' error.
+    """
+    global _client
+    with _lock:
+        _client = None

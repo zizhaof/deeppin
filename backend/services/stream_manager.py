@@ -35,7 +35,7 @@ import logging
 import re
 from typing import AsyncGenerator
 
-from db.supabase import get_supabase
+from db.supabase import get_supabase, reset_supabase
 from services.llm_client import chat_stream, merge_summary, META_SENTINEL, classify_search_intent
 from services.context_builder import build_context, _budget_for_depth
 from services.search_service import search as searxng_search, inject_search_results
@@ -50,14 +50,27 @@ _SENTINEL_LEN = len(META_SENTINEL)
 # Write conversation embedding every N rounds (local model has no extra cost; 1 = every round)
 EMBED_EVERY_N_ROUNDS = 1
 
+# httpx/httpcore 连接断开错误特征字符串（与 context_builder 保持一致）
+_CONN_ERR_TAGS = ("Server disconnected", "RemoteProtocolError", "ConnectionReset", "ConnectError")
+
 
 async def _db(fn):
     """
     将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
+    连接断开时自动重置单例并重试一次。
     Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
+    On connection errors, reset the singleton and retry once.
     """
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, fn)
+    try:
+        return await loop.run_in_executor(None, fn)
+    except Exception as e:
+        err_str = str(e)
+        err_type = type(e).__name__
+        if any(tag in err_str or tag in err_type for tag in _CONN_ERR_TAGS):
+            reset_supabase()
+            return await loop.run_in_executor(None, fn)
+        raise
 
 
 # ── 解析 META JSON / Parse META JSON ─────────────────────────────────
@@ -109,9 +122,8 @@ async def _save_summary(thread_id: str, summary: str, budget: int) -> None:
     Upsert the summary into the thread_summaries table.
     """
     try:
-        sb = get_supabase()
         await _db(
-            lambda: sb.table("thread_summaries").upsert({
+            lambda: get_supabase().table("thread_summaries").upsert({
                 "thread_id": thread_id,
                 "summary": summary,
                 "token_budget": budget,
@@ -136,10 +148,9 @@ async def _fallback_update_summary(
     """
     try:
         from services.llm_client import summarize
-        sb = get_supabase()
         budget = _budget_for_depth(depth)
         cached = await _db(
-            lambda: sb.table("thread_summaries")
+            lambda: get_supabase().table("thread_summaries")
             .select("summary")
             .eq("thread_id", thread_id)
             .execute()
@@ -152,7 +163,7 @@ async def _fallback_update_summary(
             else await summarize(new_exchange, budget)
         )
         await _db(
-            lambda: sb.table("thread_summaries").upsert({
+            lambda: get_supabase().table("thread_summaries").upsert({
                 "thread_id": thread_id,
                 "summary": new_summary,
                 "token_budget": budget,
@@ -173,13 +184,12 @@ async def _save_title(
     (syncs the session title on the first main-thread round).
     """
     try:
-        sb = get_supabase()
         await _db(
-            lambda: sb.table("threads").update({"title": title}).eq("id", thread_id).execute()
+            lambda: get_supabase().table("threads").update({"title": title}).eq("id", thread_id).execute()
         )
         if session_id:
             await _db(
-                lambda: sb.table("sessions").update({"title": title}).eq("id", session_id).execute()
+                lambda: get_supabase().table("sessions").update({"title": title}).eq("id", session_id).execute()
             )
     except Exception:
         logger.exception("标题写入失败（thread=%s）/ Title write failed (thread=%s)", thread_id, thread_id)
@@ -203,11 +213,9 @@ async def stream_and_save(
         yield _sse("error", {"message": "消息不能为空 / Message cannot be empty"})
         return
 
-    sb = get_supabase()
-
     # 保存用户消息 / Save the user message
     try:
-        await _db(lambda: sb.table("messages").insert({
+        await _db(lambda: get_supabase().table("messages").insert({
             "thread_id": thread_id,
             "role": "user",
             "content": user_content,
@@ -223,7 +231,7 @@ async def stream_and_save(
     else:
         try:
             thread_res = await _db(lambda: (
-                sb.table("threads")
+                get_supabase().table("threads")
                 .select("depth, title, session_id")
                 .eq("id", thread_id)
                 .single()
@@ -351,7 +359,7 @@ async def stream_and_save(
         return
 
     try:
-        result = await _db(lambda: sb.table("messages").insert({
+        result = await _db(lambda: get_supabase().table("messages").insert({
             "thread_id": thread_id,
             "role": "assistant",
             "content": full_content,
@@ -387,7 +395,7 @@ async def stream_and_save(
         async def _maybe_embed() -> None:
             try:
                 count_res = await _db(lambda: (
-                    sb.table("messages")
+                    get_supabase().table("messages")
                     .select("id", count="exact")
                     .eq("thread_id", _tid)
                     .eq("role", "assistant")
