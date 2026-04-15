@@ -120,8 +120,9 @@ def _build_router() -> Router:
         num_retries=3,
         retry_after=5,
         fallbacks=[
-            {"chat": ["summarizer"]},  # chat 全部耗尽才触发 / Triggered only when all chat combos are exhausted
-            {"merge": ["chat"]},       # merge 组耗尽时降级到 chat / Degrade to chat when merge group is exhausted
+            {"chat": ["summarizer"]},       # chat 全部耗尽 → 降级到 summarizer
+            {"merge": ["chat"]},            # merge 耗尽 → 降级到 chat
+            {"summarizer": ["chat"]},       # summarizer TPM/RPD 打满 → 降级到 chat
         ],
         allowed_fails=total_chat,
     )

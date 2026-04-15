@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
 from dependencies.auth import get_current_user
-from services.llm_client import merge_threads, summarize
+from services.llm_client import merge_threads
 
 # ── Token 预算常量 ────────────────────────────────────────────────────
 # merge 组最小 TPM = 10K（kimi-k2）；系统消息约 200 tokens，输出预留 1K → 内容预算 8K
@@ -122,7 +122,12 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
             sub_char_budget = chars_per_slot
 
             async def fetch_content(thread_id: str, char_budget: int) -> str:
-                """取全文，超出预算时生成摘要。/ Use full text; summarize if over budget."""
+                """
+                取全文，超出预算时截断（不调 summarizer，避免 TPM 限制）。
+                merge 模型组本身 TPM ≥ 10K，可以直接处理截断后的文本。
+                Fetch full text; truncate if over budget (no summarizer call to avoid TPM limits).
+                The merge model group has TPM ≥ 10K and can handle truncated text directly.
+                """
                 msgs_res = await _db(
                     lambda: sb.table("messages")
                     .select("role, content")
@@ -138,8 +143,7 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
                 full_content = "\n".join(lines)
                 if len(full_content) <= char_budget:
                     return full_content
-                token_budget = max(200, char_budget // _CHARS_PER_TOKEN)
-                return await summarize(full_content, token_budget)
+                return full_content[:char_budget] + "\n…（内容过长，已截断 / Content truncated）"
 
             # 取主线内容 / Fetch main thread content
             main_thread_res = await _db(
