@@ -232,12 +232,16 @@ export default function ChatPage() {
   const pendingMsgSentRef = useRef(false);
   useEffect(() => {
     if (!activeThreadId || pendingMsgSentRef.current) return;
+    // 校验：activeThreadId 必须属于当前 session，防止使用上一个 session 的残留 ID
+    // Validate: activeThreadId must belong to the current session to guard against
+    // stale Zustand state left over from the previous navigation.
+    if (!threads.some(t => t.id === activeThreadId && t.session_id === sessionId)) return;
     const pending = sessionStorage.getItem("deeppin:pending-msg");
     if (!pending) return;
     sessionStorage.removeItem("deeppin:pending-msg");
     pendingMsgSentRef.current = true;
     handleSend(pending);
-  }, [activeThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeThreadId, threads]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 消息位置测量 ────────────────────────────────────────────────
   const updatePositions = useCallback(() => {
