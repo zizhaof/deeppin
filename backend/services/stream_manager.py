@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 # Byte length of the META sentinel, used for streaming truncation boundary calculation
 _SENTINEL_LEN = len(META_SENTINEL)
 
+# 匹配模型实际输出的 sentinel（<<<META>> 或 <<<META>>> 等变体）
+# Matches actual model output — handles <<<META>> (2 >) or <<<META>>> (3 >) variants
+_SENTINEL_RE = re.compile(r"<<<META>>+")
+
 # 每 N 轮写一次对话 embedding（本地模型无额外成本，设为 1 即每轮都写）
 # Write conversation embedding every N rounds (local model has no extra cost; 1 = every round)
 EMBED_EVERY_N_ROUNDS = 1
@@ -312,15 +316,15 @@ async def stream_and_save(
 
             buffer += chunk
 
-            idx = buffer.find(META_SENTINEL)
-            if idx != -1:
-                # 找到 META sentinel，截断正文输出
-                # META sentinel found; cut off body output
-                before = buffer[:idx]
+            m = _SENTINEL_RE.search(buffer)
+            if m:
+                # 找到 META sentinel（支持 << / >>> 等变体）
+                # META sentinel found (handles <<, >>> and other variants)
+                before = buffer[:m.start()]
                 if before:
                     full_content += before
                     yield _sse("chunk", {"content": before})
-                meta_str = buffer[idx + _SENTINEL_LEN:]
+                meta_str = buffer[m.end():]
                 in_meta = True
                 buffer = ""
             else:

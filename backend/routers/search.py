@@ -18,6 +18,7 @@ POST /api/search
 from __future__ import annotations
 
 import json
+import re
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
@@ -33,6 +34,7 @@ router = APIRouter()
 # META sentinel 长度，用于流式截断边界计算
 # Length of the META sentinel used for boundary calculation during streaming
 _SENTINEL_LEN = len(META_SENTINEL)
+_SENTINEL_RE = re.compile(r"<<<META>>+")
 
 
 class SearchRequest(BaseModel):
@@ -89,11 +91,11 @@ async def _search_stream(query: str) -> AsyncGenerator[str, None]:
                 continue  # 保险处理，搜索流不应出现 META / Safety guard; META should not appear in search stream
 
             buffer += chunk
-            idx = buffer.find(META_SENTINEL)
-            if idx != -1:
-                # 找到 META sentinel，截断输出
-                # Found META sentinel; cut off output here
-                before = buffer[:idx]
+            m = _SENTINEL_RE.search(buffer)
+            if m:
+                # 找到 META sentinel（支持 >> / >>> 变体）
+                # Found META sentinel (handles >> / >>> variants)
+                before = buffer[:m.start()]
                 if before:
                     full_content += before
                     yield _sse("chunk", {"content": before})
