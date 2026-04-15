@@ -174,7 +174,7 @@ async def chat_stream(
         # Build the META instruction: ask the model to output summary (and title) at the end of its reply
         fields = (
             f'"summary": "按话题分组记录对话内容，格式：[Topic: 话题名] 关键事实、结论、具体细节（数据/方案/观点）。'
-            f'最多 5 个话题；已有话题严格复用原标签，不得重命名；预算不足时压缩语言，不删话题条目。'
+            f'话题数量不限，每个话题单独一条；已有话题严格复用原标签，不得重命名；预算不足时压缩语言，不删话题条目。'
             f'语言与用户保持一致。严格控制在 {summary_budget} 字以内"'
         )
         if need_title:
