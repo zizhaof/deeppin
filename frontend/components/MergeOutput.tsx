@@ -12,20 +12,6 @@ import MarkdownContent from "@/components/MarkdownContent";
 import MergeTreeCanvas from "@/components/MergeTreeCanvas";
 import { useT } from "@/stores/useLangStore";
 
-// ── 布局常量（与 MergeTreeCanvas 保持一致）──────────────────────────
-const NODE_W = 130, NODE_H = 50, H_GAP = 20, V_GAP = 85, PAD = 32;
-const FIXED_H = 40 + 44 + 44 + 16; // header + format + footer + padding
-
-function computeTreeDimensions(threads: Thread[]): { treeW: number; treeH: number } {
-  const byDepth: Record<number, number> = {};
-  for (const t of threads) byDepth[t.depth] = (byDepth[t.depth] ?? 0) + 1;
-  const maxDepth = threads.length ? Math.max(...threads.map(t => t.depth)) : 0;
-  const maxPerLevel = Math.max(...Object.values(byDepth), 1);
-  const treeW = Math.max(300, maxPerLevel * (NODE_W + H_GAP) - H_GAP + PAD * 2);
-  const treeH = (maxDepth + 1) * (NODE_H + V_GAP) - V_GAP + PAD * 2;
-  return { treeW, treeH };
-}
-
 interface Props {
   sessionId: string;
   threads: Thread[];
@@ -60,16 +46,35 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   const { threads: storeThreads, setMessages, messagesByThread } = useThreadStore();
   const mainThread = storeThreads.find((t) => t.parent_thread_id === null);
 
-  // ── 弹窗尺寸（根据树的宽高动态计算）──────────────────────────────
   const subThreads = threads.filter(th => th.parent_thread_id !== null);
-  const { treeW, treeH } = computeTreeDimensions(threads);
-  const modalW = typeof window !== "undefined"
-    ? Math.max(400, Math.min(treeW + 40, window.innerWidth * 0.9))
-    : 600;
-  const modalH = typeof window !== "undefined"
-    ? Math.max(380, Math.min(treeH + FIXED_H + 60, window.innerHeight * 0.85))
-    : 560;
-  const canvasH = modalH - FIXED_H - 20;
+
+  // ── 弹窗尺寸（可调整大小）──────────────────────────────────────────
+  const [modalW, setModalW] = useState(() =>
+    typeof window !== "undefined" ? Math.max(440, Math.min(720, Math.round(window.innerWidth * 0.65))) : 600
+  );
+  const [modalH, setModalH] = useState(() =>
+    typeof window !== "undefined" ? Math.max(420, Math.min(650, Math.round(window.innerHeight * 0.78))) : 530
+  );
+
+  // 拖拽调整大小
+  const resizing = useRef(false);
+  const resizeOrigin = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  const onResizePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizing.current = true;
+    resizeOrigin.current = { x: e.clientX, y: e.clientY, w: modalW, h: modalH };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onResizePointerMove = (e: React.PointerEvent) => {
+    if (!resizing.current) return;
+    const dx = e.clientX - resizeOrigin.current.x;
+    const dy = e.clientY - resizeOrigin.current.y;
+    setModalW(Math.max(380, Math.min(window.innerWidth * 0.96, resizeOrigin.current.w + dx)));
+    setModalH(Math.max(340, Math.min(window.innerHeight * 0.96, resizeOrigin.current.h + dy)));
+  };
+  const onResizePointerUp = (_e: React.PointerEvent) => { resizing.current = false; };
 
   // ── 打开时拉取相关性 ──────────────────────────────────────────────
   useEffect(() => {
@@ -155,8 +160,8 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="flex flex-col bg-surface border border-base rounded-2xl shadow-2xl shadow-black/20 overflow-hidden"
-        style={{ width: modalW, maxWidth: "90vw", height: modalH, maxHeight: "85vh" }}
+        className="flex flex-col bg-surface border border-base rounded-2xl shadow-2xl shadow-black/20 overflow-hidden relative"
+        style={{ width: modalW, maxWidth: "96vw", height: modalH, maxHeight: "96vh" }}
       >
         {/* ── 顶栏 ── */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-subtle flex-shrink-0">
@@ -227,13 +232,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               <div className="px-5 pt-3 pb-1 flex-shrink-0">
                 <span className="text-[9px] text-faint uppercase tracking-wider">选择要合并的子问题 · 点击节点反选</span>
               </div>
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 relative">
                 <MergeTreeCanvas
                   threads={threads}
                   selected={selected}
                   onToggle={handleToggle}
-                  canvasWidth={modalW - 2}
-                  canvasHeight={canvasH}
                 />
               </div>
               <div className="px-5 py-1.5 flex-shrink-0 flex items-center justify-between border-t border-subtle">
@@ -279,6 +282,18 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               <span>{errorMsg}</span>
             </div>
           )}
+        </div>
+
+        {/* ── 调整大小手柄（右下角）── */}
+        <div
+          style={{ position: "absolute", bottom: 4, right: 4, width: 20, height: 20, cursor: "se-resize", zIndex: 10, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", touchAction: "none" }}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" style={{ pointerEvents: "none" }}>
+            <path d="M9 3L3 9M9 6L6 9" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
         </div>
 
         {/* ── 底栏 ── */}

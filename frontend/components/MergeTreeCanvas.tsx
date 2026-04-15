@@ -1,7 +1,7 @@
 "use client";
 // components/MergeTreeCanvas.tsx
-// 自适应 SVG 线程树 — 根据画布宽高自动缩放布局，支持拖拽平移
-// Adaptive SVG thread tree — auto-scales to canvas dimensions, supports pan
+// 自适应 SVG 线程树 — 层级布局无交叉，根据画布自动缩放，支持拖拽平移
+// Adaptive SVG thread tree — hierarchical no-crossing layout, auto-scales, pan support
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import type { Thread } from "@/lib/api";
@@ -38,6 +38,12 @@ function trunc(s: string | null | undefined, n: number): string {
 
 interface NodePos { thread: Thread; x: number; y: number }
 
+/**
+ * 层级布局：每个节点获得与其叶子数成比例的 x 区间，
+ * 父节点居中于所有直接子节点的 x 范围上，杜绝连线交叉。
+ * Hierarchical layout: x-range allocated proportionally to leaf count;
+ * parent centered over its children — no crossing edges.
+ */
 function computeLayout(
   threads: Thread[],
   compact: boolean,
@@ -48,31 +54,89 @@ function computeLayout(
   const vg = compact ? C_V_GAP : V_GAP;
   const pad = compact ? C_PAD : PAD;
 
-  const byDepth: Record<number, Thread[]> = {};
-  for (const t of threads) {
-    if (!byDepth[t.depth]) byDepth[t.depth] = [];
-    byDepth[t.depth].push(t);
+  if (threads.length === 0) {
+    return { positions: [], posMap: {}, treeW: compact ? 120 : 300, treeH: pad * 2 };
   }
-  const maxDepth = threads.length ? Math.max(...threads.map(t => t.depth)) : 0;
-  const maxPerLevel = Math.max(...Object.values(byDepth).map(a => a.length), 1);
-  const treeW = Math.max(compact ? 120 : 300, maxPerLevel * (nw + hg) - hg + pad * 2);
-  const treeH = (maxDepth + 1) * (nh + vg) - vg + pad * 2;
+
+  // ── 构建父→子映射，识别根节点 ──
+  const threadIds = new Set(threads.map(t => t.id));
+  const childrenOf: Record<string, Thread[]> = {};
+  const roots: Thread[] = [];
+
+  for (const t of threads) {
+    if (!t.parent_thread_id || !threadIds.has(t.parent_thread_id)) {
+      roots.push(t);
+    } else {
+      if (!childrenOf[t.parent_thread_id]) childrenOf[t.parent_thread_id] = [];
+      childrenOf[t.parent_thread_id].push(t);
+    }
+  }
+
+  // ── 计算各节点的叶子数（用于 x 区间分配）──
+  const leafCounts: Record<string, number> = {};
+  function leafCount(id: string): number {
+    if (leafCounts[id] !== undefined) return leafCounts[id];
+    const children = childrenOf[id] ?? [];
+    leafCounts[id] = children.length === 0
+      ? 1
+      : children.reduce((s, c) => s + leafCount(c.id), 0);
+    return leafCounts[id];
+  }
+  for (const t of threads) leafCount(t.id);
+
+  // ── 树的整体尺寸 ──
+  const minDepth = Math.min(...threads.map(t => t.depth));
+  const maxDepth = Math.max(...threads.map(t => t.depth));
+  const totalLeaves = roots.reduce((s, r) => s + leafCount(r.id), 0);
+  const treeW = Math.max(compact ? 120 : 300, totalLeaves * (nw + hg) - hg + pad * 2);
+  const treeH = (maxDepth - minDepth + 1) * (nh + vg) - vg + pad * 2;
 
   const positions: NodePos[] = [];
   const posMap: Record<string, NodePos> = {};
 
-  for (let d = 0; d <= maxDepth; d++) {
-    const lvl = byDepth[d] ?? [];
-    for (let i = 0; i < lvl.length; i++) {
-      const x = lvl.length === 1
-        ? treeW / 2
-        : pad + i * ((treeW - pad * 2 - nw) / Math.max(lvl.length - 1, 1));
-      const y = pad + d * (nh + vg);
-      const entry: NodePos = { thread: lvl[i], x: x + nw / 2, y: y + nh / 2 };
-      positions.push(entry);
-      posMap[lvl[i].id] = entry;
+  /**
+   * 递归布局：先布局所有子节点，再将父节点居中于子节点 x 范围。
+   * Layout recursively: children first, then center parent over children's x span.
+   */
+  function layout(id: string, xMin: number, xMax: number): void {
+    const thread = threads.find(t => t.id === id);
+    if (!thread) return;
+    const children = childrenOf[id] ?? [];
+    const myLeaves = leafCount(id);
+
+    // 先递归布局所有子节点，按叶子数比例分配 x 区间
+    let cursor = xMin;
+    for (const child of children) {
+      const share = (xMax - xMin) * (leafCount(child.id) / myLeaves);
+      layout(child.id, cursor, cursor + share);
+      cursor += share;
     }
+
+    // 节点 x：叶子节点居中于区间；非叶节点居中于首末子节点
+    let nodeX: number;
+    if (children.length === 0) {
+      nodeX = (xMin + xMax) / 2;
+    } else {
+      const firstX = posMap[children[0].id]?.x ?? (xMin + xMax) / 2;
+      const lastX  = posMap[children[children.length - 1].id]?.x ?? (xMin + xMax) / 2;
+      nodeX = (firstX + lastX) / 2;
+    }
+
+    const y = pad + (thread.depth - minDepth) * (nh + vg) + nh / 2;
+    const entry: NodePos = { thread, x: nodeX, y };
+    positions.push(entry);
+    posMap[id] = entry;
   }
+
+  // 按叶子数比例给各根节点分配 x 区间
+  const contentW = treeW - pad * 2;
+  let cursor = pad;
+  for (const root of roots) {
+    const share = contentW * (leafCount(root.id) / totalLeaves);
+    layout(root.id, cursor, cursor + share);
+    cursor += share;
+  }
+
   return { positions, posMap, treeW, treeH };
 }
 
@@ -120,28 +184,28 @@ export default function MergeTreeCanvas({
   );
 
   // ── 自适应缩放 ────────────────────────────────────────────────────
-  // 计算让树刚好填满画布的缩放比（上限 MAX_SCALE，防止单节点被放大过多）
-  // Compute scale so the tree fills the canvas; cap at MAX_SCALE to avoid over-enlarging
   const scale = canvasW && canvasH
     ? Math.min(canvasW / treeW, canvasH / treeH, MAX_SCALE)
     : 1;
 
-  // 缩放后居中偏移 / Center offset after scaling
+  // 缩放后居中偏移
   const centX = canvasW ? (canvasW - treeW * scale) / 2 : 0;
   const centY = canvasH ? (canvasH - treeH * scale) / 2 : 0;
 
-  // 树变化时重置 pan / Reset pan when tree layout changes
+  // 树变化时重置 pan
   useEffect(() => { setPanX(0); setPanY(0); }, [treeW, treeH, canvasW, canvasH]);
 
-  // pan 限制（考虑缩放后实际尺寸）
+  /**
+   * 平移限制：即使树已完全适配画布也允许平移（体验更好），
+   * 但限制在树尺寸的一半范围内，防止树完全移出视野。
+   * Allow panning even when tree fits canvas; clamp to half tree-size so tree stays visible.
+   */
   function clampPan(px: number, py: number): [number, number] {
-    const scaledW = treeW * scale;
-    const scaledH = treeH * scale;
-    const maxX = Math.max(0, scaledW - canvasW);
-    const maxY = Math.max(0, scaledH - canvasH);
+    const halfW = Math.max(canvasW * 0.5, treeW * scale * 0.5);
+    const halfH = Math.max(canvasH * 0.5, treeH * scale * 0.5);
     return [
-      Math.max(-maxX, Math.min(maxX, px)),
-      Math.max(-maxY, Math.min(maxY, py)),
+      Math.max(-halfW, Math.min(halfW, px)),
+      Math.max(-halfH, Math.min(halfH, py)),
     ];
   }
 
@@ -183,8 +247,6 @@ export default function MergeTreeCanvas({
     ? { width: propW, height: propH, position: "relative" }
     : { position: "absolute", inset: 0 };
 
-  // SVG 内容用 <g> 包裹，先平移居中+pan，再缩放
-  // transform order: translate first (screen coords), then scale (tree coords)
   const groupTransform = `translate(${centX + panX}, ${centY + panY}) scale(${scale})`;
 
   const titleChars = compact ? 8 : 11;
@@ -198,7 +260,6 @@ export default function MergeTreeCanvas({
       style={{ ...containerStyle, overflow: "hidden", cursor: "grab" }}
       onMouseDown={onMouseDown}
     >
-      {/* SVG 铺满容器，内容通过 <g> 变换定位 */}
       <svg
         width={canvasW || "100%"}
         height={canvasH || "100%"}
@@ -209,7 +270,6 @@ export default function MergeTreeCanvas({
             <feGaussianBlur stdDeviation="3" result="blur"/>
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
-          {/* 当前激活节点的强发光 */}
           <filter id="mtc-active-glow" x="-60%" y="-60%" width="220%" height="220%">
             <feGaussianBlur stdDeviation="5" result="blur"/>
             <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -256,12 +316,10 @@ export default function MergeTreeCanvas({
                 style={{ cursor: "pointer" }}
                 onClick={() => onToggle(t.id)}
               >
-                {/* 普通选中外圈 */}
                 {isSel && !isRoot && !isActive && (
                   <rect x={-w/2-3} y={-h/2-3} width={w+6} height={h+6} rx={nr+3}
                     fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth={2} />
                 )}
-                {/* 当前激活节点：双层亮环 */}
                 {isActive && (
                   <>
                     <rect x={-w/2-6} y={-h/2-6} width={w+12} height={h+12} rx={nr+6}
@@ -285,7 +343,6 @@ export default function MergeTreeCanvas({
                   strokeWidth={isActive ? 1.5 : isRoot ? 1.5 : 1}
                   filter={isActive ? "url(#mtc-active-glow)" : isSel ? "url(#mtc-glow)" : undefined}
                 />
-                {/* 激活节点顶部小圆点指示器 */}
                 {isActive && (
                   <circle cx={0} cy={-h/2 - (compact ? 6 : 8)} r={compact ? 2.5 : 3}
                     fill="#818cf8" />
