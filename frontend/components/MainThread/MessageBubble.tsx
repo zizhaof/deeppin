@@ -180,15 +180,19 @@ export default function MessageBubble({
     removeHighlight();
 
     // 用临时 span 保留选区高亮（PinMenu 弹出后浏览器会清除 selection）
+    // 使用 extractContents + insertNode 替代 surroundContents，
+    // 因为 surroundContents 在跨块级元素（如 Markdown 渲染的 <p>/<strong> 跨边界）时会抛 HierarchyRequestError
     try {
       const span = document.createElement("span");
-      span.style.cssText = "background:rgba(99,102,241,0.25);border-radius:2px;";
-      range.surroundContents(span);
+      span.style.cssText = "background:rgba(99,102,241,0.25);border-radius:2px;display:inline;";
+      const frag = range.extractContents();
+      span.appendChild(frag);
+      range.insertNode(span);
       tempHighlightRef.current = span;
       // 注册模块级清理函数，供 PinMenu onClose 调用
       _activeHighlightCleanup = removeHighlight;
     } catch {
-      // surroundContents 在跨块级元素时会抛异常，降级不高亮
+      // fallback: 无高亮
     }
 
     // 清除浏览器原生选区（PinMenu 已接管视觉）

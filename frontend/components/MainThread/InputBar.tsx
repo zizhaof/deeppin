@@ -1,7 +1,7 @@
 "use client";
 // components/MainThread/InputBar.tsx
 
-import { useState, useRef, KeyboardEvent, useCallback } from "react";
+import { useState, useRef, KeyboardEvent, useCallback, useEffect } from "react";
 import { useT } from "@/stores/useLangStore";
 import { uploadAttachment } from "@/lib/api";
 
@@ -35,9 +35,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [maxInputH, setMaxInputH] = useState(160);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
+  const resizeStart = useRef<{ y: number; h: number } | null>(null);
 
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !disabled && !uploading;
 
@@ -92,8 +94,33 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, maxInputH)}px`;
   };
+
+  // 拖拽调整输入框最大高度
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resizeStart.current = { y: e.clientY, h: maxInputH };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  };
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStart.current) return;
+    if (!(e.currentTarget as HTMLDivElement).hasPointerCapture(e.pointerId)) return;
+    const delta = resizeStart.current.y - e.clientY; // 向上拖 → 增大高度
+    setMaxInputH(Math.max(60, Math.min(400, resizeStart.current.h + delta)));
+  };
+  const onResizeUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    resizeStart.current = null;
+    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+  };
+
+  // maxInputH 变化时重新适配当前 textarea 高度
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const current = parseFloat(el.style.height) || 0;
+    if (current > maxInputH) el.style.height = `${maxInputH}px`;
+  }, [maxInputH]);
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pasted = e.clipboardData.getData("text");
@@ -137,7 +164,16 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   };
 
   return (
-    <div className="border-t border-subtle bg-base px-4 pt-3 pb-5">
+    <div className="border-t border-subtle bg-base px-4 pt-3 pb-5 relative">
+      {/* 拖拽调整输入框高度的把手 */}
+      <div
+        className="absolute top-0 left-0 right-0 h-2.5 cursor-ns-resize flex items-center justify-center group/rh"
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+      >
+        <div className="w-10 h-0.5 rounded-full bg-subtle/50 group-hover/rh:bg-indigo-500/30 transition-colors" />
+      </div>
       <div className={`bg-surface rounded-2xl border overflow-hidden transition-all ${
         disabled
           ? "border-subtle"
@@ -170,13 +206,13 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
         )}
 
         {/* 输入行 */}
-        <div className="flex items-end gap-2 px-3 py-2.5">
+        <div className="flex items-center gap-2 px-3 py-2.5">
           {/* 附件按钮 */}
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={disabled || uploading}
-            className="w-7 h-7 rounded-lg hover:bg-glass disabled:opacity-20 text-ph hover:text-dim flex items-center justify-center transition-colors flex-shrink-0 mb-0.5"
+            className="w-7 h-7 rounded-lg hover:bg-glass disabled:opacity-20 text-ph hover:text-dim flex items-center justify-center transition-colors flex-shrink-0"
             aria-label="添加附件"
           >
             {uploading ? (
@@ -210,7 +246,8 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             placeholder={uploading ? t.extracting : webSearch ? t.webSearchPlaceholder : t.inputPlaceholder}
             disabled={disabled || uploading}
             rows={1}
-            className="flex-1 bg-transparent resize-none outline-none text-sm text-hi placeholder-ph max-h-40 disabled:opacity-30 leading-relaxed"
+            style={{ maxHeight: maxInputH }}
+            className="flex-1 bg-transparent resize-none outline-none text-sm text-hi placeholder-ph disabled:opacity-30 leading-relaxed"
           />
 
           {/* 联网搜索 toggle */}
@@ -219,7 +256,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             onClick={() => onWebSearchToggle?.(!webSearch)}
             disabled={disabled}
             title={webSearch ? t.webSearchOn : t.webSearchOff}
-            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 disabled:opacity-20 ${
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-20 ${
               webSearch
                 ? "bg-indigo-500/15 text-indigo-400 hover:bg-indigo-500/20"
                 : "hover:bg-glass text-ph hover:text-dim"
@@ -236,7 +273,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 shadow-sm shadow-indigo-950/50"
+            className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white flex items-center justify-center transition-colors flex-shrink-0 shadow-sm shadow-indigo-950/50"
             aria-label="发送"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>

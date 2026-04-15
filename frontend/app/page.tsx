@@ -234,7 +234,7 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-faint hover:text-md hover:bg-glass transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-faint hover:text-md hover:bg-glass transition-colors cursor-pointer"
             title={t.recentSessions}
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">

@@ -74,7 +74,7 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
                   <button
                     key={s.id}
                     onClick={() => { onClose(); router.push(`/chat/${s.id}`); }}
-                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg transition-colors group relative ${
+                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg transition-colors group relative cursor-pointer ${
                       isActive ? "bg-indigo-950/30 border border-indigo-500/15" : "hover:bg-glass border border-transparent"
                     }`}
                   >

@@ -51,7 +51,7 @@ export default function ThreadNav({
       {/* 菜单按钮 — 打开 session 抽屉 */}
       <button
         onClick={onOpenSessions}
-        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group"
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group cursor-pointer"
         title="所有对话"
       >
         <svg className="w-3.5 h-3.5 text-faint group-hover:text-md transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
