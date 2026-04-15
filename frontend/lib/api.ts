@@ -204,6 +204,19 @@ export async function deleteThread(threadId: string): Promise<void> {
   if (!res.ok) throw new Error(`删除线程失败: ${res.status}`);
 }
 
+/** 删除当前用户账号及所有对话数据（不可撤销） */
+export async function deleteAccount(): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/users/me`, {
+    method: "DELETE",
+    headers: await getAuthHeaders(),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).detail ?? ""; } catch { /* ignore */ }
+    throw new Error(detail || `删除账号失败: ${res.status}`);
+  }
+}
+
 /** 上传附件，后端异步提取文本并向量化（不返回文本内容，通过 RAG 检索注入 context） */
 export async function uploadAttachment(
   sessionId: string,

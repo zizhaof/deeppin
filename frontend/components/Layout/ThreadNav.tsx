@@ -2,10 +2,14 @@
 // components/Layout/ThreadNav.tsx
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import type { Thread } from "@/lib/api";
+import { deleteAccount } from "@/lib/api";
 import type { Lang } from "@/lib/i18n";
 import { useT } from "@/stores/useLangStore";
 import ThemeToggle from "@/components/ThemeToggle";
+import { createClient } from "@/lib/supabase";
 
 interface Props {
   threads: Thread[];
@@ -32,6 +36,24 @@ export default function ThreadNav({
   onOpenSessions,
 }: Props) {
   const t = useT();
+  const router = useRouter();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setUserMenuOpen(false);
+    if (!window.confirm("确认删除账号？此操作不可撤销，所有对话将被永久删除。\n\nDelete account? This cannot be undone — all conversations will be permanently deleted.")) return;
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/");
+    } catch (err) {
+      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+      setDeleting(false);
+    }
+  };
 
   function buildBreadcrumb(threadId: string | null): Thread[] {
     if (!threadId) return [];
@@ -133,6 +155,35 @@ export default function ThreadNav({
       >
         {t.toggleLang}
       </button>
+
+      {/* 用户菜单 */}
+      <div className="relative flex-shrink-0">
+        <button
+          onClick={() => setUserMenuOpen((v) => !v)}
+          disabled={deleting}
+          className="w-7 h-7 flex items-center justify-center rounded-lg border border-subtle hover:border-base hover:bg-glass transition-all disabled:opacity-50"
+          title="账号设置"
+        >
+          <svg className="w-3.5 h-3.5 text-faint" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+          </svg>
+        </button>
+
+        {userMenuOpen && (
+          <>
+            {/* 点击外部关闭 */}
+            <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+            <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[140px] bg-surface border border-base rounded-xl shadow-lg overflow-hidden">
+              <button
+                onClick={handleDeleteAccount}
+                className="w-full text-left px-3.5 py-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+              >
+                删除账号
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </header>
   );
 }
