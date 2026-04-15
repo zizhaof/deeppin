@@ -3,10 +3,11 @@
 向量嵌入服务 — sentence-transformers 单例封装
 Vector embedding service — singleton wrapper for sentence-transformers.
 
-模型 / Model: paraphrase-multilingual-MiniLM-L12-v2
-  维度 / Dimensions: 384
-  支持中文 / Chinese support: yes
-  大小 / Size: ~120 MB
+模型 / Model: BAAI/bge-m3
+  维度 / Dimensions: 1024
+  支持中文 / Chinese support: yes (优化)
+  大小 / Size: ~570 MB
+  最大输入长度 / Max input length: 8192 tokens
   首次调用时从 HuggingFace Hub 自动下载，之后读本地缓存。
   Downloaded from HuggingFace Hub on first use; cached locally afterward.
 
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+MODEL_NAME = "BAAI/bge-m3"
 
 # 全局单例和加载锁，保证多线程环境下只初始化一次
 # Global singleton and load lock; ensures the model is initialized only once

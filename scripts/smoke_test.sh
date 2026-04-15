@@ -45,6 +45,10 @@ check "整体状态 ok"        "$BASE_URL/health"           '"status":"ok"'
 check "backend 自身"       "$BASE_URL/health"           '"backend":true'
 check "searxng 连通"       "$BASE_URL/health"           '"searxng":true'
 check "supabase 连通"      "$BASE_URL/health"           '"supabase":true'
+check "embedding 正常"     "$BASE_URL/health"           '"ok":true'
+check "embedding 维度1024" "$BASE_URL/health"           '"dim":1024'
+check "embedding 模型bge"  "$BASE_URL/health"           'bge-m3'
+check "groq API 可用"      "$BASE_URL/health"           '"groq":{"ok":true}'
 
 # 3. 认证中间件生效
 check "未授权请求返回 401"  "$BASE_URL/api/sessions"     '"detail"'
