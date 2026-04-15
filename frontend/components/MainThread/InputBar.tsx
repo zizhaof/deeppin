@@ -1,7 +1,7 @@
 "use client";
 // components/MainThread/InputBar.tsx
 
-import { useState, useRef, KeyboardEvent, useCallback, useLayoutEffect } from "react";
+import { useState, useRef, KeyboardEvent, useCallback } from "react";
 import { useT } from "@/stores/useLangStore";
 import { uploadAttachment } from "@/lib/api";
 
@@ -35,8 +35,9 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [maxInputH, setMaxInputH] = useState(160);
-  const maxInputHRef = useRef(160);
+  // 手动拖拽后的最小高度；0 = 未拖拽，让 textarea 自然收缩
+  // Minimum height after manual drag; 0 = not dragged, textarea shrinks naturally
+  const manualHeightRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
@@ -80,6 +81,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     );
     setText("");
     setAttachments([]);
+    manualHeightRef.current = 0;
     resetHeight();
   };
 
@@ -94,24 +96,21 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, maxInputH)}px`;
+    // 以手动拖拽高度为下限，以内容自然高度为目标，最高 600px
+    // Use dragged height as floor, content height as target, cap at 600px
+    el.style.height = `${Math.max(manualHeightRef.current, Math.min(el.scrollHeight, 600))}px`;
   };
-
-  // 保持 ref 与 state 同步，让 window 事件回调读到最新值
-  useLayoutEffect(() => { maxInputHRef.current = maxInputH; }, [maxInputH]);
 
   // 拖拽调整输入框高度 — 以 textarea 当前实际高度为起点，直接设置 style.height，立即可见
   const onResizeDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const el = textareaRef.current;
-    // 从 textarea 当前渲染高度出发，而不是 maxInputH
-    const startH = el ? el.offsetHeight : maxInputHRef.current;
+    const startH = el ? el.offsetHeight : (manualHeightRef.current || 36);
 
     const onMove = (ev: MouseEvent) => {
       const next = Math.max(36, Math.min(400, startH + (startY - ev.clientY)));
-      maxInputHRef.current = next;
-      setMaxInputH(next);
+      manualHeightRef.current = next;
       // 直接写 style.height，让效果立即反映在界面上
       if (el) el.style.height = `${next}px`;
     };
@@ -245,7 +244,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             placeholder={uploading ? t.extracting : webSearch ? t.webSearchPlaceholder : t.inputPlaceholder}
             disabled={disabled || uploading}
             rows={1}
-            style={{ maxHeight: maxInputH }}
+            style={{ maxHeight: 600 }}
             className="flex-1 bg-transparent resize-none outline-none text-sm text-hi placeholder-ph disabled:opacity-30 leading-relaxed"
           />
 
