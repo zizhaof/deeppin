@@ -126,7 +126,7 @@ export default function HomePage() {
   // 预热：登录后立即在后台创建好一个 session，点击时直接跳转无需等待
   const prewarmedRef = useRef<string | null>(null);
 
-  const prewarm = (headers?: Record<string, string>) => {
+  const prewarm = () => {
     createSession().then(s => { prewarmedRef.current = s.id; }).catch(() => {});
   };
 
@@ -150,6 +150,15 @@ export default function HomePage() {
         setLoading(false);
       }
     });
+
+    // 组件卸载时，若预热的 session 没被使用，删掉它，避免积累空对话
+    // On unmount: delete the prewarmed session if it was never used
+    return () => {
+      if (prewarmedRef.current) {
+        deleteSession(prewarmedRef.current).catch(() => {});
+        prewarmedRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
