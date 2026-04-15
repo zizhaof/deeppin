@@ -305,7 +305,7 @@ export default function HomePage() {
           <h1 className="text-[22px] font-semibold text-hi tracking-tight leading-tight">{t.welcomeTitle}</h1>
 
           {/* 首页输入框 */}
-          <div className="w-full max-w-[360px] bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
+          <div className="w-full max-w-[560px] bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
             <textarea
               value={heroText}
               onChange={(e) => setHeroText(e.target.value)}
