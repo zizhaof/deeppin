@@ -288,21 +288,27 @@ class TestMergeGenerate:
         assert any(e["type"] == "done" for e in events)
 
     @pytest.mark.asyncio
-    async def test_summarizes_when_content_exceeds_budget(self):
-        """内容超出单线程字符预算时调用 summarize 压缩
-        Calls summarize when a thread's full content exceeds its char budget."""
+    async def test_truncates_when_content_exceeds_budget(self):
+        """内容超出单线程字符预算时截断（不调 summarize）
+        Truncates content when it exceeds the char budget (no summarizer call)."""
         long_content = "A" * 100_000
         sb = self._make_sb(sub_messages=[{"role": "assistant", "content": long_content}])
 
+        captured: list[dict] = []
+
         async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
+            captured.extend(threads_data)
             yield "ok"
 
-        with patch("routers.merge.merge_threads", side_effect=fake_merge), \
-             patch("routers.merge.summarize", new_callable=AsyncMock, return_value="compressed") as mock_summarize:
+        with patch("routers.merge.merge_threads", side_effect=fake_merge):
             events = await _collect_generate(SESSION_ID, sb=sb)
 
-        assert mock_summarize.call_count >= 1
         assert any(e["type"] == "done" for e in events)
+        # 内容应被截断而非完整传递 / Content should be truncated, not passed in full
+        if captured:
+            sub_content = captured[0].get("content", "")
+            assert len(sub_content) < 100_000, "Expected content to be truncated"
+            assert "截断" in sub_content or "truncated" in sub_content.lower()
 
 
 class TestMergeRequestThreadIds:
