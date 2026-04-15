@@ -158,7 +158,8 @@ interface Props {
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
 }
 
-export default function MarkdownContent({ content, anchors = [], onAnchorClick, onAnchorHover }: Props) {
+// React.memo: props 不变时跳过 re-render，保留浏览器文字选区
+const MarkdownContent = React.memo(function MarkdownContent({ content, anchors = [], onAnchorClick, onAnchorHover }: Props) {
   const colorMap = buildColorMap(anchors);
 
   // 把锚点 + 颜色映射传给 processChildren 的快捷函数
@@ -253,4 +254,6 @@ export default function MarkdownContent({ content, anchors = [], onAnchorClick, 
       {content}
     </ReactMarkdown>
   );
-}
+});
+
+export default MarkdownContent;

@@ -154,16 +154,29 @@ export default function MessageBubble({
     const range = sel.getRangeAt(0);
     if (!bubble.contains(range.commonAncestorContainer)) return;
 
+    // 在 onSelect 触发 re-render 之前保存选区快照
+    const savedRange = range.cloneRange();
     const startOffset = getCharOffset(bubble, range.startContainer, range.startOffset);
     const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
     const rect = range.getBoundingClientRect();
     const selectedText = sel.toString().trim();
 
-    // 保留浏览器原生选区（不调用 removeAllRanges）
-    // PinMenu 容器的 onMouseDown 有 preventDefault，点击菜单不会 collapse 选区
-    // clearActiveHighlight() 会在 pin/close 时清除原生选区
-
     onSelect(selectedText, messageId, rect, startOffset, endOffset);
+
+    // onSelect 会触发父组件 setState → React re-render → 浏览器选区丢失
+    // 在下一帧重新应用选区，确保 PinMenu 显示期间高亮仍然可见
+    // clearActiveHighlight() 会在用户 pin / 关闭时主动清除
+    requestAnimationFrame(() => {
+      try {
+        const s = window.getSelection();
+        if (s && s.isCollapsed) {
+          s.removeAllRanges();
+          s.addRange(savedRange);
+        }
+      } catch {
+        // savedRange 引用的 DOM 节点被 React 替换时忽略
+      }
+    });
   };
 
   return (
