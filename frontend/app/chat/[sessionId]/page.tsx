@@ -654,23 +654,23 @@ export default function ChatPage() {
               <div className="flex gap-0.5 bg-surface-80 border border-subtle rounded-lg p-0.5">
                 <button
                   onClick={() => switchRightView("dots")}
-                  title="圆点树"
-                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${rightView === "dots" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
+                  className={`flex items-center gap-1 px-1.5 h-5 rounded-md transition-colors ${rightView === "dots" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
                 >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                     <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
                     <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
                   </svg>
+                  <span className="text-[9px] font-medium">列表</span>
                 </button>
                 <button
                   onClick={() => switchRightView("canvas")}
-                  title="节点图"
-                  className={`w-5 h-5 rounded-md flex items-center justify-center transition-colors ${rightView === "canvas" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
+                  className={`flex items-center gap-1 px-1.5 h-5 rounded-md transition-colors ${rightView === "canvas" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
                 >
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
                     <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
                   </svg>
+                  <span className="text-[9px] font-medium">节点图</span>
                 </button>
               </div>
               <span className="text-[9px] text-ph tabular-nums select-none flex-1">{threads.length}</span>
