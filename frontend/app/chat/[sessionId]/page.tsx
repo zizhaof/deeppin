@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { getSession, getMessages, getAllMessages, createThread, getSuggestions, listSessions, deleteSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
-import { sendMessageStream, sendSearchStream } from "@/lib/sse";
+import { sendMessageStream } from "@/lib/sse";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT, useLangStore } from "@/stores/useLangStore";
 import MessageList from "@/components/MainThread/MessageList";
@@ -33,61 +33,6 @@ import SessionDrawer from "@/components/SessionDrawer";
  *   B. 显式查询动作词 — 用户明确提出"查/搜/找"的意图（查一下、帮我搜…）
  * 任意一轨命中即触发。
  */
-function needsRealtime(text: string): boolean {
-  const t = text.toLowerCase();
-  return REALTIME_STRONG.test(t) || REALTIME_ACTION.test(t);
-}
-
-/** A: 强信号领域词 — 单独出现就代表需要实时数据，误判率低 */
-const REALTIME_STRONG = new RegExp(
-  [
-    // 金融
-    "股价", "股市", "行情", "涨跌", "涨幅", "跌幅",
-    "汇率", "外汇", "期货",
-    "油价", "原油价格", "黄金价格",
-    "比特币", "以太坊", "加密货币", "btc", "eth", "usdt",
-    "纳斯达克", "道琼斯", "标普500", "恒生指数", "上证指数", "深证",
-    "a股", "港股", "美股",
-    "ipo",
-
-    // 天气（带明确实时含义，避免"温度"这类物理概念词）
-    "天气预报", "今天天气", "明天天气", "后天天气",
-    "台风", "暴雨预警", "寒潮预警", "高温预警",
-    "pm2\\.5", "空气质量指数", "aqi",
-
-    // 新闻
-    "热搜", "头条新闻", "突发新闻", "最新新闻",
-
-    // 体育
-    "比分", "赛果", "积分榜", "今日赛程",
-
-    // 英文强信号
-    "stock price", "share price", "exchange rate",
-    "weather forecast", "breaking news",
-    "bitcoin price", "crypto price", "live score",
-  ]
-    .map((kw) => kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|"),
-  "i",
-);
-
-/** B: 显式查询动作词 — 用户主动提出"查/搜"的意图 */
-const REALTIME_ACTION = new RegExp(
-  [
-    // 中文：足够具体的动作短语，避免"搜索算法"、"找个方法"等误判
-    "查一下", "查查", "帮我查", "帮忙查", "查询一下", "麻烦查",
-    "搜一下", "搜搜", "帮我搜", "搜索一下",
-    "找一下.*信息", "找一下.*资料", "找一下.*数据",
-    "查一查", "查下",
-
-    // 英文
-    "look up", "search for", "can you search", "find out",
-    "what is the current", "what's the current", "what's the latest",
-  ]
-    .map((kw) => kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|"),
-  "i",
-);
 
 /** 客户端瞬时生成占位追问，供弹窗立即展示，稍后由 LLM 结果替换 */
 function makePlaceholders(anchorText: string): string[] {
@@ -356,35 +301,26 @@ export default function ChatPage() {
   // ── 发送消息 ────────────────────────────────────────────────────
   // content = AI 看到的完整内容；display = 气泡里显示的文字（含附件标签，可选）
   // ragFilename = 刚上传的 RAG 文件名，后端用于优先检索该文件的块
+  //
+  // 注意：所有消息都走 sendMessageStream（存库路径）。
+  // 联网搜索由后端 classify_search_intent 自动判断，前端不再路由到无状态的 /api/search。
+  // 这样确保所有对话（包括搜索类查询）都能持久化，刷新后不丢失。
   const handleSend = async (content: string, display?: string, ragFilename?: string) => {
     if (!activeThreadId || isStreaming) return;
     addUserMessage(activeThreadId, display ?? content);
     setStreamStatus(activeThreadId, t.processing);
     const threadId = activeThreadId;
 
-    // 手动开启 或 自动检测到实时数据需求
-    const useSearch = webSearch || needsRealtime(content);
-
-    if (useSearch) {
-      await sendSearchStream(
-        content,
-        (chunk) => appendChunk(threadId, chunk),
-        (fullText) => finalizeStream(threadId, fullText, null),
-        (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
-        (text) => setStreamStatus(threadId, text),
-      );
-    } else {
-      await sendMessageStream(
-        threadId,
-        content,
-        (chunk) => appendChunk(threadId, chunk),
-        (fullText, messageId) => finalizeStream(threadId, fullText, messageId),
-        (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
-        (tid, title) => updateThreadTitle(tid, title),
-        (text) => setStreamStatus(threadId, text),
-        ragFilename,
-      );
-    }
+    await sendMessageStream(
+      threadId,
+      content,
+      (chunk) => appendChunk(threadId, chunk),
+      (fullText, messageId) => finalizeStream(threadId, fullText, messageId),
+      (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
+      (tid, title) => updateThreadTitle(tid, title),
+      (text) => setStreamStatus(threadId, text),
+      ragFilename,
+    );
   };
 
   const handleSendSuggestion = useCallback((threadId: string, question: string) => {
