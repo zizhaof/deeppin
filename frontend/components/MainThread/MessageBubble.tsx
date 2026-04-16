@@ -27,7 +27,7 @@ interface Props {
   onSelect?: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
-  onRef?: (el: HTMLDivElement | null) => void;
+  onMessageRef?: (messageId: string, el: HTMLDivElement | null) => void;
 }
 
 /**
@@ -185,7 +185,7 @@ function MessageBubble({
   onSelect,
   onAnchorClick,
   onAnchorHover,
-  onRef,
+  onMessageRef,
 }: Props) {
   const t = useT();
   const isUser = role === "user";
@@ -277,7 +277,7 @@ function MessageBubble({
       data-message-id={messageId}
       ref={(el) => {
         (divRef as { current: HTMLDivElement | null }).current = el;
-        onRef?.(el);
+        onMessageRef?.(messageId, el);
       }}
       className={`flex ${isUser ? "justify-end" : "justify-start"} mb-5 group/bubble`}
     >
