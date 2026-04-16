@@ -616,6 +616,39 @@ export const articles: Article[] = [
             "570MB 模型，Oracle ARM 24GB 内存轻松容纳",
           ]},
           { type: "note", text: "语义切分的代价是上传处理时间变长：固定切分 50 个 chunk 约 5 秒，语义切分需要先对所有句子批量 embed 再合并，处理同样文档约需 10-15 秒。这个延迟发生在上传时而非查询时，对用户体验的影响有限——用户上传文档时等一下可以接受，但查询时等待是不能接受的。" },
+
+          { type: "h1", text: "八、Deeppin 实际代码实现" },
+          { type: "p", text: "前面的伪代码用「距离 > threshold」来解释原理。实际生产代码使用的是余弦相似度（而非距离），并且用字符数（而非 token 数）作为 chunk 长度单位——以下是 Deeppin 线上运行的真实参数和核心逻辑。" },
+
+          { type: "h2", text: "入口路由：内联 vs RAG" },
+          { type: "p", text: "不是所有上传文件都需要进向量库。短文本直接作为消息上下文注入，省去切分和 embedding 的开销：" },
+          { type: "code", text: "INLINE_THRESHOLD = 3000  # 字符\n\nasync def process_attachment(session_id, filename, content):\n    text = await extract_text(content, filename)\n\n    if len(text) <= INLINE_THRESHOLD:\n        # 短文本：直接内联，不进向量库\n        return {\"chunk_count\": 0, \"inline_text\": text}\n\n    # 长文本：语义切分 → 向量化 → 存库\n    chunks = await chunk_text_semantic(text)\n    embeddings = await embed_texts(chunks)\n    await store_chunks(session_id, filename, chunks, embeddings)" },
+          { type: "note", text: "3000 字符约等于 1200 tokens（中文约 2 字符/token）。这个阈值和 context_builder 中单条消息的截断上限保持一致——如果一段文本可以完整放进消息历史而不被截断，就没必要走 RAG。" },
+
+          { type: "h2", text: "句子切分实现" },
+          { type: "p", text: "先按空行分段，再在段内按句末标点切分。支持中文句号（。）、感叹号（！）、问号（？）和对应的英文标点：" },
+          { type: "code", text: "_SENT_SPLIT_RE = re.compile(r'(?<=[。！？.!?])\\s*')\n\ndef _split_sentences(text: str) -> list[str]:\n    sentences = []\n    for para in re.split(r'\\n\\s*\\n', text):   # 空行分段\n        para = para.strip()\n        if not para:\n            continue\n        for sent in _SENT_SPLIT_RE.split(para):  # 段内按句末标点切\n            sent = sent.strip()\n            if sent:\n                sentences.append(sent)\n    return sentences" },
+
+          { type: "h2", text: "语义切分核心逻辑" },
+          { type: "p", text: "实际参数表：" },
+          { type: "code", text: "SEMANTIC_THRESHOLD = 0.75  # 相邻句子余弦相似度 < 0.75 时切断\nMAX_CHUNK_CHARS    = 600   # 单个 chunk 最大字符数\nMIN_CHUNK_CHARS    = 50    # chunk 最小字符数，过短继续合并" },
+          { type: "p", text: "注意：这里用的是相似度阈值（similarity < 0.75 切断），而非前文伪代码中的距离阈值（distance > 0.3 切断）。两者等价：distance = 1 − similarity，0.75 相似度 = 0.25 距离。用相似度的好处是逻辑更直观——「两句话不够像就切」。" },
+          { type: "code", text: "async def chunk_text_semantic(text: str) -> list[str]:\n    sentences = _split_sentences(text)\n    if len(sentences) <= 1:\n        return sentences\n\n    # 一次批量 embed 所有句子（bge-m3 已 L2 归一化，点积 = 余弦相似度）\n    embeddings = await embed_texts(sentences)\n\n    chunks: list[str] = []\n    current: list[str] = [sentences[0]]\n    current_len: int = len(sentences[0])\n\n    for i in range(1, len(sentences)):\n        sent = sentences[i]\n        sent_len = len(sent)\n\n        # 点积 = 余弦相似度（向量已归一化）\n        sim = sum(a * b for a, b in zip(embeddings[i-1], embeddings[i]))\n\n        # 语义跳跃 或 chunk 会超长 → 切断\n        # 但当前 chunk 须达到最小长度才允许切（避免碎片）\n        should_break = (\n            sim < SEMANTIC_THRESHOLD or current_len + sent_len > MAX_CHUNK_CHARS\n        ) and current_len >= MIN_CHUNK_CHARS\n\n        if should_break:\n            chunks.append(\"\".join(current))\n            current = [sent]\n            current_len = sent_len\n        else:\n            current.append(sent)\n            current_len += sent_len\n\n    # 尾部处理：过短的尾巴合并到前一个 chunk\n    if current:\n        tail = \"\".join(current)\n        if chunks and len(tail) < MIN_CHUNK_CHARS:\n            chunks[-1] += tail\n        else:\n            chunks.append(tail)\n\n    return chunks" },
+          { type: "note", text: "MIN_CHUNK_CHARS = 50 的尾部合并是实践中很重要的细节。文档末尾常常是一句简短的结语或免责声明，如果单独成为一个 chunk 进入向量库，它的 embedding 向量语义模糊、检索时容易造成噪声。合并到上一个 chunk 后，结语成为上一段论述的结尾——语义上更自然，检索质量也更高。" },
+
+          { type: "h2", text: "Fallback：固定大小切分" },
+          { type: "p", text: "如果 embedding 服务不可用（模型加载失败、OOM 等），自动降级到滑动窗口切分：" },
+          { type: "code", text: "CHUNK_SIZE    = 350   # 窗口大小\nCHUNK_OVERLAP = 50    # 重叠字符数\n\ndef _chunk_fixed(text: str) -> list[str]:\n    if len(text) <= CHUNK_SIZE:\n        return [text]\n    chunks = []\n    start = 0\n    while start < len(text):\n        end = min(start + CHUNK_SIZE, len(text))\n        chunks.append(text[start:end])\n        if end == len(text): break\n        start = end - CHUNK_OVERLAP\n    return chunks" },
+          { type: "p", text: "Fallback 的窗口（350 字符）比语义切分的上限（600 字符）小，重叠 50 字符。这是因为固定切分没有语义边界保证，更小的窗口 + 更多重叠能部分缓解切断问题——虽然不如语义切分精确，但确保系统在降级场景下仍然可用。" },
+
+          { type: "h2", text: "Embedding 服务：单例 + 线程池" },
+          { type: "p", text: "bge-m3 模型通过 sentence-transformers 加载，全局单例 + 双重检查锁保证只加载一次。所有 encode 调用在线程池中执行，不阻塞 asyncio 事件循环：" },
+          { type: "code", text: "MODEL_NAME = \"BAAI/bge-m3\"  # 1024 维，中英文双语\n\n_model = None\n_model_lock = threading.Lock()\n\ndef _get_model():\n    global _model\n    if _model is None:\n        with _model_lock:             # 双重检查锁\n            if _model is None:\n                _model = SentenceTransformer(MODEL_NAME)\n    return _model\n\ndef _encode_sync(texts: list[str]) -> list[list[float]]:\n    model = _get_model()\n    # normalize_embeddings=True → 点积 = 余弦相似度\n    vecs = model.encode(texts, normalize_embeddings=True)\n    return vecs.tolist()\n\nasync def embed_texts(texts: list[str]) -> list[list[float]]:\n    loop = asyncio.get_running_loop()\n    return await loop.run_in_executor(None, _encode_sync, texts)" },
+
+          { type: "h2", text: "Context 注入：检索结果如何进入 AI" },
+          { type: "p", text: "检索到的 chunk 和对话记忆作为 system 消息注入 context，位于摘要和锚点之后、对话历史之前。最终结构（以子线程为例）：" },
+          { type: "code", text: "[\n  {\"role\": \"system\", \"content\": \"[主线对话摘要] ...800 tokens...\"},\n  {\"role\": \"system\", \"content\": \"[第 1 层子线程摘要] ...500 tokens...\"},\n  {\"role\": \"system\", \"content\": '锚点：\"用户选中的那段文字\"'},\n  {\"role\": \"system\", \"content\": \"[RAG] 文件相关块：\\n  [report.pdf 第3块] ...\\n  [report.pdf 第7块] ...\"},\n  {\"role\": \"system\", \"content\": \"[RAG] 历史对话：\\n  用户：...\\n  AI：...\"},\n  {\"role\": \"user\",   \"content\": \"最近 10 条对话...\"},\n  {\"role\": \"assistant\", \"content\": \"...\"},\n  ...\n]" },
+          { type: "p", text: "总 context 控制在 18000 字符（约 7200 tokens）以内。超长的 user/assistant 消息会被替换为占位符，引导 AI 使用 system 中的 RAG 块；仍超限则从最早的对话消息开始逐条删除——system 消息（摘要、锚点、RAG）永远不删。" },
         ],
       },
       en: {
@@ -681,6 +714,39 @@ export const articles: Article[] = [
             "570MB model fits comfortably in Oracle ARM's 24GB RAM",
           ]},
           { type: "note", text: "The trade-off: upload processing takes longer. Fixed chunking handles 50 chunks in ~5 seconds; semantic chunking must batch-embed all sentences first, taking 10–15 seconds for the same document. This cost is paid at upload time, not query time — users can tolerate a wait when uploading, but not when asking a question." },
+
+          { type: "h1", text: "Part 8 — Deeppin's actual implementation" },
+          { type: "p", text: "The pseudocode above uses \"distance > threshold\" to explain the concept. The production code uses cosine similarity (not distance) and character counts (not token counts) as the chunk length unit. Below are the real parameters and core logic running in Deeppin's backend." },
+
+          { type: "h2", text: "Entry routing: inline vs. RAG" },
+          { type: "p", text: "Not every uploaded file needs the vector store. Short texts are injected directly as message context, skipping the chunking and embedding overhead:" },
+          { type: "code", text: "INLINE_THRESHOLD = 3000  # characters\n\nasync def process_attachment(session_id, filename, content):\n    text = await extract_text(content, filename)\n\n    if len(text) <= INLINE_THRESHOLD:\n        # Short text: inline, skip vector store\n        return {\"chunk_count\": 0, \"inline_text\": text}\n\n    # Long text: semantic chunk → embed → store\n    chunks = await chunk_text_semantic(text)\n    embeddings = await embed_texts(chunks)\n    await store_chunks(session_id, filename, chunks, embeddings)" },
+          { type: "note", text: "3,000 characters ≈ 1,200 tokens (Chinese averages ~2 chars/token). This threshold matches the per-message truncation cap in context_builder — if a text fits into message history without truncation, there's no point routing it through RAG." },
+
+          { type: "h2", text: "Sentence splitting" },
+          { type: "p", text: "Split on blank lines first (paragraph boundaries), then on sentence-ending punctuation within each paragraph. Supports both Chinese (。！？) and English (.!?) punctuation:" },
+          { type: "code", text: "_SENT_SPLIT_RE = re.compile(r'(?<=[。！？.!?])\\s*')\n\ndef _split_sentences(text: str) -> list[str]:\n    sentences = []\n    for para in re.split(r'\\n\\s*\\n', text):   # split on blank lines\n        para = para.strip()\n        if not para:\n            continue\n        for sent in _SENT_SPLIT_RE.split(para):  # split on sentence-end punct\n            sent = sent.strip()\n            if sent:\n                sentences.append(sent)\n    return sentences" },
+
+          { type: "h2", text: "Core semantic chunking logic" },
+          { type: "p", text: "Actual parameter table:" },
+          { type: "code", text: "SEMANTIC_THRESHOLD = 0.75  # break when adjacent cosine similarity < 0.75\nMAX_CHUNK_CHARS    = 600   # max characters per chunk\nMIN_CHUNK_CHARS    = 50    # min characters; shorter chunks keep merging" },
+          { type: "p", text: "Note: this uses a similarity threshold (similarity < 0.75 → break), not the distance threshold (distance > 0.3 → break) from the pseudocode above. They're equivalent: distance = 1 − similarity, so 0.75 similarity = 0.25 distance. Similarity is more intuitive — \"if two sentences aren't similar enough, cut.\"" },
+          { type: "code", text: "async def chunk_text_semantic(text: str) -> list[str]:\n    sentences = _split_sentences(text)\n    if len(sentences) <= 1:\n        return sentences\n\n    # Batch embed all sentences (bge-m3 L2-normalized → dot product = cosine sim)\n    embeddings = await embed_texts(sentences)\n\n    chunks: list[str] = []\n    current: list[str] = [sentences[0]]\n    current_len: int = len(sentences[0])\n\n    for i in range(1, len(sentences)):\n        sent = sentences[i]\n        sent_len = len(sent)\n\n        # Dot product = cosine similarity (vectors are normalized)\n        sim = sum(a * b for a, b in zip(embeddings[i-1], embeddings[i]))\n\n        # Semantic jump or size overflow → break\n        # But current chunk must meet MIN_CHUNK_CHARS first (avoid fragments)\n        should_break = (\n            sim < SEMANTIC_THRESHOLD or current_len + sent_len > MAX_CHUNK_CHARS\n        ) and current_len >= MIN_CHUNK_CHARS\n\n        if should_break:\n            chunks.append(\"\".join(current))\n            current = [sent]\n            current_len = sent_len\n        else:\n            current.append(sent)\n            current_len += sent_len\n\n    # Tail handling: merge too-short tail into previous chunk\n    if current:\n        tail = \"\".join(current)\n        if chunks and len(tail) < MIN_CHUNK_CHARS:\n            chunks[-1] += tail\n        else:\n            chunks.append(tail)\n\n    return chunks" },
+          { type: "note", text: "The MIN_CHUNK_CHARS = 50 tail merge is an important practical detail. Document endings often contain a brief conclusion or disclaimer — if left as a standalone chunk in the vector store, its embedding is semantically vague and becomes retrieval noise. Merging it into the previous chunk turns the conclusion into a natural ending for the preceding argument — semantically cleaner and better for retrieval." },
+
+          { type: "h2", text: "Fallback: fixed-size chunking" },
+          { type: "p", text: "If the embedding service is unavailable (model load failure, OOM, etc.), the system automatically degrades to sliding-window chunking:" },
+          { type: "code", text: "CHUNK_SIZE    = 350   # window size\nCHUNK_OVERLAP = 50    # overlap characters\n\ndef _chunk_fixed(text: str) -> list[str]:\n    if len(text) <= CHUNK_SIZE:\n        return [text]\n    chunks = []\n    start = 0\n    while start < len(text):\n        end = min(start + CHUNK_SIZE, len(text))\n        chunks.append(text[start:end])\n        if end == len(text): break\n        start = end - CHUNK_OVERLAP\n    return chunks" },
+          { type: "p", text: "The fallback window (350 chars) is smaller than the semantic chunking cap (600 chars), with 50-char overlap. Without semantic boundary guarantees, smaller windows + more overlap partially mitigate the mid-sentence splitting problem — not as precise as semantic chunking, but ensures the system remains functional in degraded scenarios." },
+
+          { type: "h2", text: "Embedding service: singleton + thread pool" },
+          { type: "p", text: "bge-m3 is loaded via sentence-transformers with a global singleton and double-checked locking to ensure single initialization. All encode calls run in a thread pool, never blocking the asyncio event loop:" },
+          { type: "code", text: "MODEL_NAME = \"BAAI/bge-m3\"  # 1024-dim, Chinese+English bilingual\n\n_model = None\n_model_lock = threading.Lock()\n\ndef _get_model():\n    global _model\n    if _model is None:\n        with _model_lock:             # double-checked locking\n            if _model is None:\n                _model = SentenceTransformer(MODEL_NAME)\n    return _model\n\ndef _encode_sync(texts: list[str]) -> list[list[float]]:\n    model = _get_model()\n    # normalize_embeddings=True → dot product = cosine similarity\n    vecs = model.encode(texts, normalize_embeddings=True)\n    return vecs.tolist()\n\nasync def embed_texts(texts: list[str]) -> list[list[float]]:\n    loop = asyncio.get_running_loop()\n    return await loop.run_in_executor(None, _encode_sync, texts)" },
+
+          { type: "h2", text: "Context injection: how retrieval results enter the AI" },
+          { type: "p", text: "Retrieved chunks and conversation memories are injected as system messages, positioned after summaries and anchors but before conversation history. The final structure (sub-thread example):" },
+          { type: "code", text: "[\n  {\"role\": \"system\", \"content\": \"[Main thread summary] ...800 tokens...\"},\n  {\"role\": \"system\", \"content\": \"[Depth-1 sub-thread summary] ...500 tokens...\"},\n  {\"role\": \"system\", \"content\": 'Anchor: \\\"the text the user selected\\\"'},\n  {\"role\": \"system\", \"content\": \"[RAG] File chunks:\\n  [report.pdf chunk 3] ...\\n  [report.pdf chunk 7] ...\"},\n  {\"role\": \"system\", \"content\": \"[RAG] Conversation memory:\\n  User: ...\\n  AI: ...\"},\n  {\"role\": \"user\",   \"content\": \"recent 10 messages...\"},\n  {\"role\": \"assistant\", \"content\": \"...\"},\n  ...\n]" },
+          { type: "p", text: "Total context is capped at 18,000 characters (~7,200 tokens). Oversized user/assistant messages are replaced with placeholders pointing to the RAG system messages; if still over limit, the oldest conversation messages are dropped one by one — system messages (summaries, anchors, RAG) are never removed." },
         ],
       },
     },
