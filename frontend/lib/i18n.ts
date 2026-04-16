@@ -101,6 +101,8 @@ const zh = {
   step3Desc: "子问题里还可以继续插针，无论嵌套多少层都没问题",
   step4Title: "一键整合",
   step4Desc: "探索完了？把所有线程合并成一份完整报告，随时导出",
+  // 文章
+  articles: "文章",
   // 语言切换标签（显示"切换到的语言"）
   toggleLang: "EN",
 } as const;
@@ -189,6 +191,7 @@ const en = {
   step3Desc: "Pin again inside sub-questions — no limit on how many layers you can go",
   step4Title: "Merge everything",
   step4Desc: "Done exploring? Combine all threads into one complete report and export it",
+  articles: "Articles",
   toggleLang: "中",
 } as const;
 

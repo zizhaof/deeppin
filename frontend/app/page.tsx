@@ -7,10 +7,12 @@ import { useRouter } from "next/navigation";
 import { listSessions, createSession, deleteSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
+import Link from "next/link";
 import { useT, useLangStore } from "@/stores/useLangStore";
 import type { T } from "@/lib/i18n";
 import SessionDrawer from "@/components/SessionDrawer";
 import ThemeToggle from "@/components/ThemeToggle";
+import PinDemo from "@/components/PinDemo";
 
 // ── 分隔线 ────────────────────────────────────────────────────────────
 
@@ -280,6 +282,12 @@ export default function HomePage() {
               </button>
             </>
           )}
+          <Link
+            href="/articles"
+            className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
+          >
+            {t.articles}
+          </Link>
           <ThemeToggle />
           <button
             onClick={toggleLang}
@@ -354,6 +362,11 @@ export default function HomePage() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* ── 插针演示 ── */}
+        <div style={fadeUp(60)}>
+          <PinDemo />
         </div>
 
         {/* ── 分隔 Why ── */}
