@@ -24,6 +24,7 @@ import ThreadTree from "@/components/Layout/ThreadTree";
 import MergeTreeCanvas from "@/components/MergeTreeCanvas";
 import MergeOutput from "@/components/MergeOutput";
 import SessionDrawer from "@/components/SessionDrawer";
+import MobileChatLayout from "@/components/Mobile/MobileChatLayout";
 
 /**
  * 检测用户输入是否需要实时联网搜索。
@@ -566,7 +567,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-base overflow-hidden">
+    <>
+      {/* ── 桌面端布局（md 及以上显示） ── */}
+      <div className="hidden md:flex flex-col h-screen bg-base overflow-hidden">
       <ThreadNav
         threads={threads}
         activeThreadId={activeThreadId}
@@ -853,6 +856,42 @@ export default function ChatPage() {
         <div className="flex-[1] flex-shrink-0" />
       </div>
 
+      </div>
+      {/* ── 移动端布局（md 以下显示） ── */}
+      <div className="md:hidden">
+        <MobileChatLayout
+          threads={threads}
+          activeThreadId={activeThreadId}
+          canBack={navIndex > 0}
+          canForward={navIndex < navHistory.length - 1}
+          onBack={navigateBack}
+          onForward={navigateForward}
+          onNavigateTo={handleNavigateTo}
+          onOpenSessions={handleOpenSessions}
+          activeMessages={activeMessages}
+          streamingText={streamingText}
+          activeStatus={activeStatus}
+          anchorsByMessage={anchorsByMessage}
+          activeSuggestions={activeSuggestions}
+          activeThread={activeThread ?? null}
+          userAvatarUrl={userAvatarUrl}
+          onMessageRef={handleMessageRef}
+          onTextSelect={handleTextSelect}
+          onAnchorClick={handleAnchorClick}
+          onAnchorHover={handleAnchorHover}
+          onSendSuggestion={(q) => { if (activeThreadId) handleSendSuggestion(activeThreadId, q); }}
+          rollItems={rollItems}
+          unreadCounts={unreadCounts}
+          messagesByThread={messagesByThread}
+          sessionId={sessionId}
+          onSend={handleSend}
+          isStreaming={isStreaming}
+          webSearch={webSearch}
+          onWebSearchToggle={setWebSearch}
+        />
+      </div>
+
+      {/* ── 共享浮层（fixed 定位，桌面/移动端通用） ── */}
       <PinMenu
         selection={selection}
         onPin={handlePin}
@@ -883,6 +922,6 @@ export default function ChatPage() {
         t={t}
         onDelete={handleDeleteSession}
       />
-    </div>
+    </>
   );
 }
