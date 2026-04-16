@@ -238,53 +238,41 @@ export default function MessageBubble({
     });
   };
 
-  // 桌面端用 mouseup；移动端浏览器 touchend 后会模拟 mouseup，需要跳过避免重复触发导致选区丢失
+  // 桌面端：mouseup 直接触发（跳过移动端模拟的 mouseup）
   const handleMouseUp = () => {
     if (Date.now() - lastTouchEndRef.current < 600) return;
     handleSelection();
   };
 
-  // 移动端：拖拽选区 handle 时 iOS/Android 只发 selectionchange，不发 touchstart/end。
-  // 策略：selectionchange 稳定 N ms 后再弹菜单：
-  //   - 手指在屏幕上（touchActive=true）：N=600ms，给用户时间拖 handle
-  //   - 手指抬起后（touchActive=false）：N=250ms，快速响应
+  // 移动端：
+  // 1. onContextMenu 阻止浏览器原生 Copy/Search 菜单弹出
+  // 2. selectionchange 防抖 800ms：选区稳定后弹出 PinMenu
+  //    - 拖动 handle 时 selectionchange 持续触发，计时器持续重置
+  //    - 松手后 800ms 无变化才触发，给用户足够时间拖拽
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!isUser) e.preventDefault(); // 阻止 iOS callout / Android 原生菜单
+  };
+
   useEffect(() => {
     if (!onSelect || isUser) return;
-
-    let touchActive = false;
     let timer: ReturnType<typeof setTimeout>;
-
-    const fireIfSelected = () => {
-      const sel = window.getSelection();
-      if (sel && !sel.isCollapsed && sel.toString().trim()) {
-        handleSelection();
-      }
-    };
-
-    const onTouchStart = () => { touchActive = true; };
-    const onTouchEnd = () => {
-      touchActive = false;
-      lastTouchEndRef.current = Date.now(); // 标记 touchend 时间，阻止后续模拟 mouseup
-      // 手指抬起，缩短等待时间
-      clearTimeout(timer);
-      timer = setTimeout(fireIfSelected, 250);
-    };
     const onSelectionChange = () => {
-      // 选区变化，重置计时器；手指在屏幕上时给更长时间等拖拽完成
       clearTimeout(timer);
-      timer = setTimeout(fireIfSelected, touchActive ? 600 : 250);
+      timer = setTimeout(() => {
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && sel.toString().trim()) handleSelection();
+      }, 800);
     };
-
-    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    // 记录 touchend 时间，防止模拟 mouseup 重复触发
+    const onTouchEnd = () => { lastTouchEndRef.current = Date.now(); };
+    document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("touchend", onTouchEnd, { passive: true });
     document.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    document.addEventListener("selectionchange", onSelectionChange);
     return () => {
       clearTimeout(timer);
-      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("touchcancel", onTouchEnd);
-      document.removeEventListener("selectionchange", onSelectionChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSelect, isUser, messageId]);
@@ -310,6 +298,7 @@ export default function MessageBubble({
       <div className="relative max-w-[72%]">
         <div
           onMouseUp={handleMouseUp}
+          onContextMenu={handleContextMenu}
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
             isUser
               ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/30"
