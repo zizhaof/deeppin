@@ -2,11 +2,12 @@
 // components/Mobile/MobileChatLayout.tsx
 // 移动端三面板布局：左下角 / 右下角按钮切换面板，无滑动手势
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { Thread, Message } from "@/lib/api";
 import type { ThreadCardItem } from "@/components/SubThread/SideColumn";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import ThreadTree from "@/components/Layout/ThreadTree";
+import MergeTreeCanvas from "@/components/MergeTreeCanvas";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
 import { useT } from "@/stores/useLangStore";
@@ -159,6 +160,11 @@ export default function MobileChatLayout({
 }: MobileChatLayoutProps) {
   const t = useT();
   const [panelIdx, setPanelIdx] = useState(PANEL_CHAT);
+  /** 右面板视图：列表（dots）或节点图（canvas） */
+  const [treeView, setTreeView] = useState<"dots" | "canvas">("dots");
+
+  /** MergeTreeCanvas 需要的 selected set（全选） */
+  const allSelected = useMemo(() => new Set(threads.map((t) => t.id)), [threads]);
 
   const navigateAndReturnToChat = useCallback(
     (threadId: string) => {
@@ -317,14 +323,60 @@ export default function MobileChatLayout({
 
           {/* ── 右面板：线程树概览 ── */}
           <div className="flex flex-col overflow-hidden select-none" style={{ width: "33.333%" }}>
-            <div className="flex-1 min-h-0">
-              <ThreadTree
-                threads={threads}
-                activeThreadId={activeThreadId}
-                unreadCounts={unreadCounts}
-                messagesByThread={messagesByThread}
-                onSelect={(threadId) => navigateAndReturnToChat(threadId)}
-              />
+            {/* 列表 / 节点图 切换 */}
+            <div className="flex-shrink-0 flex items-center gap-1 px-3 pt-2 pb-1">
+              <div className="flex items-center gap-0.5 bg-glass rounded-lg p-0.5">
+                <button
+                  onClick={() => setTreeView("dots")}
+                  className={`flex items-center gap-1 px-2 h-6 rounded-md transition-colors ${
+                    treeView === "dots" ? "bg-surface text-md shadow-sm" : "text-ph"
+                  }`}
+                >
+                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <circle cx="3" cy="6" r="1.5" fill="currentColor" stroke="none" />
+                    <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                    <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none" />
+                  </svg>
+                  <span className="text-[10px] font-medium">列表</span>
+                </button>
+                <button
+                  onClick={() => setTreeView("canvas")}
+                  className={`flex items-center gap-1 px-2 h-6 rounded-md transition-colors ${
+                    treeView === "canvas" ? "bg-surface text-md shadow-sm" : "text-ph"
+                  }`}
+                >
+                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="19" cy="19" r="2" />
+                    <path d="M12 7v4M12 11l-5 6M12 11l5 6" />
+                  </svg>
+                  <span className="text-[10px] font-medium">节点图</span>
+                </button>
+              </div>
+              <span className="text-[9px] text-ph tabular-nums ml-1">{threads.length}</span>
+            </div>
+
+            {/* 视图内容 */}
+            <div className="flex-1 min-h-0 relative">
+              {treeView === "dots" ? (
+                <ThreadTree
+                  threads={threads}
+                  activeThreadId={activeThreadId}
+                  unreadCounts={unreadCounts}
+                  messagesByThread={messagesByThread}
+                  onSelect={(threadId) => navigateAndReturnToChat(threadId)}
+                />
+              ) : (
+                <MergeTreeCanvas
+                  threads={threads}
+                  selected={allSelected}
+                  activeThreadId={activeThreadId}
+                  onToggle={(threadId) => navigateAndReturnToChat(threadId)}
+                  compact
+                />
+              )}
             </div>
           </div>
         </div>
