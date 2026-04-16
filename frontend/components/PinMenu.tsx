@@ -35,15 +35,27 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // 移动端 + 桌面端：选区消失时自动关闭
+  // 选区消失时自动关闭（加延迟避免拖动 handle 过程中的瞬间空选区误触发）
   useEffect(() => {
     if (!selection) return;
+    let closeTimer: ReturnType<typeof setTimeout>;
     const handler = () => {
       const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) onClose();
+      if (!sel || sel.isCollapsed) {
+        // 延迟 400ms 再检查，防止重新选择时的短暂空选区触发关闭
+        closeTimer = setTimeout(() => {
+          const s = window.getSelection();
+          if (!s || s.isCollapsed) onClose();
+        }, 400);
+      } else {
+        clearTimeout(closeTimer); // 选区恢复，取消关闭
+      }
     };
     document.addEventListener("selectionchange", handler);
-    return () => document.removeEventListener("selectionchange", handler);
+    return () => {
+      clearTimeout(closeTimer);
+      document.removeEventListener("selectionchange", handler);
+    };
   }, [selection, onClose]);
 
   if (!selection) return null;
