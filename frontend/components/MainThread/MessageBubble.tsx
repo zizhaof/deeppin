@@ -244,15 +244,10 @@ export default function MessageBubble({
     handleSelection();
   };
 
-  // 移动端：
-  // 1. onContextMenu 阻止浏览器原生 Copy/Search 菜单弹出
-  // 2. selectionchange 防抖 800ms：选区稳定后弹出 PinMenu
-  //    - 拖动 handle 时 selectionchange 持续触发，计时器持续重置
-  //    - 松手后 800ms 无变化才触发，给用户足够时间拖拽
-  const handleContextMenu = (e: React.MouseEvent) => {
-    if (!isUser) e.preventDefault(); // 阻止 iOS callout / Android 原生菜单
-  };
-
+  // 移动端：selectionchange 防抖 600ms
+  // - 长按选词 → 选区稳定 600ms 后弹出底部 action bar
+  // - 拖动 handle 扩选 → 每次变化重置计时器，停止拖动 600ms 后弹出
+  // - 原生 Copy/Search 菜单正常显示，不干扰
   useEffect(() => {
     if (!onSelect || isUser) return;
     let timer: ReturnType<typeof setTimeout>;
@@ -261,7 +256,7 @@ export default function MessageBubble({
       timer = setTimeout(() => {
         const sel = window.getSelection();
         if (sel && !sel.isCollapsed && sel.toString().trim()) handleSelection();
-      }, 800);
+      }, 600);
     };
     // 记录 touchend 时间，防止模拟 mouseup 重复触发
     const onTouchEnd = () => { lastTouchEndRef.current = Date.now(); };
@@ -298,7 +293,6 @@ export default function MessageBubble({
       <div className="relative max-w-[72%]">
         <div
           onMouseUp={handleMouseUp}
-          onContextMenu={handleContextMenu}
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
             isUser
               ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/30"
