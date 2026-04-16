@@ -2,14 +2,14 @@
 // app/articles/ArticleDiagrams.tsx — SVG diagram components for articles
 
 const C = {
-  boxFill:   "rgba(99,102,241,0.08)",
-  boxStroke: "rgba(99,102,241,0.28)",
+  boxFill:   "rgba(99,102,241,0.12)",
+  boxStroke: "rgba(99,102,241,0.40)",
   textHi:    "#e0e7ff",             // indigo-100
-  textMid:   "#a5b4fc",             // indigo-300
-  textMut:   "rgba(165,180,252,0.45)",
-  arrow:     "rgba(129,140,248,0.55)",
+  textMid:   "#c7d2fe",             // indigo-200 — brighter than indigo-300
+  textMut:   "rgba(199,210,254,0.70)",  // indigo-200 at 70% — was 45%
+  arrow:     "rgba(129,140,248,0.80)",  // was 55%
   accent:    "#818cf8",             // indigo-400
-  warn:      "#fb923c",             // orange-400 — warnings / critical
+  warn:      "#fb923c",             // orange-400
   ok:        "#6ee7b7",             // emerald-300
   grid:      "rgba(99,102,241,0.08)",
 };

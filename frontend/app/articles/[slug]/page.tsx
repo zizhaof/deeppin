@@ -59,7 +59,7 @@ function renderBlock(block: Block, i: number) {
       </div>
     );
     return (
-      <div key={i} className="my-6 rounded-xl border border-strong bg-elevated overflow-x-auto p-5">
+      <div key={i} className="my-6 rounded-xl border border-indigo-500/30 overflow-x-auto p-5" style={{ background: "#0d0d16" }}>
         <Diagram />
       </div>
     );
