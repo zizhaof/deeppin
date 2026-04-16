@@ -304,16 +304,27 @@ function MessageBubble({
           if (s && !s.isCollapsed && s.toString().trim()) handleSelection();
         }, 600);
       } else {
-        // 选区消失：取消 action bar，延迟清除覆盖层（防止拖动 handle 过程短暂空选区误清除）
+        // 选区消失后清理。但 touchend 后 React re-render 会导致
+        // 原生选区短暂消失，这不是用户主动取消——忽略这个瞬态。
+        const sinceTouchEnd = Date.now() - lastTouchEndRef.current;
+        if (sinceTouchEnd < 500) return; // touchend 已处理过，忽略瞬态 collapse
         clearTimeout(actionTimer);
         clearTimeout(clearTimer);
         clearTimer = setTimeout(() => setSelRects([]), 400);
       }
     };
 
-    // touchend：在 OS 清空选区之前立即捕获矩形（核心修复）
+    // touchend：在 OS 清空选区之前立即捕获矩形 + 触发 action bar
+    // captureSelRects → setSelRects → re-render 会导致 DOM 节点替换、原生选区丢失，
+    // 所以必须在同一帧里先完成 handleSelection（锁定选区数据），再保存覆盖层。
     const onTouchEnd = () => {
       lastTouchEndRef.current = Date.now();
+      // 先锁定选区数据（触发 PinMenu），再保存视觉覆盖层
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) {
+        clearTimeout(actionTimer);
+        handleSelection();
+      }
       captureSelRects();
     };
 

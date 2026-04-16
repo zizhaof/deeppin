@@ -35,20 +35,25 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // 选区消失时自动关闭（加延迟避免拖动 handle 过程中的瞬间空选区误触发）
+  // 选区消失时自动关闭
+  // 加双重保护：
+  //  1. 挂载后 800ms 内忽略 collapse（React re-render 导致的瞬态清除）
+  //  2. 之后每次 collapse 延迟 400ms 再验证，防止拖动 handle 短暂空选区
   useEffect(() => {
     if (!selection) return;
+    const mountedAt = Date.now();
     let closeTimer: ReturnType<typeof setTimeout>;
     const handler = () => {
+      // 挂载初期忽略：handleSelection → setState → re-render 常导致原生选区瞬间消失
+      if (Date.now() - mountedAt < 800) return;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {
-        // 延迟 400ms 再检查，防止重新选择时的短暂空选区触发关闭
         closeTimer = setTimeout(() => {
           const s = window.getSelection();
           if (!s || s.isCollapsed) onClose();
         }, 400);
       } else {
-        clearTimeout(closeTimer); // 选区恢复，取消关闭
+        clearTimeout(closeTimer);
       }
     };
     document.addEventListener("selectionchange", handler);
@@ -116,7 +121,7 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
         {/* 选中文字预览 */}
         <div className="mx-3 mb-1 px-3 py-1.5 bg-zinc-900/90 rounded-xl border border-zinc-700/50">
           <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
-            <span className="text-zinc-500 mr-1">选中：</span>
+            <span className="text-zinc-500 mr-1">&quot;</span>
             {selection.text.length > 80 ? selection.text.slice(0, 80) + "…" : selection.text}
           </p>
         </div>
