@@ -190,6 +190,8 @@ export default function MessageBubble({
   const t = useT();
   const isUser = role === "user";
   const divRef = useRef<HTMLDivElement>(null);
+  // 记录最近一次 touchend 时间，防止移动端浏览器模拟的 mouseup 重复触发
+  const lastTouchEndRef = useRef(0);
   const [expanded, setExpanded] = useState(false);
   /** AI 消息的原始/渲染模式切换 */
   const [rawMode, setRawMode] = useState(false);
@@ -236,7 +238,11 @@ export default function MessageBubble({
     });
   };
 
-  const handleMouseUp = handleSelection;
+  // 桌面端用 mouseup；移动端浏览器 touchend 后会模拟 mouseup，需要跳过避免重复触发导致选区丢失
+  const handleMouseUp = () => {
+    if (Date.now() - lastTouchEndRef.current < 600) return;
+    handleSelection();
+  };
 
   // 移动端：拖拽选区 handle 时 iOS/Android 只发 selectionchange，不发 touchstart/end。
   // 策略：selectionchange 稳定 N ms 后再弹菜单：
@@ -258,6 +264,7 @@ export default function MessageBubble({
     const onTouchStart = () => { touchActive = true; };
     const onTouchEnd = () => {
       touchActive = false;
+      lastTouchEndRef.current = Date.now(); // 标记 touchend 时间，阻止后续模拟 mouseup
       // 手指抬起，缩短等待时间
       clearTimeout(timer);
       timer = setTimeout(fireIfSelected, 250);
