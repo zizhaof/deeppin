@@ -175,6 +175,9 @@ function renderWithHighlights(
   return <>{nodes}</>;
 }
 
+/** 选区高亮矩形，相对于内容 div 的坐标 */
+interface SelRect { top: number; left: number; width: number; height: number; }
+
 function MessageBubble({
   messageId,
   role,
@@ -190,11 +193,16 @@ function MessageBubble({
   const t = useT();
   const isUser = role === "user";
   const divRef = useRef<HTMLDivElement>(null);
+  // 内容区 div，用于计算选区覆盖层的相对坐标
+  const contentRef = useRef<HTMLDivElement>(null);
   // 记录最近一次 touchend 时间，防止移动端浏览器模拟的 mouseup 重复触发
   const lastTouchEndRef = useRef(0);
   const [expanded, setExpanded] = useState(false);
   /** AI 消息的原始/渲染模式切换 */
   const [rawMode, setRawMode] = useState(false);
+  /** 选区覆盖层矩形列表（移动端指离后 OS 选区消失，但此层持续显示） */
+  const [selRects, setSelRects] = useState<SelRect[]>([]);
+
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
@@ -244,27 +252,68 @@ function MessageBubble({
     handleSelection();
   };
 
-  // 移动端：selectionchange 防抖 600ms
+  // 将当前选区转换为相对内容 div 的矩形列表，存入 selRects
+  // 移动端指离后 OS 选区消失，但 React 状态驱动的覆盖层仍留存
+  const captureSelRects = () => {
+    const sel = window.getSelection();
+    const bubble = divRef.current;
+    const content = contentRef.current;
+    if (!sel || sel.isCollapsed || !bubble || !content || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    if (!bubble.contains(range.commonAncestorContainer)) return;
+    const base = content.getBoundingClientRect();
+    const rects = Array.from(range.getClientRects())
+      .map((r) => ({
+        top: r.top - base.top,
+        left: r.left - base.left,
+        width: r.width,
+        height: r.height,
+      }))
+      .filter((r) => r.width > 0 && r.height > 0);
+    if (rects.length > 0) setSelRects(rects);
+  };
+
+  // 移动端：selectionchange 防抖 600ms（显示 action bar）
+  // + touchend 立即捕获选区矩形（在 OS 清空选区之前保存覆盖层）
   // - 长按选词 → 选区稳定 600ms 后弹出底部 action bar
   // - 拖动 handle 扩选 → 每次变化重置计时器，停止拖动 600ms 后弹出
   // - 原生 Copy/Search 菜单正常显示，不干扰
   useEffect(() => {
     if (!onSelect || isUser) return;
-    let timer: ReturnType<typeof setTimeout>;
+    let actionTimer: ReturnType<typeof setTimeout>;
+    let clearTimer: ReturnType<typeof setTimeout>;
+
     const onSelectionChange = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const sel = window.getSelection();
-        if (sel && !sel.isCollapsed && sel.toString().trim()) handleSelection();
-      }, 600);
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        // 选区存在：立即更新覆盖层 + 防抖触发 action bar
+        clearTimeout(clearTimer);
+        captureSelRects();
+        clearTimeout(actionTimer);
+        actionTimer = setTimeout(() => {
+          const s = window.getSelection();
+          if (s && !s.isCollapsed && s.toString().trim()) handleSelection();
+        }, 600);
+      } else {
+        // 选区消失：取消 action bar，延迟清除覆盖层（防止拖动 handle 过程短暂空选区误清除）
+        clearTimeout(actionTimer);
+        clearTimeout(clearTimer);
+        clearTimer = setTimeout(() => setSelRects([]), 400);
+      }
     };
-    // 记录 touchend 时间，防止模拟 mouseup 重复触发
-    const onTouchEnd = () => { lastTouchEndRef.current = Date.now(); };
+
+    // touchend：在 OS 清空选区之前立即捕获矩形（核心修复）
+    const onTouchEnd = () => {
+      lastTouchEndRef.current = Date.now();
+      captureSelRects();
+    };
+
     document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("touchend", onTouchEnd, { passive: true });
     document.addEventListener("touchcancel", onTouchEnd, { passive: true });
     return () => {
-      clearTimeout(timer);
+      clearTimeout(actionTimer);
+      clearTimeout(clearTimer);
       document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("touchcancel", onTouchEnd);
@@ -292,13 +341,31 @@ function MessageBubble({
 
       <div className="relative max-w-[72%]">
         <div
+          ref={contentRef}
           onMouseUp={handleMouseUp}
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
+          className={`relative rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
             isUser
               ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/30"
               : "bg-surface text-hi border border-subtle"
           }`}
         >
+          {/* 选区持久化覆盖层：移动端指离后 OS 选区消失，此层仍保持高亮 */}
+          {selRects.map((r, i) => (
+            <div
+              key={i}
+              style={{
+                position: "absolute",
+                top: r.top,
+                left: r.left,
+                width: r.width,
+                height: r.height,
+                background: "rgba(99,102,241,0.28)",
+                borderRadius: 3,
+                pointerEvents: "none",
+                zIndex: 0,
+              }}
+            />
+          ))}
           {isUser ? (
             <>
               {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
