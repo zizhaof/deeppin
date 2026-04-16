@@ -2,18 +2,19 @@
 // components/PinDemo.tsx — 插针完整流程演示
 
 import { useEffect, useRef, useState } from "react";
+import { useLangStore } from "@/stores/useLangStore";
 
-// ── 颜色常量（避免 Tailwind 变量在 demo 背景下失效）─────────────────────────
+// ── 颜色常量 ──────────────────────────────────────────────────────────────────
 const C = {
-  bg:        "#0d0e18",
-  surface:   "#141626",
-  border:    "rgba(255,255,255,0.08)",
-  borderSub: "rgba(255,255,255,0.05)",
-  textHi:    "rgb(226,232,240)",
-  textMd:    "rgb(148,163,184)",
-  textLo:    "rgb(100,116,139)",
-  textFaint: "rgb(71,85,105)",
-  indigo:    "rgba(99,102,241,",   // 后接透明度 + ")"
+  bg:          "#0d0e18",
+  surface:     "#141626",
+  border:      "rgba(255,255,255,0.08)",
+  borderSub:   "rgba(255,255,255,0.05)",
+  textHi:      "rgb(226,232,240)",
+  textMd:      "rgb(148,163,184)",
+  textLo:      "rgb(100,116,139)",
+  textFaint:   "rgb(71,85,105)",
+  indigo:      "rgba(99,102,241,",
   indigoSolid: "rgb(99,102,241)",
   indigoText:  "rgb(165,180,252)",
   indigoLight: "rgb(199,210,254)",
@@ -22,111 +23,27 @@ const ind = (a: number) => `${C.indigo}${a})`;
 
 // ── 阶段 ──────────────────────────────────────────────────────────────────────
 type Phase =
-  | "idle"           // 已有一根针，AI 回复完成
-  | "sweeping"       // 鼠标扫选文字
-  | "pin-menu"       // 浮动工具栏（复制 | 插针）
-  | "pin-click"      // 点击插针按钮
-  | "dialog-open"    // PinStartDialog 弹出，建议加载中
-  | "dialog-ready"   // 推荐问题加载完成
-  | "hover-suggest"  // 悬停第一个建议
-  | "click-suggest"  // 点击建议
-  | "card-in"        // 卡片滑入，概览节点同步出现
-  | "streaming"      // AI 流式回复
-  | "unread"         // 回复完成，红点闪烁
-  | "card-hover"     // 鼠标移到卡片，曲线指向锚点
-  | "card-click"     // 点击卡片
-  | "thread-view"    // 进入子线程视图
-  | "thread-done"    // 子线程视图展示完毕
-  | "back-click"     // 点击面包屑「主线」返回
-  | "back-main";     // 退出子线程，回到主线视图
+  | "idle" | "sweeping" | "pin-menu" | "pin-click"
+  | "dialog-open" | "dialog-ready" | "hover-suggest" | "click-suggest"
+  | "card-in" | "streaming" | "unread" | "card-hover" | "card-click"
+  | "thread-view" | "thread-done" | "back-click" | "back-main";
 
 const DELAYS: Record<Phase, number> = {
-  "idle":          2000,
-  "sweeping":      1400,
-  "pin-menu":      1600,
-  "pin-click":      600,
-  "dialog-open":   1600,
-  "dialog-ready":  1400,
-  "hover-suggest": 1200,
-  "click-suggest":  600,
-  "card-in":       1200,
-  "streaming":     3600,
-  "unread":        1600,
-  "card-hover":    2600,
-  "card-click":     600,
-  "thread-view":   4000,
-  "thread-done":   2000,
-  "back-click":     700,
-  "back-main":     2200,
+  "idle": 2000, "sweeping": 1400, "pin-menu": 1600, "pin-click": 600,
+  "dialog-open": 1600, "dialog-ready": 1400, "hover-suggest": 1200,
+  "click-suggest": 600, "card-in": 1200, "streaming": 3600,
+  "unread": 1600, "card-hover": 2600, "card-click": 600,
+  "thread-view": 4000, "thread-done": 2000, "back-click": 700, "back-main": 2200,
 };
 const NEXT: Record<Phase, Phase> = {
-  "idle":          "sweeping",
-  "sweeping":      "pin-menu",
-  "pin-menu":      "pin-click",
-  "pin-click":     "dialog-open",
-  "dialog-open":   "dialog-ready",
-  "dialog-ready":  "hover-suggest",
-  "hover-suggest": "click-suggest",
-  "click-suggest": "card-in",
-  "card-in":       "streaming",
-  "streaming":     "unread",
-  "unread":        "card-hover",
-  "card-hover":    "card-click",
-  "card-click":    "thread-view",
-  "thread-view":   "thread-done",
-  "thread-done":   "back-click",
-  "back-click":    "back-main",
-  "back-main":     "idle",
+  "idle": "sweeping", "sweeping": "pin-menu", "pin-menu": "pin-click",
+  "pin-click": "dialog-open", "dialog-open": "dialog-ready",
+  "dialog-ready": "hover-suggest", "hover-suggest": "click-suggest",
+  "click-suggest": "card-in", "card-in": "streaming", "streaming": "unread",
+  "unread": "card-hover", "card-hover": "card-click", "card-click": "thread-view",
+  "thread-view": "thread-done", "thread-done": "back-click",
+  "back-click": "back-main", "back-main": "idle",
 };
-
-// ── 内容 ──────────────────────────────────────────────────────────────────────
-const AI_TEXT =
-  "在分布式系统中，CAP 定理指出你只能同时保证「一致性」「可用性」「分区容忍性」三者中的两个。Raft 协议通过 Leader 选举解决了这一权衡，而一致性哈希让节点扩缩容时数据迁移量最小化。";
-
-const ANCHOR = "CAP 定理";
-const A_START = AI_TEXT.indexOf(ANCHOR);
-const A_END   = A_START + ANCHOR.length;
-
-const SUGGESTIONS = [
-  "CAP 定理在实际系统中如何取舍？",
-  "一致性和可用性哪个更重要？",
-  "举个 CAP 权衡的真实案例？",
-];
-
-const CARD_REPLY =
-  "CAP 由 Brewer 提出：发生网络分区（P）时，系统只能在一致性（C）和可用性（A）中选一。银行系统选 CP，保证每笔交易强一致；DNS 选 AP，即使部分节点宕机也能继续响应查询……";
-
-const THREAD_REPLY_FULL =
-  "CAP 定理（Consistency、Availability、Partition tolerance）由 Eric Brewer 在 2000 年提出，正式证明由 Gilbert 和 Lynch 在 2002 年完成。\n\n核心结论：当网络分区（P）不可避免时，系统设计者必须在一致性（C）和可用性（A）之间做出取舍。\n\n• **CP 系统**：HBase、ZooKeeper — 分区时拒绝写入，保证数据绝对一致\n• **AP 系统**：Cassandra、CouchDB — 分区时继续服务，但可能读到旧数据\n• **实践中**：大多数系统在 C 和 A 之间动态权衡，根据业务场景调整一致性级别";
-
-const EXISTING_CARD = {
-  label:   "Raft 协议",
-  anchor:  "Raft 协议",
-  preview: "通过 Leader 选举 + 日志复制实现强一致性，相比 Paxos 实现更清晰……",
-};
-
-// 阶段文字说明
-const CAPTIONS: Record<Phase, string> = {
-  "idle":          "AI 回复完成。已有一根针「Raft 协议」挂在左侧，主线文字中对应词语显示高亮轮廓。",
-  "sweeping":      "鼠标按住拖过「CAP 定理」，蓝色高亮随光标展开，这就是选中的过程。",
-  "pin-menu":      "松开鼠标，浮动工具栏自动出现在选区上方：左侧「复制」，右侧「插针」。",
-  "pin-click":     "点击「插针」按钮，按钮发光高亮，选区被锁定。",
-  "dialog-open":   "插针弹窗出现。顶部引用锚点原文，AI 正在后台生成推荐追问（三点加载中）。",
-  "dialog-ready":  "推荐问题生成完毕，三个可点击的追问选项出现，也可以自己输入。",
-  "hover-suggest": "鼠标悬停第一个推荐问题，背景高亮。",
-  "click-suggest": "点击发送，问题进入子线程，弹窗关闭。",
-  "card-in":       "左侧子线程卡片从左边滑入。右侧概览图中，CAP 定理节点同步出现在与其他子问题同一层。",
-  "streaming":     "AI 在子线程里独立回答，左侧卡片实时显示流式输出。主线对话完全不受影响。",
-  "unread":        "回复完成，卡片角标变红，提示有未读内容。",
-  "card-hover":    "鼠标移到卡片上，一条曲线从卡片延伸、指向主线中「CAP 定理」的锚点位置。",
-  "card-click":    "点击卡片，进入子线程完整视图。",
-  "thread-view":   "中间栏切换为子线程对话：顶部面包屑导航，下方展示完整问答。",
-  "thread-done":   "子线程内容完整可见。可以继续追问，也可以点击面包屑中的「主线」返回。",
-  "back-click":    "点击面包屑「主线」——按钮高亮，触发返回动作。",
-  "back-main":     "中间栏滑回主线对话，所有锚点高亮保留。左侧卡片仍在，随时可以再次点击进入子线程。",
-};
-
-// 阶段顺序列表（用于前进/后退）
 const PHASE_ORDER: Phase[] = [
   "idle","sweeping","pin-menu","pin-click",
   "dialog-open","dialog-ready","hover-suggest","click-suggest",
@@ -134,14 +51,154 @@ const PHASE_ORDER: Phase[] = [
   "thread-view","thread-done","back-click","back-main",
 ];
 
+// ── 双语内容 ──────────────────────────────────────────────────────────────────
+const CONTENT = {
+  zh: {
+    aiText:     "在分布式系统中，CAP 定理指出你只能同时保证「一致性」「可用性」「分区容忍性」三者中的两个。Raft 协议通过 Leader 选举解决了这一权衡，而一致性哈希让节点扩缩容时数据迁移量最小化。",
+    anchor:     "CAP 定理",
+    raftInText: "Raft 协议",
+    hashInText: "一致性哈希",
+    suggestions: [
+      "CAP 定理在实际系统中如何取舍？",
+      "一致性和可用性哪个更重要？",
+      "举个 CAP 权衡的真实案例？",
+    ],
+    cardReply:  "CAP 由 Brewer 提出：发生网络分区（P）时，系统只能在一致性（C）和可用性（A）中选一。银行系统选 CP，保证每笔交易强一致；DNS 选 AP，即使部分节点宕机也能继续响应查询……",
+    threadReplyFull: "CAP 定理（Consistency、Availability、Partition tolerance）由 Eric Brewer 在 2000 年提出，正式证明由 Gilbert 和 Lynch 在 2002 年完成。\n\n核心结论：当网络分区（P）不可避免时，系统设计者必须在一致性（C）和可用性（A）之间做出取舍。\n\n• **CP 系统**：HBase、ZooKeeper — 分区时拒绝写入，保证数据绝对一致\n• **AP 系统**：Cassandra、CouchDB — 分区时继续服务，但可能读到旧数据\n• **实践中**：大多数系统在 C 和 A 之间动态权衡，根据业务场景调整一致性级别",
+    existingCard: {
+      label:   "Raft 协议",
+      anchor:  "Raft 协议",
+      preview: "通过 Leader 选举 + 日志复制实现强一致性，相比 Paxos 实现更清晰……",
+    },
+    nodeRaft:   ["Raft", "协议"],
+    nodeHash:   ["一致性", "哈希"],
+    nodeCap:    ["CAP", "定理"],
+    nodeLeader: "Leader 选举",
+    nodeMain:   "主线对话",
+    questionTitle:     "如何设计一个分布式系统？",
+    subThreadsLabel:   "子问题",
+    overviewLabel:     "概览",
+    listLabel:         "列表",
+    graphLabel:        "节点图",
+    mergeLabel:        "合并输出",
+    mainLabel:         "主线",
+    hintText:          "选中任意文字即可插针深探",
+    customPlaceholder: "或自己提问…",
+    continuePrompt:    "继续追问 CAP 定理…",
+    suggestionsLabel:  "推荐问题",
+    copyLabel:         "复制",
+    pinLabel:          "插针",
+    captions: {
+      "idle":          "AI 回复完成。已有一根针「Raft 协议」挂在左侧，主线文字中对应词语显示高亮轮廓。",
+      "sweeping":      "鼠标按住拖过「CAP 定理」，蓝色高亮随光标展开，这就是选中的过程。",
+      "pin-menu":      "松开鼠标，浮动工具栏自动出现在选区上方：左侧「复制」，右侧「插针」。",
+      "pin-click":     "点击「插针」按钮，按钮发光高亮，选区被锁定。",
+      "dialog-open":   "插针弹窗出现。顶部引用锚点原文，AI 正在后台生成推荐追问（三点加载中）。",
+      "dialog-ready":  "推荐问题生成完毕，三个可点击的追问选项出现，也可以自己输入。",
+      "hover-suggest": "鼠标悬停第一个推荐问题，背景高亮。",
+      "click-suggest": "点击发送，问题进入子线程，弹窗关闭。",
+      "card-in":       "左侧子线程卡片从左边滑入。右侧概览图中，CAP 定理节点同步出现在与其他子问题同一层。",
+      "streaming":     "AI 在子线程里独立回答，左侧卡片实时显示流式输出。主线对话完全不受影响。",
+      "unread":        "回复完成，卡片角标变红，提示有未读内容。",
+      "card-hover":    "鼠标移到卡片上，一条曲线从卡片延伸、指向主线中「CAP 定理」的锚点位置。",
+      "card-click":    "点击卡片，进入子线程完整视图。",
+      "thread-view":   "中间栏切换为子线程对话：顶部面包屑导航，下方展示完整问答。",
+      "thread-done":   "子线程内容完整可见。可以继续追问，也可以点击面包屑中的「主线」返回。",
+      "back-click":    "点击面包屑「主线」——按钮高亮，触发返回动作。",
+      "back-main":     "中间栏滑回主线对话，所有锚点高亮保留。左侧卡片仍在，随时可以再次点击进入子线程。",
+    } as Record<Phase, string>,
+  },
+  en: {
+    aiText:     "In distributed systems, Raft uses leader election for consensus, directly addressing trade-offs defined by the CAP theorem: you can only guarantee two of three — Consistency, Availability, or Partition tolerance. Consistent hashing then minimizes data movement as nodes scale.",
+    anchor:     "CAP theorem",
+    raftInText: "Raft",
+    hashInText: "Consistent hashing",
+    suggestions: [
+      "How do you trade off CAP in practice?",
+      "Which matters more: consistency or availability?",
+      "Give a real-world CAP trade-off example?",
+    ],
+    cardReply:  "CAP, proposed by Brewer: when partitions (P) occur, you must choose Consistency (C) or Availability (A). Banks choose CP for strong transaction guarantees; DNS chooses AP to keep responding even when nodes go down…",
+    threadReplyFull: "The CAP theorem (Consistency, Availability, Partition tolerance) was proposed by Eric Brewer in 2000 and formally proven by Gilbert and Lynch in 2002.\n\nCore conclusion: when network partitions (P) are unavoidable, architects must choose between Consistency (C) and Availability (A).\n\n• **CP systems**: HBase, ZooKeeper — reject writes during partitions to guarantee strong consistency\n• **AP systems**: Cassandra, CouchDB — keep serving during partitions, but may return stale data\n• **In practice**: most systems dynamically balance C and A, adjusting consistency levels per use case",
+    existingCard: {
+      label:   "Raft Protocol",
+      anchor:  "Raft",
+      preview: "Strong consistency via leader election + log replication; simpler than Paxos…",
+    },
+    nodeRaft:   ["Raft", "Protocol"],
+    nodeHash:   ["Hash", "Ring"],
+    nodeCap:    ["CAP", "Theorem"],
+    nodeLeader: "Leader Election",
+    nodeMain:   "Main thread",
+    questionTitle:     "How do you design a distributed system?",
+    subThreadsLabel:   "Threads",
+    overviewLabel:     "Overview",
+    listLabel:         "List",
+    graphLabel:        "Graph",
+    mergeLabel:        "Merge",
+    mainLabel:         "Main",
+    hintText:          "Select any text to open a sub-thread",
+    customPlaceholder: "Or ask your own…",
+    continuePrompt:    "Continue asking about CAP theorem…",
+    suggestionsLabel:  "Suggestions",
+    copyLabel:         "Copy",
+    pinLabel:          "Pin",
+    captions: {
+      "idle":          "AI response complete. An existing pin 'Raft Protocol' is on the left, with its anchor highlighted in the main thread.",
+      "sweeping":      "Click and drag over 'CAP theorem' — the blue highlight expands with the cursor as you select.",
+      "pin-menu":      "Release the mouse. A floating toolbar appears above the selection: 'Copy' on the left, 'Pin' on the right.",
+      "pin-click":     "Click 'Pin' — the button glows and the selection is locked.",
+      "dialog-open":   "The pin dialog appears. Anchor text is quoted at top; AI is generating suggested follow-ups (loading).",
+      "dialog-ready":  "Suggestions ready — three clickable follow-up options appear. You can also type your own.",
+      "hover-suggest": "Hover over the first suggestion — background highlights.",
+      "click-suggest": "Click to send. The question enters the sub-thread and the dialog closes.",
+      "card-in":       "A sub-thread card slides in from the left. In the overview graph, the CAP theorem node appears alongside existing sub-questions.",
+      "streaming":     "AI answers independently in the sub-thread. The card shows live output. The main thread is unaffected.",
+      "unread":        "Reply complete — the card badge turns red, signaling unread content.",
+      "card-hover":    "Hover over the card — a curved line extends from the card to the 'CAP theorem' anchor in the main thread.",
+      "card-click":    "Click the card to enter the full sub-thread view.",
+      "thread-view":   "The center column switches to the sub-thread: breadcrumb navigation at top, full Q&A below.",
+      "thread-done":   "Full sub-thread content visible. Continue asking, or click 'Main' in the breadcrumb to return.",
+      "back-click":    "Click 'Main' in the breadcrumb — button highlights and return triggers.",
+      "back-main":     "The center slides back to the main thread. All anchor highlights remain. The card stays — click anytime to re-enter.",
+    } as Record<Phase, string>,
+  },
+};
+
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 export default function PinDemo() {
-  const [phase, setPhase]         = useState<Phase>("idle");
-  const [sweepPct, setSweepPct]   = useState(0);
-  const [streamLen, setStreamLen] = useState(0);
-  const [playing, setPlaying]     = useState(true);
+  const lang    = useLangStore((s) => s.lang);
+  const content = CONTENT[lang];
 
-  // 自动推进（暂停时不推进）
+  // 从 content 中提取常用变量
+  const AI_TEXT          = content.aiText;
+  const ANCHOR           = content.anchor;
+  const SUGGESTIONS      = content.suggestions;
+  const CARD_REPLY       = content.cardReply;
+  const THREAD_REPLY_FULL = content.threadReplyFull;
+  const EXISTING_CARD    = content.existingCard;
+
+  // 动态计算锚点位置
+  const A_START  = AI_TEXT.indexOf(ANCHOR);
+  const A_END    = A_START + ANCHOR.length;
+  const before   = AI_TEXT.slice(0, A_START);
+  const after    = AI_TEXT.slice(A_END);
+  const raftIdx  = before.indexOf(content.raftInText);
+  const hashIdx  = after.indexOf(content.hashInText);
+
+  const [phase, setPhase]       = useState<Phase>("idle");
+  const [sweepPct, setSweepPct] = useState(0);
+  const [streamLen, setStreamLen] = useState(0);
+  const [playing, setPlaying]   = useState(true);
+
+  // 语言切换时重置
+  useEffect(() => {
+    setPhase("idle");
+    setSweepPct(0);
+    setStreamLen(0);
+  }, [lang]);
+
+  // 自动推进
   useEffect(() => {
     if (!playing) return;
     const t = setTimeout(() => setPhase(p => NEXT[p]), DELAYS[phase]);
@@ -168,32 +225,32 @@ export default function PinDemo() {
     if (streamLen >= CARD_REPLY.length) return;
     const t = setTimeout(() => setStreamLen(n => n + 2), 30);
     return () => clearTimeout(t);
-  }, [phase, streamLen]);
+  }, [phase, streamLen, CARD_REPLY.length]);
 
   const goTo = (p: Phase) => {
     setPhase(p);
     if (p === "idle") { setSweepPct(0); setStreamLen(0); }
     if (!["streaming","sweeping"].includes(p)) {
-      if (p !== "streaming") setStreamLen(CARD_REPLY.length); // 非流式阶段显示完整
+      if (p !== "streaming") setStreamLen(CARD_REPLY.length);
       if (p === "idle" || PHASE_ORDER.indexOf(p) < PHASE_ORDER.indexOf("streaming")) setStreamLen(0);
     }
   };
 
   const stepBy = (delta: number) => {
-    const idx = PHASE_ORDER.indexOf(phase);
+    const idx  = PHASE_ORDER.indexOf(phase);
     const next = PHASE_ORDER[Math.max(0, Math.min(PHASE_ORDER.length - 1, idx + delta))];
     goTo(next);
   };
 
-  // ── 布尔 ──────────────────────────────────────────────────────────────────
-  const isSweeping    = phase === "sweeping";
-  const isHighlit     = phase !== "idle";
-  const showPinMenu   = ["pin-menu","pin-click"].includes(phase);
-  const pinClicking   = phase === "pin-click";
-  const showDialog    = ["dialog-open","dialog-ready","hover-suggest","click-suggest"].includes(phase);
-  const dialogReady   = ["dialog-ready","hover-suggest","click-suggest"].includes(phase);
-  const hoverIdx      = ["hover-suggest","click-suggest"].includes(phase) ? 0 : -1;
-  const clickIdx      = phase === "click-suggest" ? 0 : -1;
+  // ── 布尔状态 ────────────────────────────────────────────────────────────────
+  const isSweeping     = phase === "sweeping";
+  const isHighlit      = phase !== "idle";
+  const showPinMenu    = ["pin-menu","pin-click"].includes(phase);
+  const pinClicking    = phase === "pin-click";
+  const showDialog     = ["dialog-open","dialog-ready","hover-suggest","click-suggest"].includes(phase);
+  const dialogReady    = ["dialog-ready","hover-suggest","click-suggest"].includes(phase);
+  const hoverIdx       = ["hover-suggest","click-suggest"].includes(phase) ? 0 : -1;
+  const clickIdx       = phase === "click-suggest" ? 0 : -1;
   const showCard       = ["card-in","streaming","unread","card-hover","card-click","thread-view","thread-done","back-click","back-main"].includes(phase);
   const showStream     = ["streaming","unread","card-hover","card-click","thread-view","thread-done","back-click","back-main"].includes(phase);
   const showUnread     = ["unread","card-hover","card-click"].includes(phase);
@@ -201,14 +258,7 @@ export default function PinDemo() {
   const cardClicking   = phase === "card-click";
   const showThreadView = ["thread-view","thread-done","back-click"].includes(phase);
   const backClicking   = phase === "back-click";
-  // showCap: 卡片出现时概览节点同步出现
   const showCap        = ["card-in","streaming","unread","card-hover","card-click","thread-view","thread-done","back-click","back-main"].includes(phase);
-
-  const before = AI_TEXT.slice(0, A_START);
-  const after  = AI_TEXT.slice(A_END);
-
-  // ── Raft 在文字里的位置
-  const raftIdx = before.indexOf("Raft 协议");
 
   return (
     <div className="w-full max-w-[960px] select-none">
@@ -219,7 +269,7 @@ export default function PinDemo() {
         <div className="absolute top-0 left-0 right-0 h-px"
           style={{ background: "linear-gradient(90deg,transparent,rgba(99,102,241,0.45),transparent)" }} />
 
-        {/* 标题栏 — 固定高度 */}
+        {/* 标题栏 */}
         <div className="flex items-center gap-2 px-4 border-b" style={{ borderColor: C.border, height: 38 }}>
           <div className="flex gap-1.5">
             {["#ff5f57","#ffbd2e","#28c840"].map(c => (
@@ -227,46 +277,39 @@ export default function PinDemo() {
             ))}
           </div>
           <span className="text-[11px] font-medium ml-2" style={{ color: C.textFaint }}>
-            如何设计一个分布式系统？
+            {content.questionTitle}
           </span>
         </div>
 
-        {/* ── 三栏 — grid 强制等宽，内容不影响列宽 ── */}
+        {/* ── 三栏 ── */}
         <div className="grid grid-cols-3 relative" style={{ height: 340 }}>
 
-          {/* ── 跨栏曲线：悬停卡片 → 锚点 ──────────────────────── */}
-          {/* viewBox 300×340，每栏 = 100 单位 */}
+          {/* 跨栏曲线：悬停卡片 → 锚点 */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none"
             viewBox="0 0 300 340" preserveAspectRatio="none" style={{ zIndex: 15 }}>
             <path
               d="M 96 152 C 110 152, 110 95, 138 95"
-              fill="none"
-              stroke={C.indigoSolid}
-              strokeWidth="0.8"
-              strokeDasharray="4 3"
+              fill="none" stroke={C.indigoSolid} strokeWidth="0.8" strokeDasharray="4 3"
               strokeOpacity={cardHovering ? 0.7 : 0}
               style={{ transition: "stroke-opacity 0.3s ease" }}
             />
-            {/* 锚点终端圆点 */}
-            <circle cx="138" cy="95" r="3.5"
-              fill={C.indigoSolid}
+            <circle cx="138" cy="95" r="3.5" fill={C.indigoSolid}
               opacity={cardHovering ? 0.8 : 0}
               style={{ transition: "opacity 0.3s ease" }}
             />
           </svg>
 
-          {/* ── 左：子线程列 ──────────────────────────────────────── */}
+          {/* ── 左：子线程列 ─────────────────────────────────────────── */}
           <div className="relative border-r flex flex-col overflow-hidden" style={{ borderColor: C.border }}>
             <div className="px-3 py-1.5 border-b" style={{ borderColor: C.borderSub }}>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: C.textFaint }}>子问题</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: C.textFaint }}>
+                {content.subThreadsLabel}
+              </span>
             </div>
 
-            {/* 曲线 SVG — x0=0(列左边缘) → x1=8(卡片左边)，与真实代码一致 */}
             <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ top: 28, zIndex: 0 }}>
-              {/* 已有针：y=52 对应 Raft 卡片中心 */}
               <path d="M 0 52 C 4 52, 4 52, 8 52"
                 fill="none" stroke={C.indigoSolid} strokeWidth="1.5" strokeOpacity="0.4" />
-              {/* 新针曲线（卡片出现后显示） */}
               {showCard && (
                 <path d="M 0 148 C 4 148, 4 148, 8 148"
                   fill="none" stroke={C.indigoSolid} strokeWidth="1.5" strokeOpacity="0.6"
@@ -274,9 +317,7 @@ export default function PinDemo() {
               )}
             </svg>
 
-            {/* 卡片 */}
             <div className="relative flex-1 px-2 py-2 space-y-2 overflow-hidden" style={{ zIndex: 1 }}>
-
               {/* 已有针 */}
               <div className="rounded-xl border overflow-hidden text-xs"
                 style={{ background: ind(0.06), borderColor: ind(0.2) }}>
@@ -285,7 +326,8 @@ export default function PinDemo() {
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: ind(0.5) }} />
                   <p className="font-medium truncate flex-1 text-[10px]" style={{ color: C.textMd }}>{EXISTING_CARD.label}</p>
                 </div>
-                <div className="mx-2.5 mb-1.5 px-2 py-1 rounded-md text-[9px] leading-snug" style={{ background: ind(0.06), border: `1px solid ${ind(0.12)}`, color: C.textFaint }}>
+                <div className="mx-2.5 mb-1.5 px-2 py-1 rounded-md text-[9px] leading-snug"
+                  style={{ background: ind(0.06), border: `1px solid ${ind(0.12)}`, color: C.textFaint }}>
                   「{EXISTING_CARD.anchor}」
                 </div>
                 <p className="px-2.5 pb-2 text-[10px] leading-relaxed" style={{ color: C.textFaint }}>{EXISTING_CARD.preview}</p>
@@ -297,40 +339,34 @@ export default function PinDemo() {
                 transform: showCard ? "translateX(0)" : "translateX(-14px)",
                 transition: "opacity 0.3s ease, transform 0.35s ease",
               }}>
-                <div
-                  className="rounded-xl border overflow-hidden text-xs cursor-pointer"
+                <div className="rounded-xl border overflow-hidden text-xs cursor-pointer"
                   style={{
-                    background: cardClicking ? ind(0.2) : cardHovering ? ind(0.17) : ind(0.13),
+                    background:  cardClicking ? ind(0.2) : cardHovering ? ind(0.17) : ind(0.13),
                     borderColor: cardClicking ? ind(0.7) : cardHovering ? ind(0.55) : ind(0.35),
-                    boxShadow: cardClicking ? `0 0 0 2px ${ind(0.3)}` : cardHovering ? `0 0 0 1px ${ind(0.25)}, 0 0 12px ${ind(0.2)}` : "none",
+                    boxShadow:   cardClicking ? `0 0 0 2px ${ind(0.3)}` : cardHovering ? `0 0 0 1px ${ind(0.25)}, 0 0 12px ${ind(0.2)}` : "none",
                     transition: "all 0.15s ease",
-                  }}
-                >
-                  {/* 标题行 */}
+                  }}>
                   <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
                     <DragHandle />
                     <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: C.indigoSolid }} />
-                    <p className="font-medium truncate flex-1 text-[10px]" style={{ color: C.indigoLight }}>CAP 定理</p>
-                    {/* 未读角标 */}
+                    <p className="font-medium truncate flex-1 text-[10px]" style={{ color: C.indigoLight }}>{ANCHOR}</p>
                     {showCard && !showStream && (
                       <span className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-bold"
                         style={{ background: ind(0.6) }}>1</span>
                     )}
                     {showUnread && (
                       <span className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-bold"
-                        style={{ background: "#ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)", animation: showUnread ? "ping 1s ease-in-out" : "none" }}>
+                        style={{ background: "#ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)", animation: "ping 1s ease-in-out" }}>
                         1
                       </span>
                     )}
                   </div>
 
-                  {/* 锚点引用 */}
                   <div className="mx-2.5 mb-1.5 px-2 py-1 rounded-md text-[9px] leading-snug"
                     style={{ background: ind(0.07), border: `1px solid ${ind(0.13)}`, color: C.indigoText, opacity: 0.8 }}>
                     「{ANCHOR}」
                   </div>
 
-                  {/* 用户问题气泡 */}
                   {showStream && (
                     <div className="mx-2.5 mb-1 flex justify-end">
                       <div className="text-[9px] px-2 py-1 rounded-xl rounded-tr-sm leading-snug"
@@ -340,11 +376,10 @@ export default function PinDemo() {
                     </div>
                   )}
 
-                  {/* AI 回复预览 */}
                   <div className="px-2.5 pb-2 text-[10px] leading-relaxed overflow-hidden" style={{ color: C.textMd, maxHeight: 52 }}>
                     {showStream
                       ? <>{CARD_REPLY.slice(0, streamLen)}{phase === "streaming" && streamLen < CARD_REPLY.length && <Cursor />}</>
-                      : <span style={{ color: C.textFaint, fontStyle: "italic" }}>正在准备回复…</span>
+                      : <span style={{ color: C.textFaint, fontStyle: "italic" }}>{lang === "zh" ? "正在准备回复…" : "Preparing reply…"}</span>
                     }
                   </div>
                 </div>
@@ -352,10 +387,10 @@ export default function PinDemo() {
             </div>
           </div>
 
-          {/* ── 中：主线 / 子线程视图 ─────────────────────────────── */}
+          {/* ── 中：主线 / 子线程视图 ─────────────────────────────────── */}
           <div className="relative overflow-hidden">
 
-            {/* 主线视图（子线程视图打开时淡出并向左滑出，返回时从左滑入） */}
+            {/* 主线视图 */}
             <div style={{
               position: "absolute", inset: 0, padding: 20,
               opacity: showThreadView ? 0 : 1,
@@ -367,7 +402,7 @@ export default function PinDemo() {
               <div className="flex justify-end mb-4">
                 <div className="text-[12px] leading-relaxed px-3.5 py-2 rounded-2xl rounded-tr-sm max-w-[80%]"
                   style={{ background: ind(0.18), border: `1px solid ${ind(0.2)}`, color: C.indigoLight }}>
-                  如何设计一个分布式系统？
+                  {content.questionTitle}
                 </div>
               </div>
 
@@ -375,14 +410,14 @@ export default function PinDemo() {
               <div className="flex gap-2.5">
                 <AIAvatar />
                 <div className="flex-1 text-[12.5px] leading-[1.75] relative" style={{ color: C.textMd }}>
-                  {/* 前段：Raft 已有针，高亮轮廓 */}
+                  {/* 前段，包含 Raft */}
                   {before.slice(0, raftIdx)}
                   <span className="px-0.5 rounded" style={{ color: C.indigoText, boxShadow: `inset 0 0 0 1px ${ind(0.3)}` }}>
-                    Raft 协议
+                    {content.raftInText}
                   </span>
-                  {before.slice(raftIdx + "Raft 协议".length)}
+                  {before.slice(raftIdx + content.raftInText.length)}
 
-                  {/* CAP 定理 — 选中/高亮 */}
+                  {/* CAP 定理 / CAP theorem — 选中/高亮 */}
                   <span className="relative inline">
                     <span className="relative">
                       {isSweeping && (
@@ -408,15 +443,13 @@ export default function PinDemo() {
                     }}>
                       <span className="flex items-center gap-0.5 rounded-xl px-1.5 py-1.5"
                         style={{ background: "rgba(18,20,34,0.97)", border: `1px solid ${C.border}`, boxShadow: "0 8px 40px rgba(0,0,0,0.4)", backdropFilter: "blur(8px)" }}>
-                        {/* 复制 */}
                         <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg whitespace-nowrap" style={{ color: C.textMd }}>
                           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                           </svg>
-                          <span className="text-xs">复制</span>
+                          <span className="text-xs">{content.copyLabel}</span>
                         </span>
                         <span className="w-px h-4" style={{ background: C.border }} />
-                        {/* 插针 */}
                         <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg whitespace-nowrap" style={{
                           background: pinClicking ? ind(0.3) : ind(0.1),
                           border: `1px solid ${ind(0.3)}`,
@@ -424,18 +457,18 @@ export default function PinDemo() {
                           transition: "all 0.15s",
                         }}>
                           <StarIcon className="w-3.5 h-3.5" style={{ color: C.indigoText }} />
-                          <span className="text-xs font-medium" style={{ color: "rgb(165,180,252)" }}>插针</span>
+                          <span className="text-xs font-medium" style={{ color: "rgb(165,180,252)" }}>{content.pinLabel}</span>
                         </span>
                       </span>
                     </span>
                   </span>
 
-                  {/* 后半段：一致性哈希 */}
-                  {after.slice(0, after.indexOf("一致性哈希"))}
+                  {/* 后半段，包含 hash */}
+                  {after.slice(0, hashIdx)}
                   <span className="px-0.5 rounded" style={{ color: C.textMd, boxShadow: `inset 0 0 0 1px ${ind(0.18)}` }}>
-                    一致性哈希
+                    {content.hashInText}
                   </span>
-                  {after.slice(after.indexOf("一致性哈希") + "一致性哈希".length)}
+                  {after.slice(hashIdx + content.hashInText.length)}
 
                   {phase === "idle" && <BlinkCursor />}
                 </div>
@@ -446,7 +479,7 @@ export default function PinDemo() {
                 <svg className="w-3 h-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
                 </svg>
-                选中任意文字即可插针深探
+                {content.hintText}
               </div>
 
               {/* PinStartDialog */}
@@ -458,7 +491,6 @@ export default function PinDemo() {
                 border: `1px solid rgba(255,255,255,0.09)`,
                 boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
               }}>
-                {/* 锚点引用 */}
                 <div className="px-5 pt-4 pb-3 flex gap-3 items-start">
                   <div className="w-0.5 flex-shrink-0 self-stretch rounded-full" style={{ background: ind(0.4) }} />
                   <p className="text-sm italic leading-relaxed flex-1" style={{ color: C.textMd }}>{ANCHOR}</p>
@@ -469,10 +501,9 @@ export default function PinDemo() {
                   </span>
                 </div>
 
-                {/* 推荐问题 */}
                 <div className="px-5 pb-3 flex flex-col gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: C.textFaint }}>推荐问题</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: C.textFaint }}>{content.suggestionsLabel}</span>
                     {!dialogReady && (
                       <span className="flex gap-0.5 items-center">
                         {[0,150,300].map(d => (
@@ -498,10 +529,10 @@ export default function PinDemo() {
 
                 <div className="mx-5 border-t" style={{ borderColor: C.borderSub }} />
 
-                {/* 自定义输入 */}
                 <div className="px-5 py-3 flex gap-2 items-end">
-                  <div className="flex-1 text-sm px-3 py-2 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.borderSub}`, color: "rgba(100,116,139,0.5)", minHeight: 36 }}>
-                    或自己提问…
+                  <div className="flex-1 text-sm px-3 py-2 rounded-xl"
+                    style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.borderSub}`, color: "rgba(100,116,139,0.5)", minHeight: 36 }}>
+                    {content.customPlaceholder}
                   </div>
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ind(0.35), opacity: 0.4 }}>
                     <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -512,7 +543,7 @@ export default function PinDemo() {
               </div>
             </div>
 
-            {/* 子线程视图（进入子线程后显示，返回时向右滑出） */}
+            {/* 子线程视图 */}
             <div style={{
               position: "absolute", inset: 0,
               opacity: showThreadView ? 1 : 0,
@@ -521,30 +552,26 @@ export default function PinDemo() {
               pointerEvents: showThreadView ? "auto" : "none",
               display: "flex", flexDirection: "column",
             }}>
-              {/* 面包屑导航 */}
               <div className="flex items-center gap-1.5 px-4 py-2 border-b text-[11px]" style={{ borderColor: C.borderSub, color: C.textFaint }}>
-                <span
-                  className="cursor-pointer rounded px-1 py-0.5 transition-all duration-150"
+                <span className="cursor-pointer rounded px-1 py-0.5 transition-all duration-150"
                   style={{
                     color: backClicking ? C.indigoLight : C.textMd,
                     background: backClicking ? ind(0.18) : "transparent",
                     boxShadow: backClicking ? `0 0 8px ${ind(0.3)}` : "none",
                     fontWeight: backClicking ? 600 : 400,
-                  }}
-                >主线</span>
+                  }}>
+                  {content.mainLabel}
+                </span>
                 <span style={{ color: C.textFaint }}>›</span>
-                <span style={{ color: C.indigoText, fontWeight: 500 }}>CAP 定理</span>
+                <span style={{ color: C.indigoText, fontWeight: 500 }}>{ANCHOR}</span>
               </div>
 
-              {/* 对话内容 */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                {/* 锚点引用块 */}
                 <div className="flex gap-2.5">
                   <div className="w-0.5 flex-shrink-0 rounded-full self-stretch" style={{ background: ind(0.35) }} />
                   <p className="text-sm italic leading-relaxed" style={{ color: C.textMd }}>{ANCHOR}</p>
                 </div>
 
-                {/* 用户问题 */}
                 <div className="flex justify-end">
                   <div className="text-[12px] leading-relaxed px-3.5 py-2 rounded-2xl rounded-tr-sm max-w-[82%]"
                     style={{ background: ind(0.18), border: `1px solid ${ind(0.2)}`, color: C.indigoLight }}>
@@ -552,14 +579,14 @@ export default function PinDemo() {
                   </div>
                 </div>
 
-                {/* AI 回复 */}
                 <div className="flex gap-2.5">
                   <AIAvatar />
                   <div className="flex-1 text-[12px] leading-[1.8]" style={{ color: C.textMd }}>
                     {THREAD_REPLY_FULL.split("\n").map((line, i) => {
                       if (!line) return <div key={i} className="h-2" />;
-                      if (line.startsWith("•")) {
-                        const parts = line.slice(2).split("**");
+                      if (line.startsWith("•") || line.startsWith("• ")) {
+                        const clean = line.startsWith("• ") ? line.slice(2) : line.slice(1).trimStart();
+                        const parts = clean.split("**");
                         return (
                           <div key={i} className="flex gap-2 mb-1">
                             <span style={{ color: C.indigoText, flexShrink: 0 }}>•</span>
@@ -578,81 +605,70 @@ export default function PinDemo() {
                 </div>
               </div>
 
-              {/* 继续追问提示 */}
               <div className="px-4 py-2 border-t flex items-center gap-2" style={{ borderColor: C.borderSub }}>
-                <div className="flex-1 text-[11px] px-3 py-2 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.borderSub}`, color: C.textFaint }}>
-                  继续追问 CAP 定理…
+                <div className="flex-1 text-[11px] px-3 py-2 rounded-xl"
+                  style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.borderSub}`, color: C.textFaint }}>
+                  {content.continuePrompt}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ── 右：概览节点图 ────────────────────────────────────── */}
+          {/* ── 右：概览节点图 ────────────────────────────────────────── */}
           <div className="border-l flex flex-col overflow-hidden" style={{ borderColor: C.border }}>
             <div className="px-2 py-1.5 border-b flex items-center gap-1" style={{ borderColor: C.borderSub }}>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.1em] flex-1" style={{ color: C.textFaint }}>概览</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.1em] flex-1" style={{ color: C.textFaint }}>{content.overviewLabel}</span>
               <div className="flex gap-0.5 rounded-md p-0.5" style={{ border: `1px solid ${C.borderSub}`, background: "rgba(255,255,255,0.02)" }}>
                 <div className="flex items-center gap-0.5 px-1 h-4 rounded" style={{ color: C.textFaint }}>
                   <svg className="w-2 h-2" viewBox="0 0 24 24" fill="currentColor">
                     <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
                     <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
                   </svg>
-                  <span className="text-[8px]">列表</span>
+                  <span className="text-[8px]">{content.listLabel}</span>
                 </div>
                 <div className="flex items-center gap-0.5 px-1 h-4 rounded" style={{ background: "rgba(255,255,255,0.08)", color: C.textHi }}>
                   <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
                     <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
                   </svg>
-                  <span className="text-[8px]">节点图</span>
+                  <span className="text-[8px]">{content.graphLabel}</span>
                 </div>
               </div>
             </div>
 
             <div className="flex-1 p-1.5">
-              {/*
-                Tree layout (viewBox 165 × 185):
-                  主线 (center=82, y=8..30)
-                  Level-1: Raft(x=7,cx=29) | 一致性哈希(x=60,cx=82) | CAP定理(x=113,cx=135)
-                           all at y=52..74
-                  Level-2: Leader选举 under Raft, y=88..108
-              */}
               <svg viewBox="0 0 165 185" className="w-full h-full">
                 {/* 主线 */}
                 <rect x="32" y="8" width="100" height="22" rx="6" fill={ind(0.12)} stroke={ind(0.35)} strokeWidth="1"/>
-                <text x="82" y="23" textAnchor="middle" fontSize="8" fill={C.indigoText} fontFamily="sans-serif" fontWeight="500">主线对话</text>
+                <text x="82" y="23" textAnchor="middle" fontSize="8" fill={C.indigoText} fontFamily="sans-serif" fontWeight="500">{content.nodeMain}</text>
 
-                {/* 干线：主线→横梁 */}
                 <line x1="82" y1="30" x2="82" y2="42" stroke={ind(0.25)} strokeWidth="1"/>
-                {/* 横梁：Raft-cx 到 Hash-cx */}
                 <line x1="29" y1="42" x2="82" y2="42" stroke={ind(0.25)} strokeWidth="1"/>
-                {/* CAP 那段横梁（出现时淡入） */}
                 <line x1="82" y1="42" x2="135" y2="42"
                   stroke={ind(showCap ? 0.25 : 0.08)} strokeWidth="1"
                   style={{ transition: "stroke 0.4s" }}/>
-                {/* 竖线到各节点 */}
                 <line x1="29" y1="42" x2="29" y2="52" stroke={ind(0.25)} strokeWidth="1"/>
                 <line x1="82" y1="42" x2="82" y2="52" stroke={ind(0.25)} strokeWidth="1"/>
                 <line x1="135" y1="42" x2="135" y2="52"
                   stroke={ind(showCap ? 0.25 : 0.08)} strokeWidth="1"
                   style={{ transition: "stroke 0.4s" }}/>
 
-                {/* ── Raft 协议 ── */}
+                {/* Raft 节点 */}
                 <rect x="7" y="52" width="44" height="22" rx="6" fill={ind(0.1)} stroke={ind(0.3)} strokeWidth="1"/>
-                <text x="29" y="63" textAnchor="middle" fontSize="7" fill={C.textMd} fontFamily="sans-serif">Raft</text>
-                <text x="29" y="71" textAnchor="middle" fontSize="7" fill={C.textMd} fontFamily="sans-serif">协议</text>
+                <text x="29" y="63" textAnchor="middle" fontSize="7" fill={C.textMd} fontFamily="sans-serif">{content.nodeRaft[0]}</text>
+                <text x="29" y="71" textAnchor="middle" fontSize="7" fill={C.textMd} fontFamily="sans-serif">{content.nodeRaft[1]}</text>
 
-                {/* Raft 子节点：Leader 选举 */}
+                {/* Raft 子节点 */}
                 <line x1="29" y1="74" x2="29" y2="86" stroke={ind(0.2)} strokeWidth="1"/>
                 <rect x="7" y="86" width="44" height="20" rx="5" fill={ind(0.06)} stroke={ind(0.18)} strokeWidth="1"/>
-                <text x="29" y="100" textAnchor="middle" fontSize="6.5" fill={C.textFaint} fontFamily="sans-serif">Leader 选举</text>
+                <text x="29" y="100" textAnchor="middle" fontSize="6.5" fill={C.textFaint} fontFamily="sans-serif">{content.nodeLeader}</text>
 
-                {/* ── 一致性哈希 ── */}
+                {/* Hash 节点 */}
                 <rect x="60" y="52" width="44" height="22" rx="6" fill={ind(0.08)} stroke={ind(0.22)} strokeWidth="1"/>
-                <text x="82" y="63" textAnchor="middle" fontSize="7" fill={C.textLo} fontFamily="sans-serif">一致性</text>
-                <text x="82" y="71" textAnchor="middle" fontSize="7" fill={C.textLo} fontFamily="sans-serif">哈希</text>
+                <text x="82" y="63" textAnchor="middle" fontSize="7" fill={C.textLo} fontFamily="sans-serif">{content.nodeHash[0]}</text>
+                <text x="82" y="71" textAnchor="middle" fontSize="7" fill={C.textLo} fontFamily="sans-serif">{content.nodeHash[1]}</text>
 
-                {/* ── CAP 定理（与 Raft 同一层 y=52，出现时点亮） ── */}
+                {/* CAP 节点 */}
                 <rect x="113" y="52" width="44" height="22" rx="6"
                   fill={showCap ? ind(0.22) : ind(0.03)}
                   stroke={showCap ? ind(0.65) : ind(0.1)}
@@ -662,26 +678,22 @@ export default function PinDemo() {
                 <text x="135" y="63" textAnchor="middle" fontSize="7"
                   fill={showCap ? C.indigoLight : "rgba(99,102,241,0.15)"}
                   fontFamily="sans-serif" fontWeight={showCap ? "600" : "400"}
-                  style={{ transition: "fill 0.45s" }}>CAP</text>
+                  style={{ transition: "fill 0.45s" }}>{content.nodeCap[0]}</text>
                 <text x="135" y="71" textAnchor="middle" fontSize="7"
                   fill={showCap ? C.indigoLight : "rgba(99,102,241,0.15)"}
                   fontFamily="sans-serif" fontWeight={showCap ? "600" : "400"}
-                  style={{ transition: "fill 0.45s" }}>定理</text>
-                {/* 未读指示点 */}
-                {showUnread && (
-                  <circle cx="152" cy="52" r="4" fill="#ef4444" opacity="0.9"/>
-                )}
+                  style={{ transition: "fill 0.45s" }}>{content.nodeCap[1]}</text>
+                {showUnread && <circle cx="152" cy="52" r="4" fill="#ef4444" opacity="0.9"/>}
               </svg>
             </div>
 
-            {/* 合并按钮 */}
             <div className="px-2 pb-2">
               <div className="flex items-center gap-1 rounded-lg px-2 py-1.5 cursor-pointer"
                 style={{ background: ind(0.08), border: `1px solid ${ind(0.18)}` }}>
                 <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke={C.indigoText} strokeWidth={2} strokeLinecap="round">
                   <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
                 </svg>
-                <span className="text-[9px] font-medium" style={{ color: C.indigoText }}>合并输出</span>
+                <span className="text-[9px] font-medium" style={{ color: C.indigoText }}>{content.mergeLabel}</span>
                 <span className="ml-auto text-[9px] tabular-nums" style={{ color: ind(0.6) }}>
                   {showCap ? "3" : "2"}
                 </span>
@@ -690,18 +702,15 @@ export default function PinDemo() {
           </div>
         </div>
 
-        {/* 底部：说明文字 + 控制栏 */}
+        {/* 底部：说明 + 控制栏 */}
         <div className="border-t" style={{ borderColor: C.border, background: "rgba(0,0,0,0.2)" }}>
-          {/* 说明文字 — 固定高度 */}
           <div className="px-5 pt-3 pb-1 overflow-hidden" style={{ height: 50 }}>
             <p className="text-[11px] leading-relaxed line-clamp-2" style={{ color: C.textMd }}>
-              {CAPTIONS[phase]}
+              {content.captions[phase]}
             </p>
           </div>
 
-          {/* 控制栏 — 固定高度 44px */}
           <div className="px-5 flex items-center gap-3" style={{ height: 44 }}>
-            {/* 进度点 */}
             <div className="flex items-center gap-1 flex-1 min-w-0">
               {PHASE_ORDER.map(p => (
                 <button key={p} onClick={() => goTo(p)}
@@ -710,36 +719,30 @@ export default function PinDemo() {
               ))}
             </div>
 
-            {/* 后退 */}
             <button onClick={() => stepBy(-1)}
               className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors flex-shrink-0"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.textLo }}
-              title="上一步">
+              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.textLo }}>
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <path d="M15 18l-6-6 6-6"/>
               </svg>
             </button>
 
-            {/* 播放/暂停 */}
             <button onClick={() => setPlaying(p => !p)}
               className="flex items-center justify-center w-7 h-7 rounded-lg transition-all flex-shrink-0"
               style={{
                 background: playing ? ind(0.2) : "rgba(255,255,255,0.05)",
                 border: `1px solid ${playing ? ind(0.4) : C.border}`,
                 color: playing ? C.indigoText : C.textLo,
-              }}
-              title={playing ? "暂停" : "播放"}>
+              }}>
               {playing
                 ? <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
                 : <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               }
             </button>
 
-            {/* 前进 */}
             <button onClick={() => stepBy(1)}
               className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors flex-shrink-0"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.textLo }}
-              title="下一步">
+              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.textLo }}>
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                 <path d="M9 18l6-6-6-6"/>
               </svg>
