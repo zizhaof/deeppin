@@ -238,17 +238,38 @@ export default function MessageBubble({
 
   const handleMouseUp = handleSelection;
 
-  // 移动端：长按选文触发 selectionchange 而非 mouseup，用防抖监听
+  // 移动端：长按选文 → selectionchange（选择中）→ touchend（手指离开）→ 弹出菜单
+  // 必须等 touchend 后再检查，否则用户还在拖 handle 时就触发了
   useEffect(() => {
     if (!onSelect || isUser) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const onSelectionChange = () => {
-      clearTimeout(timer);
-      timer = setTimeout(handleSelection, 300);
+
+    let isTouching = false;
+    let pendingCheck = false;
+
+    const onTouchStart = () => { isTouching = true; };
+    const onTouchEnd = () => {
+      isTouching = false;
+      if (pendingCheck) {
+        pendingCheck = false;
+        handleSelection();
+      }
     };
+    const onSelectionChange = () => {
+      if (isTouching) {
+        // 手指还在屏幕上，先记录，等 touchend 再处理
+        pendingCheck = true;
+      }
+      // 桌面端 mouseup 已经处理，移动端 isTouching=false 时不需额外处理
+    };
+
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    document.addEventListener("touchcancel", onTouchEnd, { passive: true });
     document.addEventListener("selectionchange", onSelectionChange);
     return () => {
-      clearTimeout(timer);
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("touchcancel", onTouchEnd);
       document.removeEventListener("selectionchange", onSelectionChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
