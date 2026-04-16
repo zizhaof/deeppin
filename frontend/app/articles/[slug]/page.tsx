@@ -14,58 +14,59 @@ type Block = {
 
 function renderBlock(block: Block, i: number) {
   if (block.type === "h1") return (
-    <h2 key={i} className="text-[19px] font-semibold text-hi tracking-tight mt-12 mb-3 pb-2.5 border-b border-indigo-500/20">
+    <h2 key={i} className="text-[19px] font-semibold text-hi tracking-tight mt-12 mb-3 pb-2.5 border-b border-indigo-500/40">
       {block.text}
     </h2>
   );
   if (block.type === "h2") return (
     <h3 key={i} className="flex items-center gap-2.5 text-[14px] font-semibold text-hi mt-8 mb-2">
-      <span className="inline-block w-0.5 h-4 rounded-full bg-indigo-400/60 flex-shrink-0" />
+      <span className="inline-block w-0.5 h-4 rounded-full bg-indigo-400 flex-shrink-0" />
       {block.text}
     </h3>
   );
   if (block.type === "h3") return (
-    <h4 key={i} className="text-[13px] font-medium text-indigo-300 mt-5 mb-1.5">
+    <h4 key={i} className="text-[13px] font-semibold text-indigo-400 mt-5 mb-1.5">
       {block.text}
     </h4>
   );
   if (block.type === "code") return (
-    <pre key={i} className="bg-zinc-900/80 border border-zinc-700/60 rounded-xl px-5 py-4 text-[12px] font-mono text-zinc-300 overflow-x-auto leading-relaxed my-4 whitespace-pre">
+    <pre key={i} className="bg-elevated border border-strong rounded-xl px-5 py-4 text-[12px] font-mono text-md overflow-x-auto leading-relaxed my-4 whitespace-pre">
       {block.text}
     </pre>
   );
   if (block.type === "ul") return (
     <ul key={i} className="list-none space-y-2.5 pl-0 my-4">
       {block.items?.map((item, j) => (
-        <li key={j} className="flex items-start gap-2.5 text-[13.5px] text-zinc-300 leading-relaxed">
-          <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-indigo-400/70 flex-shrink-0" />
+        <li key={j} className="flex items-start gap-2.5 text-[13.5px] text-md leading-relaxed">
+          <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
           <span>{item}</span>
         </li>
       ))}
     </ul>
   );
   if (block.type === "note") return (
-    <div key={i} className="my-4 rounded-xl border border-indigo-500/25 bg-indigo-950/25 px-4 py-3.5">
-      <p className="text-[12.5px] text-indigo-200/75 leading-relaxed">{block.text}</p>
+    <div key={i} className="my-4 flex gap-3 rounded-xl border border-indigo-500/40 bg-indigo-500/8 px-4 py-3.5">
+      <span className="mt-0.5 w-1 rounded-full bg-indigo-400 flex-shrink-0 self-stretch" />
+      <p className="text-[13px] text-md leading-relaxed">{block.text}</p>
     </div>
   );
   if (block.type === "diagram") {
     const id = block.text?.trim() ?? "";
     const Diagram = DIAGRAMS[id];
     if (!Diagram) return (
-      <div key={i} className="my-4 rounded-xl border border-red-500/30 bg-red-950/20 px-4 py-3 text-[11px] text-red-400 font-mono">
+      <div key={i} className="my-4 rounded-xl border border-red-500/40 bg-red-500/8 px-4 py-3 text-[11px] text-red-400 font-mono">
         unknown diagram: &quot;{id}&quot;
       </div>
     );
     return (
-      <div key={i} className="my-6 rounded-xl border border-indigo-500/20 bg-[#0c0c14] overflow-x-auto p-5">
+      <div key={i} className="my-6 rounded-xl border border-strong bg-elevated overflow-x-auto p-5">
         <Diagram />
       </div>
     );
   }
   // paragraph
   return (
-    <p key={i} className="text-[14px] leading-[1.9] text-zinc-400">
+    <p key={i} className="text-[14px] leading-[1.9] text-md">
       {block.text}
     </p>
   );
@@ -119,7 +120,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
             ))}
           </div>
           <h1 className="text-[26px] font-bold tracking-tight leading-snug mb-3 text-hi">{c.title}</h1>
-          <p className="text-sm text-zinc-500 font-mono">{article.date}</p>
+          <p className="text-sm text-dim font-mono">{article.date}</p>
         </div>
 
         {/* article body */}

@@ -50,7 +50,7 @@ export default function ThreadNav({
       await supabase.auth.signOut();
       router.push("/");
     } catch (err) {
-      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+      alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
       setDeleting(false);
     }
   };

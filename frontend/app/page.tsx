@@ -200,12 +200,12 @@ export default function HomePage() {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!window.confirm("确定删除这个会话吗？删除后无法恢复。")) return;
+    if (!window.confirm(t.confirmDelete)) return;
     try {
       await deleteSession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     } catch (err) {
-      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+      alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
     }
   };
 
@@ -278,7 +278,7 @@ export default function HomePage() {
                 onClick={handleLogout}
                 className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
               >
-                退出
+                {t.logout}
               </button>
             </>
           )}

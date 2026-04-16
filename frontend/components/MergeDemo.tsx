@@ -3,6 +3,7 @@
 // 演示二：合并输出流程（独立动画）
 
 import { useEffect, useState } from "react";
+import { useLangStore } from "@/stores/useLangStore";
 
 type Phase =
   | "idle"      // 展示三根针已选中状态
@@ -26,15 +27,27 @@ const NEXT: Record<Phase, Phase> = {
   done:       "idle",
 };
 
-const THREADS = [
-  { id: "main",    label: "主线对话",   depth: 0, checked: false },
-  { id: "raft",    label: "Raft 协议",  depth: 1, checked: true  },
-  { id: "hash",    label: "一致性哈希", depth: 1, checked: true  },
-  { id: "cap",     label: "CAP 定理",   depth: 1, checked: true  },
-  { id: "leader",  label: "Leader 选举",depth: 2, checked: true  },
-];
-
-const MERGE_TEXT =
+const CONTENT = {
+  zh: {
+    windowTitle: "如何设计一个分布式系统？",
+    pinsReady: "3 根针已就绪",
+    mergeOutput: "合并输出",
+    chatLines: ["如何设计一个分布式系统？", "需要考虑 CAP 定理……Raft 协议……一致性哈希……"],
+    pins: ["Raft 协议", "一致性哈希", "CAP 定理"],
+    threads: [
+      { id: "main",   label: "主线对话",    depth: 0, checked: false },
+      { id: "raft",   label: "Raft 协议",   depth: 1, checked: true  },
+      { id: "hash",   label: "一致性哈希",  depth: 1, checked: true  },
+      { id: "cap",    label: "CAP 定理",    depth: 1, checked: true  },
+      { id: "leader", label: "Leader 选举", depth: 2, checked: true  },
+    ],
+    formats: ["自由总结", "要点列表", "结构化分析"],
+    selectThreads: "选择线程",
+    selectAll: "全选",
+    generate: "开始生成",
+    download: "下载 Markdown",
+    copy: "复制",
+    mergeText:
 `## 分布式系统设计要点
 
 **核心权衡（CAP 定理）**
@@ -47,7 +60,57 @@ const MERGE_TEXT =
 将节点增减影响控制在 O(1/N)，适合无状态服务横向扩展，配合虚拟节点解决数据倾斜。
 
 **结论**
-三者相互补充：CAP 决定架构方向，Raft 保障写入一致，一致性哈希优化数据分布。`;
+三者相互补充：CAP 决定架构方向，Raft 保障写入一致，一致性哈希优化数据分布。`,
+    captions: {
+      idle:      "3 根针已就绪，点击合并输出",
+      clicking:  "点击合并按钮…",
+      selecting: "选择要合并的线程",
+      streaming: "生成结构化报告中…",
+      done:      "报告已生成，可下载或复制 ✓",
+    },
+  },
+  en: {
+    windowTitle: "How to design a distributed system?",
+    pinsReady: "3 pins ready",
+    mergeOutput: "Merge Output",
+    chatLines: ["How to design a distributed system?", "Consider CAP theorem… Raft protocol… consistent hashing…"],
+    pins: ["Raft protocol", "Consistent hashing", "CAP theorem"],
+    threads: [
+      { id: "main",   label: "Main thread",       depth: 0, checked: false },
+      { id: "raft",   label: "Raft protocol",     depth: 1, checked: true  },
+      { id: "hash",   label: "Consistent hashing",depth: 1, checked: true  },
+      { id: "cap",    label: "CAP theorem",        depth: 1, checked: true  },
+      { id: "leader", label: "Leader election",    depth: 2, checked: true  },
+    ],
+    formats: ["Free summary", "Bullet points", "Structured"],
+    selectThreads: "Select threads",
+    selectAll: "All",
+    generate: "Generate",
+    download: "Download Markdown",
+    copy: "Copy",
+    mergeText:
+`## Distributed System Design
+
+**Core trade-off (CAP theorem)**
+Network partitions are inevitable — systems must choose between C and A. HBase favors consistency; Cassandra favors availability.
+
+**Consensus (Raft protocol)**
+Leader election + log replication ensures linearizability. At any moment, exactly one valid Leader exists.
+
+**Scaling (Consistent hashing)**
+Limits data movement to O(1/N) when nodes change. Pairs well with virtual nodes to avoid hotspots.
+
+**Conclusion**
+All three complement each other: CAP sets the architecture, Raft ensures write consistency, consistent hashing optimizes data placement.`,
+    captions: {
+      idle:      "3 pins ready — click Merge Output",
+      clicking:  "Clicking merge button…",
+      selecting: "Select threads to merge",
+      streaming: "Generating structured report…",
+      done:      "Report ready — download or copy ✓",
+    },
+  },
+};
 
 function SimpleMd({ text }: { text: string }) {
   return (
@@ -74,8 +137,17 @@ function SimpleMd({ text }: { text: string }) {
 }
 
 export default function MergeDemo() {
+  const lang = useLangStore((s) => s.lang);
+  const c = CONTENT[lang];
+
   const [phase, setPhase] = useState<Phase>("idle");
   const [streamLen, setStreamLen] = useState(0);
+
+  // 切换语言时重置动画
+  useEffect(() => {
+    setPhase("idle");
+    setStreamLen(0);
+  }, [lang]);
 
   useEffect(() => {
     const t = setTimeout(() => setPhase((p) => NEXT[p]), DELAYS[phase]);
@@ -88,14 +160,14 @@ export default function MergeDemo() {
 
   useEffect(() => {
     if (phase !== "streaming") return;
-    if (streamLen >= MERGE_TEXT.length) return;
+    if (streamLen >= c.mergeText.length) return;
     const t = setTimeout(() => setStreamLen((n) => n + 5), 22);
     return () => clearTimeout(t);
-  }, [phase, streamLen]);
+  }, [phase, streamLen, c.mergeText]);
 
-  const showModal    = ["selecting","streaming","done"].includes(phase);
-  const showContent  = ["streaming","done"].includes(phase);
-  const btnPulsing   = phase === "clicking";
+  const showModal   = ["selecting","streaming","done"].includes(phase);
+  const showContent = ["streaming","done"].includes(phase);
+  const btnPulsing  = phase === "clicking";
 
   return (
     <div className="w-full max-w-[700px] select-none">
@@ -108,14 +180,14 @@ export default function MergeDemo() {
         {/* 标题栏 */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-subtle">
           <div className="flex gap-1.5">
-            {["bg-red-500/40","bg-yellow-500/40","bg-green-500/40"].map((c) => (
-              <div key={c} className={`w-2.5 h-2.5 rounded-full ${c}`} />
+            {["bg-red-500/40","bg-yellow-500/40","bg-green-500/40"].map((cl) => (
+              <div key={cl} className={`w-2.5 h-2.5 rounded-full ${cl}`} />
             ))}
           </div>
-          <span className="text-[11px] text-faint ml-2 font-medium">如何设计一个分布式系统？</span>
+          <span className="text-[11px] text-faint ml-2 font-medium">{c.windowTitle}</span>
           {/* 概览栏里的 Merge 按钮（右侧） */}
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[10px] text-faint">3 根针已就绪</span>
+            <span className="text-[10px] text-faint">{c.pinsReady}</span>
             <div
               className="flex items-center gap-1.5 border rounded-lg px-2.5 py-1 transition-all"
               style={{
@@ -128,7 +200,7 @@ export default function MergeDemo() {
               <svg className="w-3 h-3 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
               </svg>
-              <span className="text-[10px] text-indigo-300 font-medium">合并输出</span>
+              <span className="text-[10px] text-indigo-300 font-medium">{c.mergeOutput}</span>
             </div>
           </div>
         </div>
@@ -137,7 +209,7 @@ export default function MergeDemo() {
         <div className="relative px-8 py-6" style={{ minHeight: 260 }}>
           {/* 背景对话（模糊状态） */}
           <div className={`space-y-3 transition-all duration-400 ${showModal ? "opacity-20 blur-[1px]" : "opacity-60"}`}>
-            {["如何设计一个分布式系统？", "需要考虑 CAP 定理……Raft 协议……一致性哈希……"].map((line, i) => (
+            {c.chatLines.map((line, i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"} gap-2`}>
                 {i % 2 === 1 && (
                   <div className="w-5 h-5 rounded-full border border-base flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(99,102,241,0.1)" }}>
@@ -156,9 +228,9 @@ export default function MergeDemo() {
             ))}
             {/* 高亮的三个锚点提示 */}
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {["Raft 协议","一致性哈希","CAP 定理"].map((t) => (
-                <span key={t} className="text-[10px] px-2 py-0.5 rounded-full border border-indigo-500/30 text-indigo-300/70" style={{ background: "rgba(99,102,241,0.1)" }}>
-                  📍 {t}
+              {c.pins.map((pin) => (
+                <span key={pin} className="text-[10px] px-2 py-0.5 rounded-full border border-indigo-500/30 text-indigo-300/70" style={{ background: "rgba(99,102,241,0.1)" }}>
+                  📍 {pin}
                 </span>
               ))}
             </div>
@@ -181,10 +253,9 @@ export default function MergeDemo() {
               <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
               </svg>
-              <span className="text-[12px] font-semibold text-hi">合并输出</span>
+              <span className="text-[12px] font-semibold text-hi">{c.mergeOutput}</span>
               <div className="ml-auto flex items-center gap-2">
-                {/* 格式选择 */}
-                {["自由总结","要点列表","结构化分析"].map((f, i) => (
+                {c.formats.map((f, i) => (
                   <span key={f} className="text-[9px] px-2 py-0.5 rounded-full border transition-all"
                     style={{
                       background: i === 0 ? "rgba(99,102,241,0.2)" : "transparent",
@@ -200,10 +271,10 @@ export default function MergeDemo() {
               {/* 左：线程选择列表 */}
               <div className="border-r flex-shrink-0 px-3 py-3 space-y-1.5 overflow-y-auto" style={{ width: 160, borderColor: "rgba(99,102,241,0.12)" }}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[9px] text-faint uppercase tracking-wide">选择线程</span>
-                  <span className="text-[9px] text-indigo-400">全选</span>
+                  <span className="text-[9px] text-faint uppercase tracking-wide">{c.selectThreads}</span>
+                  <span className="text-[9px] text-indigo-400">{c.selectAll}</span>
                 </div>
-                {THREADS.map((th) => (
+                {c.threads.map((th) => (
                   <div key={th.id} className="flex items-center gap-1.5" style={{ paddingLeft: th.depth * 10 }}>
                     <div
                       className="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0"
@@ -236,13 +307,13 @@ export default function MergeDemo() {
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                         <path d="M5 12h14M12 5l7 7-7 7"/>
                       </svg>
-                      开始生成
+                      {c.generate}
                     </button>
                   </div>
                 ) : (
                   <div className="overflow-y-auto h-full pr-1">
-                    <SimpleMd text={MERGE_TEXT.slice(0, streamLen)} />
-                    {phase === "streaming" && streamLen < MERGE_TEXT.length && (
+                    <SimpleMd text={c.mergeText.slice(0, streamLen)} />
+                    {phase === "streaming" && streamLen < c.mergeText.length && (
                       <span className="inline-block w-0.5 h-3 bg-indigo-400 ml-0.5 align-middle animate-pulse" />
                     )}
                     {phase === "done" && (
@@ -251,13 +322,13 @@ export default function MergeDemo() {
                           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                           </svg>
-                          下载 Markdown
+                          {c.download}
                         </button>
                         <button className="flex items-center gap-1.5 text-[10px] text-indigo-300 px-2.5 py-1 rounded-lg border border-indigo-500/25" style={{ background: "rgba(99,102,241,0.1)" }}>
                           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
                           </svg>
-                          复制
+                          {c.copy}
                         </button>
                       </div>
                     )}
@@ -276,13 +347,7 @@ export default function MergeDemo() {
                 style={{ width: phase === p ? "18px" : "5px", background: phase === p ? "rgb(99,102,241)" : "rgba(99,102,241,0.2)" }} />
             ))}
           </div>
-          <span className="text-[10px] text-faint">
-            {phase === "idle"      && "3 根针已就绪，点击合并输出"}
-            {phase === "clicking"  && "点击合并按钮…"}
-            {phase === "selecting" && "选择要合并的线程"}
-            {phase === "streaming" && "生成结构化报告中…"}
-            {phase === "done"      && "报告已生成，可下载或复制 ✓"}
-          </span>
+          <span className="text-[10px] text-faint">{c.captions[phase]}</span>
         </div>
       </div>
     </div>

@@ -375,16 +375,16 @@ export default function ChatPage() {
   }, [sessions.length]);
 
   const handleDeleteSession = useCallback(async (sid: string) => {
-    if (!window.confirm("确定删除这个会话吗？删除后无法恢复。")) return;
+    if (!window.confirm(t.confirmDelete)) return;
     try {
       await deleteSession(sid);
       setSessions((prev) => prev.filter((s) => s.id !== sid));
       // 如果删的是当前 session，跳回首页
       if (sid === sessionId) router.push("/");
     } catch (err) {
-      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+      alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
     }
-  }, [sessionId]);
+  }, [sessionId, t]);
 
   // ── 切换线程时清除残留引导线 ─────────────────────────────────────
   useEffect(() => {

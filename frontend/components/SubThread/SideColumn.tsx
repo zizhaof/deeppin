@@ -5,6 +5,7 @@ import React, { useCallback, useRef, useState } from "react";
 import type { Thread, Message } from "@/lib/api";
 import { getThreadSubtree, deleteThread } from "@/lib/api";
 import { useThreadStore } from "@/stores/useThreadStore";
+import { useT } from "@/stores/useLangStore";
 import ThreadCard from "./ThreadCard";
 
 export interface ThreadCardItem {
@@ -84,6 +85,7 @@ export default function SideColumn({
   onSendSuggestion,
   onDeleteThread,
 }: Props) {
+  const t = useT();
   const { userCardPositions, collapsedCards, setUserCardPosition, toggleCardCollapsed, removeThreadAndDescendants, streamingByThread } =
     useThreadStore();
 
@@ -363,7 +365,7 @@ export default function SideColumn({
                   removeThreadAndDescendants(tid);
                   onDeleteThread?.(tid);
                 } catch (err) {
-                  alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+                  alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
                 }
               }}
             />

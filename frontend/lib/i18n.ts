@@ -105,6 +105,15 @@ const zh = {
   articles: "文章",
   // 语言切换标签（显示"切换到的语言"）
   toggleLang: "EN",
+  // 账号
+  logout: "退出",
+  // 错误消息
+  deleteError: "删除失败：",
+  unknownError: "未知错误",
+  confirmDelete: "确定删除这个会话吗？删除后无法恢复。",
+  // MergeDemo
+  pinsReady: "根针已就绪",
+  mergeOutput: "合并输出",
 } as const;
 
 const en = {
@@ -193,6 +202,12 @@ const en = {
   step4Desc: "Done exploring? Combine all threads into one complete report and export it",
   articles: "Articles",
   toggleLang: "中",
+  logout: "Log out",
+  deleteError: "Delete failed: ",
+  unknownError: "Unknown error",
+  confirmDelete: "Delete this session? This cannot be undone.",
+  pinsReady: "pins ready",
+  mergeOutput: "Merge Output",
 } as const;
 
 export const translations = { zh, en } as const;

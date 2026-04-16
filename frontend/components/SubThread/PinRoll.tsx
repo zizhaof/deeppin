@@ -180,9 +180,9 @@ export default function PinRoll({
       const raw = await getThreadSubtree(threadId);
       setDeleteConfirm({ threadId, subtree: raw as SubtreeNode });
     } catch (err) {
-      alert(`获取线程信息失败：${err instanceof Error ? err.message : "未知错误"}`);
+      alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
     }
-  }, [streamingByThread]);
+  }, [streamingByThread, t]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteConfirm) return;
@@ -193,9 +193,9 @@ export default function PinRoll({
       removeThreadAndDescendants(threadId);
       onDeleteThread?.(threadId);
     } catch (err) {
-      alert(`删除失败：${err instanceof Error ? err.message : "未知错误"}`);
+      alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
     }
-  }, [deleteConfirm, removeThreadAndDescendants, onDeleteThread]);
+  }, [deleteConfirm, removeThreadAndDescendants, onDeleteThread, t]);
   const sorted = items;
 
   const [focusedIdx, setFocusedIdx] = useState(0);
