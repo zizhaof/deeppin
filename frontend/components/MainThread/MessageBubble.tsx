@@ -1,7 +1,7 @@
 "use client";
 // components/MainThread/MessageBubble.tsx
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, memo } from "react";
 import MarkdownContent from "@/components/MarkdownContent";
 import { useT } from "@/stores/useLangStore";
 
@@ -175,7 +175,7 @@ function renderWithHighlights(
   return <>{nodes}</>;
 }
 
-export default function MessageBubble({
+function MessageBubble({
   messageId,
   role,
   content,
@@ -369,3 +369,5 @@ export default function MessageBubble({
     </div>
   );
 }
+
+export default memo(MessageBubble);
