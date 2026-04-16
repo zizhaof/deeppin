@@ -209,6 +209,10 @@ export default function MobileChatLayout({
     };
 
     const onMove = (e: TouchEvent) => {
+      // 有文字选区时不触发面板滑动（移动端选文 handle 拖拽保护）
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+
       const dx = e.touches[0].clientX - touchStartXRef.current;
       const dy = e.touches[0].clientY - touchStartYRef.current;
 

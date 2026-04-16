@@ -1,7 +1,7 @@
 "use client";
 // components/MainThread/MessageBubble.tsx
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import MarkdownContent from "@/components/MarkdownContent";
 import { useT } from "@/stores/useLangStore";
 
@@ -196,7 +196,8 @@ export default function MessageBubble({
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
-  const handleMouseUp = () => {
+  // 抽取选区处理逻辑，mouseup（桌面）和 selectionchange（移动端）共用
+  const handleSelection = () => {
     if (!onSelect || isUser) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
@@ -234,6 +235,24 @@ export default function MessageBubble({
       }
     });
   };
+
+  const handleMouseUp = handleSelection;
+
+  // 移动端：长按选文触发 selectionchange 而非 mouseup，用防抖监听
+  useEffect(() => {
+    if (!onSelect || isUser) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const onSelectionChange = () => {
+      clearTimeout(timer);
+      timer = setTimeout(handleSelection, 300);
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSelect, isUser, messageId]);
 
   return (
     <div
