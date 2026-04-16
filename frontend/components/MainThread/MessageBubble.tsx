@@ -238,28 +238,34 @@ export default function MessageBubble({
 
   const handleMouseUp = handleSelection;
 
-  // 移动端：长按选文 → selectionchange（选择中）→ touchend（手指离开）→ 弹出菜单
-  // 必须等 touchend 后再检查，否则用户还在拖 handle 时就触发了
+  // 移动端：拖拽选区 handle 时 iOS/Android 只发 selectionchange，不发 touchstart/end。
+  // 策略：selectionchange 稳定 N ms 后再弹菜单：
+  //   - 手指在屏幕上（touchActive=true）：N=600ms，给用户时间拖 handle
+  //   - 手指抬起后（touchActive=false）：N=250ms，快速响应
   useEffect(() => {
     if (!onSelect || isUser) return;
 
-    let isTouching = false;
-    let pendingCheck = false;
+    let touchActive = false;
+    let timer: ReturnType<typeof setTimeout>;
 
-    const onTouchStart = () => { isTouching = true; };
-    const onTouchEnd = () => {
-      isTouching = false;
-      if (pendingCheck) {
-        pendingCheck = false;
+    const fireIfSelected = () => {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) {
         handleSelection();
       }
     };
+
+    const onTouchStart = () => { touchActive = true; };
+    const onTouchEnd = () => {
+      touchActive = false;
+      // 手指抬起，缩短等待时间
+      clearTimeout(timer);
+      timer = setTimeout(fireIfSelected, 250);
+    };
     const onSelectionChange = () => {
-      if (isTouching) {
-        // 手指还在屏幕上，先记录，等 touchend 再处理
-        pendingCheck = true;
-      }
-      // 桌面端 mouseup 已经处理，移动端 isTouching=false 时不需额外处理
+      // 选区变化，重置计时器；手指在屏幕上时给更长时间等拖拽完成
+      clearTimeout(timer);
+      timer = setTimeout(fireIfSelected, touchActive ? 600 : 250);
     };
 
     document.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -267,6 +273,7 @@ export default function MessageBubble({
     document.addEventListener("touchcancel", onTouchEnd, { passive: true });
     document.addEventListener("selectionchange", onSelectionChange);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("touchcancel", onTouchEnd);
