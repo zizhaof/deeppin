@@ -1,7 +1,7 @@
 "use client";
 // app/chat/[sessionId]/page.tsx
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession } from "@/lib/api";
@@ -526,13 +526,18 @@ export default function ChatPage() {
   }
 
   // ── 锚点高亮数据（全线程，不只主线） ───────────────────────────
-  const anchorsByMessage: Record<string, AnchorRange[]> = {};
-  for (const thr of threads) {
-    if (!thr.anchor_message_id || !thr.anchor_text) continue;
-    const mid = String(thr.anchor_message_id);
-    if (!anchorsByMessage[mid]) anchorsByMessage[mid] = [];
-    anchorsByMessage[mid].push({ text: thr.anchor_text, threadId: thr.id });
-  }
+  // useMemo 保证 threads 不变时返回同一引用，否则每次渲染产生新对象
+  // 导致 MessageBubble 的 anchors prop 变化，React.memo 失效，选区丢失
+  const anchorsByMessage = useMemo(() => {
+    const map: Record<string, AnchorRange[]> = {};
+    for (const thr of threads) {
+      if (!thr.anchor_message_id || !thr.anchor_text) continue;
+      const mid = String(thr.anchor_message_id);
+      if (!map[mid]) map[mid] = [];
+      map[mid].push({ text: thr.anchor_text, threadId: thr.id });
+    }
+    return map;
+  }, [threads]);
 
   // 子线程（插针）数量，供 MergeOutput 面板显示
   const pinCount = threads.filter((t) => t.depth > 0).length;
