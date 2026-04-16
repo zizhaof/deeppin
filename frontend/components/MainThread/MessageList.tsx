@@ -50,7 +50,7 @@ export default function MessageList({
   const isEmpty = messages.length === 0 && !streamingText && !statusText;
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 overflow-y-auto px-3 py-6">
       {isEmpty ? (
         <div className="h-full flex flex-col items-center justify-center min-h-[60vh]">
           {suggestions.length > 0 ? (
