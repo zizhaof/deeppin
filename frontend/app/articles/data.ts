@@ -99,6 +99,10 @@ export const articles: Article[] = [
             "摘要缓存更新是纯异步后台任务：永远不影响当前请求的响应时间",
           ]},
           { type: "p", text: "每处串行都是有理由的（依赖关系决定），每处并行也是有理由的（无依赖 + 有收益）。这种显式的并行边界意识，是写高性能 async 服务的核心思维方式。" },
+
+          { type: "h1", text: "十一、完整组件链路图" },
+          { type: "p", text: "下图把 Deeppin 代码库里参与这条路径的每一个 component 和 module 按顺序画出来，从用户点击发送到后台持久化全部覆盖。每个框对应一个真实存在的文件或函数，橙色表示并发执行，紫色（加深）表示关键路径瓶颈。" },
+          { type: "diagram", text: "component-chain" },
         ],
       },
       en: {
@@ -158,6 +162,10 @@ export const articles: Article[] = [
             "Summary cache update is a fire-and-forget background task: never affects the current request's response time",
           ]},
           { type: "p", text: "Every serial step has a reason (dependency). Every parallel step has a reason (no dependency + measurable gain). This explicit awareness of parallelism boundaries is the core mental model for writing high-performance async services." },
+
+          { type: "h1", text: "Part 11 — Full component chain" },
+          { type: "p", text: "The diagram below maps every component and module in the Deeppin codebase that participates in this path — from the moment the user hits send to post-stream persistence. Each box is a real file or function. Orange = concurrent execution. Indigo (accent) = critical path bottleneck." },
+          { type: "diagram", text: "component-chain" },
         ],
       },
     },

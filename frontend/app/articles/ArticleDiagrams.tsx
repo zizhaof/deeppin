@@ -492,6 +492,198 @@ export function MessageDataPathDiagram() {
   );
 }
 
+/* ─── Component Chain ────────────────────────────────────────────────────── */
+export function ComponentChainDiagram() {
+  const BW = 374; const BH = 38; const BX = 20; const CX = BX + BW / 2;
+  const NX = BX + BW + 10; // right-side note x
+
+  // 章节标题
+  function SecTitle({ y, text }: { y: number; text: string }) {
+    return (
+      <text x={BX} y={y} fill={C.textMut} fontSize={8} fontWeight={700}
+        fontFamily="inherit" letterSpacing="0.12em">
+        {text}
+      </text>
+    );
+  }
+
+  // 网络边界（两条虚线 + 中间标签）
+  function NetBoundary({ y, label }: { y: number; label: string }) {
+    return (
+      <g>
+        <line x1={BX} y1={y}      x2={BX + BW} y2={y}      stroke={C.boxStroke} strokeWidth={0.75} strokeDasharray="4 3" />
+        <text x={CX} y={y + 12}  textAnchor="middle" fill={C.textMut} fontSize={8.5} fontFamily="inherit">{label}</text>
+        <line x1={BX} y1={y + 20} x2={BX + BW} y2={y + 20} stroke={C.boxStroke} strokeWidth={0.75} strokeDasharray="4 3" />
+      </g>
+    );
+  }
+
+  // 并发框（橙色）
+  function ConcBox({ x, y, w, h, label, sub }: { x: number; y: number; w: number; h: number; label: string; sub: string }) {
+    return (
+      <g>
+        <rect x={x} y={y} width={w} height={h} rx={8}
+          fill="rgba(251,146,60,0.07)" stroke="rgba(251,146,60,0.3)" strokeWidth={1} />
+        <text x={x + w / 2} y={y + h / 2 - 5} textAnchor="middle"
+          fill={C.warn} fontSize={11.5} fontWeight={600} fontFamily="inherit">{label}</text>
+        <text x={x + w / 2} y={y + h / 2 + 11} textAnchor="middle"
+          fill={C.textMut} fontSize={9} fontFamily="inherit">{sub}</text>
+      </g>
+    );
+  }
+
+  // right-side note
+  function Note({ y, text, color }: { y: number; text: string; color?: string }) {
+    return (
+      <text x={NX} y={y} fill={color ?? C.textMut} fontSize={8.5} fontFamily="inherit">{text}</text>
+    );
+  }
+
+  // 计算 y 坐标（向下累计）
+  // Section 1 ─────────────────────────────────────────────────────────────────
+  const t1 = 14;                        // 标题
+  const y_input  = t1 + 12;            // 26
+  const y_send   = y_input  + BH + 12; // 76
+  const y_sse_s  = y_send   + BH + 12; // 126
+  const nb1      = y_sse_s  + BH + 10; // 174  网络边界1
+  // Section 2 ─────────────────────────────────────────────────────────────────
+  const t2       = nb1 + 30;           // 204
+  const y_router = t2 + 10;            // 214
+  const y_ctx    = y_router + BH + 12; // 264
+  const y_gather = y_ctx    + BH + 12; // 314
+  const y_llm    = y_gather + BH + 12; // 364
+  const y_groq   = y_llm    + BH + 12; // 414
+  const nb2      = y_groq   + BH + 10; // 462  网络边界2
+  // Section 3 ─────────────────────────────────────────────────────────────────
+  const t3        = nb2 + 30;           // 492
+  const y_sse_r   = t3 + 10;            // 502
+  const y_store   = y_sse_r  + BH + 12; // 552
+  const y_list    = y_store  + BH + 12; // 602
+  const y_md      = y_list   + BH + 12; // 652
+  // Section 4 ─────────────────────────────────────────────────────────────────
+  const divider4  = y_md + BH + 18;     // 708
+  const t4        = divider4 + 12;      // 720
+  const y_fin     = t4 + 10;            // 730
+  const y_save    = y_fin  + BH + 12;   // 780
+  const y_bg      = y_save + BH + 12;   // 830
+
+  const totalH = y_bg + BH + 16;       // 884
+
+  return (
+    <SvgWrap w={560} h={totalH}>
+
+      {/* ── ① SEND PATH · frontend ─────────────────────────────────────── */}
+      <SecTitle y={t1} text="① SEND PATH · frontend" />
+
+      <Box x={BX} y={y_input} w={BW} h={BH} accent
+        label="InputBar.tsx"
+        sub="components/MainThread/InputBar.tsx · onSend(content, display?, ragFilename?)" />
+      <Note y={y_input + BH / 2 + 4} text="user input" />
+      <ArrowV x={CX} y1={y_input + BH} y2={y_send} />
+
+      <Box x={BX} y={y_send} w={BW} h={BH}
+        label="handleSend() — page.tsx"
+        sub="app/chat/[sessionId]/page.tsx · addUserMessage() · setStreamStatus()" />
+      <Note y={y_send + BH / 2 + 4} text="optimistic UI" />
+      <ArrowV x={CX} y1={y_send + BH} y2={y_sse_s} />
+
+      <Box x={BX} y={y_sse_s} w={BW} h={BH}
+        label="sendMessageStream() — sse.ts"
+        sub="lib/sse.ts · fetch POST · ReadableStream consumer · AbortController" />
+      <Note y={y_sse_s + BH / 2 + 4} text="~0 ms" />
+
+      {/* 网络边界 1 */}
+      <ArrowV x={CX} y1={y_sse_s + BH} y2={nb1} />
+      <NetBoundary y={nb1} label="fetch POST /threads/{id}/chat · Vercel CDN · Nginx reverse proxy (proxy_buffering off)" />
+      <ArrowV x={CX} y1={nb1 + 20} y2={y_router} />
+
+      {/* ── ② BACKEND · processing ─────────────────────────────────────── */}
+      <SecTitle y={t2} text="② BACKEND · processing" />
+
+      <Box x={BX} y={y_router} w={BW} h={BH}
+        label="routers/stream.py — POST /threads/{id}/chat"
+        sub="verify_jwt() · create StreamingResponse · launch chat_stream() generator" />
+      <Note y={y_router + BH / 2 + 4} text="~1 ms" />
+      <ArrowV x={CX} y1={y_router + BH} y2={y_ctx} />
+
+      <Box x={BX} y={y_ctx} w={BW} h={BH}
+        label="context_builder.py — build_context()"
+        sub="services/context_builder.py · DB reads ×3–8 · ancestor chain · summary cache" />
+      <Note y={y_ctx + BH / 2 + 4} text="~10–50 ms" />
+      <ArrowV x={CX} y1={y_ctx + BH} y2={y_gather} />
+
+      <ConcBox x={BX} y={y_gather} w={BW} h={BH}
+        label="asyncio.gather — RAG retrieval + query detection"
+        sub="attachment_processor.py retrieve_rag()  ·  llm_client.py classify_search_intent()" />
+      <Note y={y_gather + BH / 2 + 4} text="concurrent" color={C.warn} />
+      <ArrowV x={CX} y1={y_gather + BH} y2={y_llm} />
+
+      <Box x={BX} y={y_llm} w={BW} h={BH}
+        label="llm_client.py — router.acompletion(stream=True)"
+        sub="services/llm_client.py · LiteLLM Router · usage-based routing · 429 auto-fallback" />
+      <Note y={y_llm + BH / 2 + 4} text="model select" />
+      <ArrowV x={CX} y1={y_llm + BH} y2={y_groq} />
+
+      <Box x={BX} y={y_groq} w={BW} h={BH} accent
+        label="Groq API — stream=True"
+        sub="first-token latency 50–500 ms · token by token per model / account key" />
+      <Note y={y_groq + BH / 2 + 4} text="bottleneck ⚡" color={C.accent} />
+
+      {/* 网络边界 2 */}
+      <ArrowV x={CX} y1={y_groq + BH} y2={nb2} />
+      <NetBoundary y={nb2} label="SSE events  data: {type, text}  ·  Nginx (no buffer)  ·  browser ReadableStream" />
+      <ArrowV x={CX} y1={nb2 + 20} y2={y_sse_r} />
+
+      {/* ── ③ RECEIVE PATH · frontend ──────────────────────────────────── */}
+      <SecTitle y={t3} text="③ RECEIVE PATH · frontend" />
+
+      <Box x={BX} y={y_sse_r} w={BW} h={BH}
+        label="consumeStream() — sse.ts"
+        sub="lib/sse.ts · TextDecoder · parse SSE events · call appendChunk() / finalizeStream()" />
+      <Note y={y_sse_r + BH / 2 + 4} text="~5–20 ms/tok" />
+      <ArrowV x={CX} y1={y_sse_r + BH} y2={y_store} />
+
+      <Box x={BX} y={y_store} w={BW} h={BH}
+        label="appendChunk() — useThreadStore.ts"
+        sub="stores/useThreadStore.ts · streamingByThread[threadId] += token · trigger re-render" />
+      <Note y={y_store + BH / 2 + 4} text="Zustand" />
+      <ArrowV x={CX} y1={y_store + BH} y2={y_list} />
+
+      <Box x={BX} y={y_list} w={BW} h={BH}
+        label="MessageList.tsx → MessageBubble.tsx"
+        sub="components/MainThread/ · streaming cursor · anchor highlight · onTextSelect for pins" />
+      <ArrowV x={CX} y1={y_list + BH} y2={y_md} />
+
+      <Box x={BX} y={y_md} w={BW} h={BH} accent
+        label="MarkdownContent.tsx"
+        sub="components/MarkdownContent.tsx · react-markdown · remark-gfm · syntax highlight" />
+      <Note y={y_md + BH / 2 + 4} text="→ screen ✓" color={C.ok} />
+
+      {/* ── ④ POST-STREAM · parallel persistence ───────────────────────── */}
+      <line x1={BX} y1={divider4} x2={BX + BW} y2={divider4}
+        stroke={C.grid} strokeWidth={0.75} strokeDasharray="3 3" />
+      <SecTitle y={t4} text="④ POST-STREAM · parallel persistence" />
+
+      <Box x={BX} y={y_fin} w={BW} h={BH}
+        label="finalizeStream() — useThreadStore.ts"
+        sub="clear streamingByThread · push full assistant message · reset status" />
+      <ArrowV x={CX} y1={y_fin + BH} y2={y_save} />
+
+      <ConcBox x={BX} y={y_save} w={BW} h={BH}
+        label="stream_manager.py — asyncio.gather"
+        sub="save_user_message(thread_id)  +  save_assistant_message(thread_id)  →  Supabase" />
+      <Note y={y_save + BH / 2 + 4} text="concurrent" color={C.warn} />
+      <ArrowV x={CX} y1={y_save + BH} y2={y_bg} />
+
+      <ConcBox x={BX} y={y_bg} w={BW} h={BH}
+        label="asyncio.create_task() — background"
+        sub="summarizer.py update_summary_cache()  ·  memory_service.py extract_memory()" />
+      <Note y={y_bg + BH / 2 + 4} text="non-blocking" color={C.textMut} />
+
+    </SvgWrap>
+  );
+}
+
 /* ─── registry ───────────────────────────────────────────────────────────── */
 export const DIAGRAMS: Record<string, React.ComponentType> = {
   "sse-pipeline":       SSEPipelineDiagram,
@@ -501,4 +693,5 @@ export const DIAGRAMS: Record<string, React.ComponentType> = {
   "two-phase":          TwoPhaseDiagram,
   "write-time-summary": WriteTimeSummaryDiagram,
   "message-datapath":   MessageDataPathDiagram,
+  "component-chain":    ComponentChainDiagram,
 };
