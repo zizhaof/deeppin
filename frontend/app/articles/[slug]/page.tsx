@@ -114,7 +114,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
         <div className="mb-10">
           <div className="flex gap-1.5 mb-4 flex-wrap">
             {article.tags.map((tag) => (
-              <span key={tag} className="text-[9px] font-semibold text-indigo-400/80 bg-indigo-950/50 border border-indigo-500/20 px-2 py-0.5 rounded-md uppercase tracking-widest">
+              <span key={tag} className="text-[9px] font-medium text-dim bg-base border border-base px-2 py-0.5 rounded-md uppercase tracking-widest">
                 {tag}
               </span>
             ))}

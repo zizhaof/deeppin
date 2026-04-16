@@ -61,7 +61,7 @@ export default function ArticlesPage() {
                     <span className="text-ph">·</span>
                     <div className="flex gap-1.5 flex-wrap">
                       {a.tags.map((tag) => (
-                        <span key={tag} className="text-[9px] font-medium text-indigo-400/70 bg-indigo-950/40 border border-indigo-500/15 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
+                        <span key={tag} className="text-[9px] font-medium text-dim bg-base border border-base px-1.5 py-0.5 rounded-md uppercase tracking-wide">
                           {tag}
                         </span>
                       ))}
