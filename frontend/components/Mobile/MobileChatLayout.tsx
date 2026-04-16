@@ -199,7 +199,8 @@ export default function MobileChatLayout({
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-base">
+    // fixed inset-0：钉死在可见视口，不随地址栏显隐或文档滚动移动
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-base">
       {/* ── 顶部导航栏 ── */}
       <header className="h-12 border-b border-subtle bg-base flex items-center px-3 gap-2 flex-shrink-0 z-20 select-none">
         <button
@@ -269,7 +270,7 @@ export default function MobileChatLayout({
           style={{ width: "300%", ...transformStyle }}
         >
           {/* ── 左面板：子问题概览 ── */}
-          <div className="flex flex-col overflow-hidden select-none" style={{ width: "33.333%" }}>
+          <div className="flex flex-col h-full overflow-hidden select-none" style={{ width: "33.333%" }}>
             {rollItems.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8">
                 <div className="w-12 h-12 rounded-2xl bg-surface border border-subtle flex items-center justify-center">
@@ -296,7 +297,7 @@ export default function MobileChatLayout({
           </div>
 
           {/* ── 中面板：主对话 ── */}
-          <div className="flex flex-col overflow-hidden" style={{ width: "33.333%" }}>
+          <div className="flex flex-col h-full overflow-hidden" style={{ width: "33.333%" }}>
             {activeThread?.anchor_text && activeThread.parent_thread_id !== null && (
               <div className="flex-shrink-0 mx-4 mt-3 px-3 py-2 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-xs text-indigo-300/80 leading-snug line-clamp-2">
                 <span className="text-indigo-400/50 mr-1">锚点 ›</span>
@@ -322,7 +323,7 @@ export default function MobileChatLayout({
           </div>
 
           {/* ── 右面板：线程树概览 ── */}
-          <div className="flex flex-col overflow-hidden select-none" style={{ width: "33.333%" }}>
+          <div className="flex flex-col h-full overflow-hidden select-none" style={{ width: "33.333%" }}>
             {/* 列表 / 节点图 切换 */}
             <div className="flex-shrink-0 flex items-center gap-1 px-3 pt-2 pb-1">
               <div className="flex items-center gap-0.5 bg-glass rounded-lg p-0.5">
@@ -396,7 +397,7 @@ export default function MobileChatLayout({
         )}
 
         {/* 左下 / 右下切换按钮 */}
-        <div className="flex items-center justify-between px-4 pb-safe pb-3 pt-2 bg-base border-t border-subtle/40">
+        <div className="flex items-center justify-between px-4 pt-2 pb-3 bg-base border-t border-subtle/40" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
           {/* 左按钮 */}
           {panelIdx !== PANEL_PINS ? (
             <button

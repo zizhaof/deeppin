@@ -863,7 +863,8 @@ export default function ChatPage() {
 
       </div>
       {/* ── 移动端布局（md 以下显示） ── */}
-      <div className="md:hidden">
+      {/* MobileChatLayout 内部用 fixed inset-0，此 wrapper 仅控制显隐 */}
+      <div className="md:hidden overflow-hidden">
         <MobileChatLayout
           threads={threads}
           activeThreadId={activeThreadId}
