@@ -15,6 +15,9 @@ const COLLAPSE_THRESHOLD = 300;
 export interface AnchorRange {
   text: string;
   threadId: string;
+  /** 字符偏移量（来自后端），用于精确定位，避免相同文字多次高亮 */
+  startOffset?: number;
+  endOffset?: number;
 }
 
 interface Props {
@@ -106,7 +109,13 @@ function renderWithHighlights(
 
   type Span = { start: number; end: number; threadId: string };
   const spans: Span[] = [];
-  for (const { text, threadId } of anchors) {
+  for (const { text, threadId, startOffset, endOffset } of anchors) {
+    // 优先使用后端存储的字符偏移量，精确定位唯一锚点位置
+    if (startOffset != null && endOffset != null && startOffset < endOffset && endOffset <= content.length) {
+      spans.push({ start: startOffset, end: endOffset, threadId });
+      continue;
+    }
+    // 降级：按文本搜索第一个匹配位置（旧数据兼容）
     const searchText = text.includes("\n")
       ? (text.split("\n").find((s) => s.trim()) ?? text)
       : text;

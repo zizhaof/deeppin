@@ -38,33 +38,33 @@ function buildColorMap(anchors: AnchorRange[]): Map<string, string> {
 }
 
 // ── 单个文本块内查找并高亮锚点 / Highlight anchors within one text chunk ──
+// highlightedIds：已在前面的文本块中命中过的锚点集合，确保每个锚点只高亮一次
 
 function highlightStr(
   text: string,
   anchors: AnchorRange[],
   colorMap: Map<string, string>,
+  highlightedIds: Set<string>,
   onAnchorClick?: (threadId: string) => void,
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
 ): React.ReactNode {
   if (!anchors.length) return text;
 
-  // 在文本块内查找所有锚点匹配位置 / Find all anchor match positions within this text chunk
   // 跨段落选中时 anchorText 含 \n，Markdown 渲染后文本节点无 \n，
   // 取第一个非空段落作为匹配标记（高亮第一段）
-  // For cross-paragraph anchors, anchorText contains \n but rendered text nodes don't;
-  // use the first non-empty paragraph as the match target (highlight only first segment).
   type Span = { start: number; end: number; threadId: string };
   const spans: Span[] = [];
   for (const { text: anchorText, threadId } of anchors) {
+    // 已在其他文本块中高亮过，跳过，确保不重复高亮相同文字
+    if (highlightedIds.has(threadId)) continue;
     const searchText = anchorText.includes("\n")
       ? (anchorText.split("\n").find((s) => s.trim()) ?? anchorText)
       : anchorText;
-    let pos = 0;
-    while (true) {
-      const idx = text.indexOf(searchText, pos);
-      if (idx === -1) break;
+    // 只取第一个匹配位置，不循环查找所有出现位置
+    const idx = text.indexOf(searchText);
+    if (idx !== -1) {
       spans.push({ start: idx, end: idx + searchText.length, threadId });
-      pos = idx + searchText.length;
+      highlightedIds.add(threadId); // 标记已高亮，后续文本块跳过此锚点
     }
   }
   if (!spans.length) return text;
@@ -129,19 +129,20 @@ function processChildren(
   children: React.ReactNode,
   anchors: AnchorRange[],
   colorMap: Map<string, string>,
+  highlightedIds: Set<string>,
   onAnchorClick?: (threadId: string) => void,
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
 ): React.ReactNode {
   if (!anchors.length) return children;
   return React.Children.map(children, (child) => {
     if (typeof child === "string") {
-      return highlightStr(child, anchors, colorMap, onAnchorClick, onAnchorHover);
+      return highlightStr(child, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover);
     }
     if (React.isValidElement(child) && child.props) {
       const props = child.props as Record<string, unknown>;
       if (props.children !== undefined) {
         return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
-          children: processChildren(props.children as React.ReactNode, anchors, colorMap, onAnchorClick, onAnchorHover),
+          children: processChildren(props.children as React.ReactNode, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover),
         });
       }
     }
@@ -162,10 +163,11 @@ interface Props {
 const MarkdownContent = React.memo(function MarkdownContent({ content, anchors = [], onAnchorClick, onAnchorHover }: Props) {
   const colorMap = buildColorMap(anchors);
 
-  // 把锚点 + 颜色映射传给 processChildren 的快捷函数
-  // Shorthand that forwards anchors + colorMap to processChildren
+  // 每次渲染创建一个新的 Set，跨文本块共享，确保每个锚点只高亮一次
+  const highlightedIds = new Set<string>();
+
   const hl = (children: React.ReactNode) =>
-    processChildren(children, anchors, colorMap, onAnchorClick, onAnchorHover);
+    processChildren(children, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover);
 
   return (
     <ReactMarkdown

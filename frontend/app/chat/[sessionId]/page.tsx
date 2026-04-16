@@ -534,7 +534,12 @@ export default function ChatPage() {
       if (!thr.anchor_message_id || !thr.anchor_text) continue;
       const mid = String(thr.anchor_message_id);
       if (!map[mid]) map[mid] = [];
-      map[mid].push({ text: thr.anchor_text, threadId: thr.id });
+      map[mid].push({
+        text: thr.anchor_text,
+        threadId: thr.id,
+        startOffset: thr.anchor_start_offset ?? undefined,
+        endOffset: thr.anchor_end_offset ?? undefined,
+      });
     }
     return map;
   }, [threads]);
