@@ -88,8 +88,8 @@ GROQ_MODELS = [
 
 # Cerebras 模型（免费 tier：30 RPM, ~1M TPD）
 CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "llama3.3-70b",  rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["chat", "merge"]),
-    ModelSpec("cerebras", "llama3.1-8b",   rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["summarizer"]),
+    ModelSpec("cerebras", "llama-3.3-70b",  rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["chat", "merge"]),
+    ModelSpec("cerebras", "llama3.1-8b",    rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["summarizer"]),
 ]
 
 # SambaNova 模型（免费 tier：10-30 RPM, 20M TPD）
