@@ -13,6 +13,7 @@ Raw file bytes are released after the function returns; nothing is written to di
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import logging
 import re
@@ -42,6 +43,24 @@ _TEXT_EXTS = {
     "yaml", "yml", "toml", "ini", "sh", "sql",
 }
 
+# 图片扩展名 → MIME，走 vision 模型生成文本描述
+# Image extensions → MIME; routed to the vision model for text description
+_IMAGE_MIME = {
+    "png":  "image/png",
+    "jpg":  "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "gif":  "image/gif",
+    "bmp":  "image/bmp",
+}
+
+# 图片描述提示词 / Prompt for image description
+_IMAGE_DESCRIBE_PROMPT = (
+    "请详细描述这张图片的内容，包括：可见的文字（逐字转录）、图表/表格中的数据、"
+    "主要物体与布局、风格与氛围。如果是文档或屏幕截图，优先完整转录所有文字。"
+    "只输出描述本身，不要加任何前言或结语。"
+)
+
 # Kreuzberg MIME 类型映射表（按扩展名路由）
 # MIME type map for Kreuzberg (keyed by file extension)
 _MIME_MAP = {
@@ -58,6 +77,42 @@ _MIME_MAP = {
 }
 
 
+def _sniff_format(content: bytes) -> Optional[str]:
+    """
+    从文件字节首部嗅探真实格式，返回规范化扩展名。
+    Sniff the real format from file header bytes and return a canonical ext.
+
+    用于补救文件名没有扩展名、或扩展名撒谎的情况。
+    Handles files with missing or misleading extensions.
+    Returns one of: png, jpeg, gif, webp, bmp, pdf, zip (DOCX/XLSX/PPTX 内层), None
+    """
+    if len(content) < 4:
+        return None
+    head = content[:12]
+    # 图片 / Images
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if head[:4] == b"RIFF" and len(content) >= 12 and head[8:12] == b"WEBP":
+        return "webp"
+    if head[:2] == b"BM":
+        return "bmp"
+    # 文档 / Documents
+    if head[:4] == b"%PDF":
+        return "pdf"
+    if head[:4] == b"PK\x03\x04":
+        # DOCX / XLSX / PPTX / ODF 都是 zip；由 Kreuzberg 按 MIME 或 zip 内层结构进一步识别
+        # DOCX/XLSX/PPTX/ODF are zip containers; Kreuzberg inspects inner structure
+        return "zip"
+    return None
+
+
+_SNIFF_TO_IMAGE: set[str] = {"png", "jpeg", "gif", "webp", "bmp"}
+
+
 # ── 文本提取 / Text extraction ────────────────────────────────────────
 
 async def extract_text(content: bytes, filename: str) -> str:
@@ -65,16 +120,31 @@ async def extract_text(content: bytes, filename: str) -> str:
     从文件字节提取纯文本。
     Extract plain text from raw file bytes.
 
-    优先 Kreuzberg（异步，88+ 格式），失败则 fallback 到 pypdf / python-docx。
-    Tries Kreuzberg first (async, 88+ formats); falls back to pypdf or python-docx on failure.
+    优先按字节嗅探真实格式（不信任扩展名），图片走 vision 模型；其余走 Kreuzberg
+    → pypdf / python-docx fallback，最后保底 UTF-8 解码。
+    Sniffs the real format from header bytes first (does not trust the filename).
+    Images are routed to the vision model; other binaries go through Kreuzberg with
+    pypdf / python-docx fallbacks, ultimately falling back to UTF-8 decode.
     """
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    sniffed = _sniff_format(content)
+
+    # 0. 图片（以字节嗅探为准，扩展名可能撒谎）→ vision 模型描述
+    #    Images (trust byte sniff, not the extension) → vision model description
+    if sniffed in _SNIFF_TO_IMAGE:
+        return await _extract_image(content, sniffed)
+    # 扩展名像图片但字节不匹配 → 不信任扩展名，继续走其它路径
+    # Extension looks like an image but bytes say otherwise → don't trust the ext
 
     # 1. Kreuzberg（支持 PDF / Office / 邮件等复杂格式）
-    #    Kreuzberg (supports PDF, Office, email, and many other complex formats)
+    #    嗅探结果优先用于推断 MIME，filename 扩展名次之
+    #    Kreuzberg (PDF / Office / email); prefer sniffed MIME over filename ext
+    mime_type = _MIME_MAP.get(sniffed or "") or _MIME_MAP.get(ext) or "application/octet-stream"
+    if sniffed == "zip" and ext in _MIME_MAP:
+        mime_type = _MIME_MAP[ext]  # DOCX/XLSX/PPTX 需要精确 MIME
+
     try:
         from kreuzberg import extract_bytes as _kb_extract
-        mime_type = _MIME_MAP.get(ext, "application/octet-stream")
         result = await _kb_extract(content, mime_type)
         if result.content and result.content.strip():
             return result.content.strip()
@@ -83,18 +153,18 @@ async def extract_text(content: bytes, filename: str) -> str:
     except Exception as e:
         logger.warning("Kreuzberg 提取失败（%s），走 fallback / Kreuzberg extraction failed (%s), falling back: %s", filename, filename, e)
 
-    # 2. Fallback：按扩展名路由到对应解析库
-    #    Fallback: route to the appropriate parsing library by extension
+    # 2. Fallback：优先用嗅探结果，其次扩展名
+    #    Fallback: prefer sniffed format, then filename extension
+    effective = sniffed if sniffed in ("pdf",) else ext
+    if effective == "pdf":
+        return _extract_pdf(content)
+    if effective in ("docx", "doc"):
+        return _extract_docx(content)
     if ext in _TEXT_EXTS:
         return content.decode("utf-8", errors="replace")
-    elif ext == "pdf":
-        return _extract_pdf(content)
-    elif ext in ("docx", "doc"):
-        return _extract_docx(content)
-    else:
-        # 未知格式，尝试 UTF-8 解码
-        # Unknown format; attempt UTF-8 decode
-        return content.decode("utf-8", errors="replace")
+    # 未知格式：尝试 UTF-8 解码（纯文本会成功，二进制会是乱码但不抛异常）
+    # Unknown format: attempt UTF-8 decode (succeeds for text, garbled but safe for binary)
+    return content.decode("utf-8", errors="replace")
 
 
 def _extract_pdf(content: bytes) -> str:
@@ -123,6 +193,39 @@ def _extract_docx(content: bytes) -> str:
         return "\n\n".join(paras)
     except ImportError:
         raise RuntimeError("python-docx 未安装，无法解析 DOCX / python-docx is not installed; cannot parse DOCX")
+
+
+async def _extract_image(content: bytes, ext: str) -> str:
+    """
+    用 vision 模型把图片转成文本描述，返回后走与普通附件相同的长度分流。
+    Ask the vision model to describe the image, then feed the result through the
+    same length-based branching as regular attachments.
+
+    失败时返回空串 → process_attachment 会将其视为提取失败。
+    Returns an empty string on failure, which process_attachment treats as an
+    extraction failure (chunk_count=0, inline_text=null).
+    """
+    from services.llm_client import vision_chat
+
+    mime = _IMAGE_MIME.get(ext, "application/octet-stream")
+    data_url = f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": _IMAGE_DESCRIBE_PROMPT},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        }
+    ]
+
+    try:
+        description = await vision_chat(messages)
+        return (description or "").strip()
+    except Exception as e:
+        logger.warning("图片识别失败（%s）/ Image recognition failed (%s): %s", ext, ext, e)
+        return ""
 
 
 # ── 文本分块 / Text chunking ──────────────────────────────────────────

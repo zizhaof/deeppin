@@ -228,7 +228,6 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             ref={fileRef}
             type="file"
             className="hidden"
-            accept=".txt,.md,.pdf,.docx,.doc,.csv,.json,.xml,.html,.py,.ts,.tsx,.js,.jsx"
             onChange={handleFileChange}
           />
 

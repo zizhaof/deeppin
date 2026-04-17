@@ -248,6 +248,83 @@ class TestExtractText:
             if original is not None:
                 sys.modules["kreuzberg"] = original
 
+    @pytest.mark.asyncio
+    async def test_image_sniff_calls_vision_chat(self):
+        """字节嗅探到 PNG magic → vision_chat / Byte sniff detects PNG → vision_chat."""
+        from services.attachment_processor import extract_text
+
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+        mock_vision = AsyncMock(return_value="  图中是一只橙色猫  ")
+        with patch("services.llm_client.vision_chat", new=mock_vision):
+            result = await extract_text(png_bytes, "cat.png")
+
+        assert result == "图中是一只橙色猫"
+        called_messages = mock_vision.await_args.args[0]
+        parts = called_messages[0]["content"]
+        image_part = next(p for p in parts if p.get("type") == "image_url")
+        assert image_part["image_url"]["url"].startswith("data:image/png;base64,")
+
+    @pytest.mark.asyncio
+    async def test_image_sniff_wins_over_lying_extension(self):
+        """PNG bytes 但 filename 是 .txt → 走 vision，不走 UTF-8 解码。
+        PNG bytes with a `.txt` filename still route to vision (sniff overrides ext)."""
+        from services.attachment_processor import extract_text
+
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\xde\xad\xbe\xef" * 20
+        with patch("services.llm_client.vision_chat", new=AsyncMock(return_value="screenshot of code")):
+            result = await extract_text(png_bytes, "document.txt")
+
+        assert result == "screenshot of code"
+
+    @pytest.mark.asyncio
+    async def test_text_file_with_lying_image_extension(self):
+        """纯文本但取名 .png → 字节嗅探不匹配 → 不调 vision，直接当文本处理。
+        Text bytes with a `.png` filename → sniff rejects → falls through to text path."""
+        from services.attachment_processor import extract_text
+
+        content = "这是纯文本".encode("utf-8")
+        mock_vision = AsyncMock()
+        import sys
+        original = sys.modules.pop("kreuzberg", None)
+        try:
+            with patch("services.llm_client.vision_chat", new=mock_vision):
+                result = await extract_text(content, "fake.png")
+            assert "这是纯文本" in result
+            mock_vision.assert_not_called()
+        finally:
+            if original is not None:
+                sys.modules["kreuzberg"] = original
+
+    @pytest.mark.asyncio
+    async def test_pdf_sniff_without_extension(self):
+        """无扩展名但字节是 PDF → 仍走 PDF 路径。
+        No extension but PDF magic bytes → still routed to the PDF path."""
+        from services.attachment_processor import extract_text
+
+        pdf_bytes = b"%PDF-1.4\n" + b"\x00" * 20
+        mock_result = MagicMock()
+        mock_result.content = "PDF 内容"
+        mock_kb = AsyncMock(return_value=mock_result)
+
+        with patch.dict("sys.modules", {"kreuzberg": MagicMock(extract_bytes=mock_kb)}):
+            result = await extract_text(pdf_bytes, "noext")
+
+        assert "PDF 内容" in result
+        # 验证用的是 application/pdf 不是 octet-stream
+        # Verify the MIME hint was application/pdf, not octet-stream
+        assert mock_kb.await_args.args[1] == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_image_vision_failure_returns_empty(self):
+        """vision 调用失败时返回空串，不传播异常 / Returns empty on vision failure, no exception."""
+        from services.attachment_processor import extract_text
+
+        jpeg_bytes = b"\xff\xd8\xff" + b"\x00" * 20
+        with patch("services.llm_client.vision_chat", new=AsyncMock(side_effect=Exception("no quota"))):
+            result = await extract_text(jpeg_bytes, "photo.jpg")
+
+        assert result == ""
+
 
 # ── process_attachment ────────────────────────────────────────────────
 
