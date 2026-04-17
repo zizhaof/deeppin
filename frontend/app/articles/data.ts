@@ -1589,4 +1589,228 @@ export const articles: Article[] = [
     },
   },
 
+
+  // ─────────────────────────────────────────────────────────────
+  // 15. CI/CD 与测试体系
+  // ─────────────────────────────────────────────────────────────
+  {
+    slug: "cicd-and-testing",
+    title: {
+      zh: "零停机部署：Deeppin 的 CI/CD 与三层测试体系",
+      en: "Zero-Downtime Deployment: Deeppin's CI/CD and Three-Layer Testing",
+    },
+    date: "2026-04-16",
+    summary: {
+      zh: "从 git push 到生产环境的完整流水线：单元测试 → 部署 → 集成测试，三道关卡层层拦截。以及如何用 200+ 个单元测试在零真实依赖的条件下覆盖全部后端逻辑。",
+      en: "The complete pipeline from git push to production: unit tests → deploy → integration tests, three gates catching issues at every level. Plus how 200+ unit tests cover all backend logic with zero real dependencies.",
+    },
+    tags: ["CI/CD", "testing", "deployment", "Docker"],
+    content: {
+      zh: {
+        title: "零停机部署：Deeppin 的 CI/CD 与三层测试体系",
+        body: [
+          { type: "p", text: "一个人做全栈项目，最容易忽略的事情就是「部署」——写完代码 git push，祈祷它能跑起来。Deeppin 在 Day 5 就搭好了完整的 CI/CD 流水线，之后每一次 git push 都会自动经过三层验证，通过才上线。" },
+
+          { type: "h1", text: "一、整体架构" },
+          { type: "p", text: "前后端的部署路径完全分离：" },
+          { type: "ul", items: [
+            "前端（Next.js）：推到 main 分支后 Vercel 自动检测并部署，零配置",
+            "后端（FastAPI）：推到 main 分支且 backend/** 路径有变更时，触发 GitHub Actions",
+          ]},
+          { type: "p", text: "后端的 CI/CD 流水线是本文重点。它由三个 Job 串联组成，每一步都必须通过才进入下一步：" },
+          { type: "code", text: "git push main (backend/** 变更)\n  │\n  ├── Job 1: unit-test（GitHub Runner 上跑，不需要真实外部依赖）\n  │     └── pytest tests/ --ignore=tests/integration\n  │\n  ├── Job 2: deploy（SSH 到 Oracle Cloud，docker compose up）\n  │     ├── 启动 backend + searxng\n  │     ├── 等待 healthcheck 通过（最多 120s）\n  │     ├── 启动 nginx\n  │     └── 运行 smoke test（端到端连通性验证）\n  │\n  └── Job 3: integration-test（从 GitHub Runner 打真实 API）\n        └── pytest tests/integration/" },
+          { type: "note", text: "三个 Job 是串联的（needs 依赖）：单元测试不过不部署，部署失败不跑集成测试。这确保了任何一层的失败都能立即阻断流水线。" },
+
+          { type: "h1", text: "二、第一层：单元测试（200+ 个，零真实依赖）" },
+          { type: "p", text: "单元测试跑在 GitHub Actions 的 Ubuntu runner 上，没有 Supabase、没有 Groq、没有 SearXNG——所有外部依赖都被 mock 掉。目的是验证「纯逻辑」是否正确。" },
+
+          { type: "h2", text: "测试覆盖" },
+          { type: "p", text: "当前 11 个测试文件，覆盖后端的每一个核心模块：" },
+          { type: "ul", items: [
+            "test_stream_manager.py — META 解析的所有 fallback 路径（完整 JSON、截断修复、正则提取、空输入）、SSE 格式、sentinel 跨 chunk 截断、完整一轮对话流程",
+            "test_llm_client.py — chat_stream、summarizer、merge_threads、classify_search_intent、vision 的路由和输出格式",
+            "test_context_builder.py — 滑动窗口、摘要注入、RAG 上下文拼装、祖先链",
+            "test_attachment_processor.py — 语义分块、向量嵌入、文件类型处理",
+            "test_memory_service.py — 对话记忆存取、RAG 检索、长文本分块",
+            "test_merge_router.py — 合并输出的格式选项、token 预算分配、内容截断",
+            "test_search_service.py — SearXNG 调用、结果注入、超时降级",
+            "test_embedding_service.py — 模型加载、向量维度、batch 编码",
+            "test_auth_dependency.py — JWT 验证、无 token / 无效 token / 过期 token",
+            "test_session_messages.py — session CRUD、批量消息读取",
+            "test_sessions_auth.py — 认证中间件对每个端点的拦截",
+          ]},
+
+          { type: "h2", text: "Mock 策略" },
+          { type: "p", text: "所有测试遵循一个原则：mock 外部依赖，只测本模块逻辑。" },
+          { type: "code", text: "# 典型的 mock 模式 — 以 stream_manager 测试为例\nwith patch(\"services.stream_manager.get_supabase\", return_value=sb_mock), \\\n     patch(\"services.stream_manager.build_context\", new=AsyncMock(return_value=[])), \\\n     patch(\"services.stream_manager.classify_search_intent\", new=AsyncMock(return_value=False)), \\\n     patch(\"services.stream_manager.chat_stream\", side_effect=fake_chat_stream):\n    events = []\n    async for event in stream_and_save(\"thread-1\", \"用户问题\"):\n        events.append(event)" },
+          { type: "p", text: "关键细节：patch 路径必须是被测模块内的名称（services.stream_manager.get_supabase），而不是定义所在模块（db.supabase.get_supabase）。Python import 后名称绑定在导入方模块上，patch 错位置会导致 mock 不生效。" },
+
+          { type: "h2", text: "CI 环境配置" },
+          { type: "p", text: "GitHub Actions 里用 placeholder 环境变量让模块能正常 import，而不会真的去连接外部服务：" },
+          { type: "code", text: "env:\n  SUPABASE_URL: https://placeholder.supabase.co\n  SUPABASE_SERVICE_ROLE_KEY: placeholder\n  SUPABASE_ANON_KEY: placeholder\n  GROQ_API_KEYS: '[\"placeholder\"]'\n  LOG_DIR: /tmp/deeppin-logs" },
+          { type: "p", text: "conftest.py 也设置了默认值，确保本地 pytest 时不需要任何 .env 文件。" },
+
+          { type: "h1", text: "三、第二层：部署 + Smoke Test" },
+          { type: "p", text: "单元测试通过后，GitHub Actions SSH 到 Oracle Cloud 服务器执行部署。这不是简单的「拉代码重启」——而是一个有序的滚动部署流程：" },
+
+          { type: "h2", text: "部署顺序" },
+          { type: "code", text: "# 1. 拉最新代码\ngit pull origin main\n\n# 2. 先启动 backend + searxng（nginx 等它们 healthy）\ndocker compose up -d --build backend searxng\n\n# 3. 等待 backend healthcheck 通过（最多 120s）\nfor i in $(seq 1 24); do\n  STATUS=$(docker inspect --format='{{.State.Health.Status}}' deeppin-backend-1)\n  [ \"$STATUS\" = \"healthy\" ] && break\n  sleep 5\ndone\n\n# 4. backend healthy 后才启动 nginx\ndocker compose up -d nginx\n\n# 5. 清理旧镜像\ndocker image prune -f\n\n# 6. 运行 smoke test\nbash scripts/smoke_test.sh https://deeppin.duckdns.org" },
+
+          { type: "h2", text: "聚合健康检查（/health）" },
+          { type: "p", text: "整个部署流程的核心是 /health 端点。Docker healthcheck 每 15 秒调用它，它并发探测所有外部依赖：" },
+          { type: "code", text: "# health.py — 并发检查所有组件\nsearxng_ok, supabase_ok, embedding_info, groq_info = await asyncio.gather(\n    _check_searxng(),      # SearXNG 搜索引擎可达\n    _check_supabase(),     # Supabase 数据库连接正常\n    _check_embedding(),    # bge-m3 模型加载成功，维度 1024，语义相似度 > 0.5\n    _check_groq(),         # Groq API key 有效，能发请求\n)\n\nall_ok = searxng_ok and supabase_ok and embedding_info[\"ok\"] and groq_info[\"ok\"]\n# 200 = healthy, 503 = degraded → Docker 标记 unhealthy" },
+          { type: "p", text: "Nginx 的 depends_on 设为 condition: service_healthy，意味着只有当 backend + 所有依赖都正常时，Nginx 才启动接收流量。用户永远不会看到半启动的服务。" },
+
+          { type: "h2", text: "Smoke Test" },
+          { type: "p", text: "部署完成后立即运行一个 bash 脚本，从外部 HTTPS 入口验证端到端连通性：" },
+          { type: "ul", items: [
+            "HTTPS 可达 + 返回合法 JSON",
+            "backend / searxng / supabase / embedding / groq 各组件状态为 true",
+            "嵌入模型维度 1024、模型名包含 bge-m3",
+            "未授权请求正确返回 401",
+          ]},
+          { type: "p", text: "任何一项失败，smoke test 脚本返回非零退出码，GitHub Actions 报红，CI 邮件通知。" },
+
+          { type: "h1", text: "四、第三层：集成测试（真实 API，真实认证）" },
+          { type: "p", text: "smoke test 验证连通性，集成测试验证业务逻辑。它从 GitHub Runner 对线上 API 发真实 HTTP 请求。" },
+
+          { type: "h2", text: "动态测试用户" },
+          { type: "p", text: "集成测试不依赖任何预置账号。它用 Supabase Admin API 动态创建临时用户，测试结束后自动删除：" },
+          { type: "code", text: "# test fixture（session scope，整个测试会话共享一个用户）\ntest_email = f\"ci-{uuid4().hex[:8]}@deeppin-ci.test\"\ncreate_r = httpx.post(\n    f\"{supabase_url}/auth/v1/admin/users\",\n    headers=admin_headers,\n    json={\"email\": test_email, \"password\": random_password, \"email_confirm\": True},\n)\n# 测试结束后 yield fixture 自动清理\nyield auth_headers\nhttpx.delete(f\"{supabase_url}/auth/v1/admin/users/{user_id}\", ...)" },
+
+          { type: "h2", text: "测试覆盖" },
+          { type: "ul", items: [
+            "TestHealth — /health 端点可达，各组件状态正确",
+            "TestAuth — 无 token 返回 401，无效 token 返回 401，缺少 Bearer 前缀返回 401",
+            "TestSession — session 创建 → 出现在列表 → 获取详情 → 删除 → 不存在返回 404（完整生命周期）",
+            "TestProviders — 逐一验证每个 provider + key 组合可用，确保无死 key",
+          ]},
+          { type: "note", text: "集成测试运行在部署完成之后（needs: deploy），打的是真实的线上 API。如果集成测试失败，意味着部署虽然成功了但业务功能有问题——这种问题靠单元测试和 smoke test 都抓不到。" },
+
+          { type: "h1", text: "五、Docker 编排" },
+          { type: "p", text: "生产环境跑在 Oracle Cloud 永久免费的 ARM 实例上（4 核 24G），用 Docker Compose 管理三个服务：" },
+          { type: "code", text: "services:\n  backend:       # FastAPI + uvicorn + LiteLLM + bge-m3\n    healthcheck:\n      test: [\"CMD-SHELL\", \"curl -sf http://localhost:8000/health | grep -q '\\\"status\\\":\\\"ok\\\"'\"]\n      interval: 15s\n      retries: 5\n      start_period: 45s   # embedding 模型加载需要时间\n\n  searxng:       # 搜索引擎（无独立 healthcheck，backend /health 已包含）\n\n  nginx:         # 反向代理 + HTTPS (Let's Encrypt)\n    depends_on:\n      backend:\n        condition: service_healthy  # backend healthy = 所有依赖正常" },
+          { type: "p", text: "启动链：backend + searxng 并行启动 → backend 通过 healthcheck（包含 searxng 连通检查）→ nginx 才启动 → 接收流量。这个链条保证了用户永远不会命中一个半初始化的服务。" },
+
+          { type: "h1", text: "六、本地开发循环" },
+          { type: "p", text: "CI/CD 保护线上环境，本地开发有自己的快速反馈循环：" },
+          { type: "code", text: "# 写完代码后的标准流程\ncd backend && pytest tests/ -q        # 本地跑单元测试（~25s）\ngit add . && git commit -m \"feat: ...\" # 通过后提交\ngit push                               # 触发 CI/CD\n\n# CI 失败时的调试\ngh run view --log                      # 查看 Actions 日志\ndocker compose logs backend --tail 50  # SSH 到服务器查日志" },
+          { type: "p", text: "本地测试 25 秒内完成，CI 全流程约 3-5 分钟（含部署和集成测试）。绝大多数问题在本地单元测试阶段就能发现。" },
+
+          { type: "h1", text: "七、这套体系解决了什么" },
+          { type: "ul", items: [
+            "防止回归：200+ 单元测试覆盖了 context 构建、META 解析、流式截断等核心逻辑的所有边界情况",
+            "防止部署事故：healthcheck + smoke test 确保服务完全就绪才接收流量",
+            "防止配置漂移：集成测试验证真实 API key、真实数据库、真实认证链路",
+            "防止环境差异：Docker 保证开发和生产运行同一份代码",
+            "快速定位：三层测试各有侧重，失败在哪一层就能缩小排查范围",
+          ]},
+          { type: "p", text: "一个人的项目，靠的不是手动检查，而是自动化的信心。每次 git push 都有三道关卡在背后保护你。" },
+        ],
+      },
+      en: {
+        title: "Zero-Downtime Deployment: Deeppin's CI/CD and Three-Layer Testing",
+        body: [
+          { type: "p", text: "The easiest thing to ignore on a solo full-stack project is deployment — push the code, pray it works. Deeppin had a complete CI/CD pipeline by Day 5, and every git push since then goes through three layers of verification before reaching production." },
+
+          { type: "h1", text: "Part 1 — Architecture overview" },
+          { type: "p", text: "Frontend and backend have completely separate deployment paths:" },
+          { type: "ul", items: [
+            "Frontend (Next.js): Vercel auto-detects pushes to main and deploys with zero configuration",
+            "Backend (FastAPI): GitHub Actions triggers when main is pushed with changes in backend/**",
+          ]},
+          { type: "p", text: "The backend CI/CD pipeline is the focus of this article. It consists of three Jobs chained sequentially — each must pass before the next begins:" },
+          { type: "code", text: "git push main (backend/** changed)\n  │\n  ├── Job 1: unit-test (runs on GitHub Runner, no real dependencies)\n  │     └── pytest tests/ --ignore=tests/integration\n  │\n  ├── Job 2: deploy (SSH to Oracle Cloud, docker compose up)\n  │     ├── Start backend + searxng\n  │     ├── Wait for healthcheck to pass (up to 120s)\n  │     ├── Start nginx\n  │     └── Run smoke test (end-to-end connectivity)\n  │\n  └── Job 3: integration-test (hit real API from GitHub Runner)\n        └── pytest tests/integration/" },
+          { type: "note", text: "The three Jobs are sequential (linked by needs): unit tests must pass before deploying, deployment must succeed before integration tests run. Any failure at any layer immediately halts the pipeline." },
+
+          { type: "h1", text: "Part 2 — Layer 1: Unit tests (200+, zero real dependencies)" },
+          { type: "p", text: "Unit tests run on GitHub Actions Ubuntu runners with no Supabase, no Groq, no SearXNG — all external dependencies are mocked. The goal is to verify pure logic correctness." },
+
+          { type: "h2", text: "Test coverage" },
+          { type: "p", text: "Currently 11 test files covering every core backend module:" },
+          { type: "ul", items: [
+            "test_stream_manager.py — all META parsing fallback paths (complete JSON, truncation repair, regex extraction, empty input), SSE formatting, cross-chunk sentinel stripping, full conversation round flow",
+            "test_llm_client.py — chat_stream, summarizer, merge_threads, classify_search_intent, vision routing and output format",
+            "test_context_builder.py — sliding window, summary injection, RAG context assembly, ancestor chain",
+            "test_attachment_processor.py — semantic chunking, vector embedding, file type handling",
+            "test_memory_service.py — conversation memory storage/retrieval, RAG search, long text chunking",
+            "test_merge_router.py — merge output format options, token budget allocation, content truncation",
+            "test_search_service.py — SearXNG calls, result injection, timeout degradation",
+            "test_embedding_service.py — model loading, vector dimensions, batch encoding",
+            "test_auth_dependency.py — JWT validation, no token / invalid token / expired token",
+            "test_session_messages.py — session CRUD, bulk message reads",
+            "test_sessions_auth.py — auth middleware interception on every endpoint",
+          ]},
+
+          { type: "h2", text: "Mock strategy" },
+          { type: "p", text: "All tests follow one principle: mock external dependencies, test only the module's own logic." },
+          { type: "code", text: "# Typical mock pattern — stream_manager test example\nwith patch(\"services.stream_manager.get_supabase\", return_value=sb_mock), \\\n     patch(\"services.stream_manager.build_context\", new=AsyncMock(return_value=[])), \\\n     patch(\"services.stream_manager.classify_search_intent\", new=AsyncMock(return_value=False)), \\\n     patch(\"services.stream_manager.chat_stream\", side_effect=fake_chat_stream):\n    events = []\n    async for event in stream_and_save(\"thread-1\", \"user question\"):\n        events.append(event)" },
+          { type: "p", text: "Key detail: patch paths must reference the name in the module under test (services.stream_manager.get_supabase), not the module where it's defined (db.supabase.get_supabase). Python binds imported names to the importing module, so patching the wrong location silently fails." },
+
+          { type: "h2", text: "CI environment setup" },
+          { type: "p", text: "GitHub Actions uses placeholder environment variables so modules can import normally without connecting to real services:" },
+          { type: "code", text: "env:\n  SUPABASE_URL: https://placeholder.supabase.co\n  SUPABASE_SERVICE_ROLE_KEY: placeholder\n  SUPABASE_ANON_KEY: placeholder\n  GROQ_API_KEYS: '[\"placeholder\"]'\n  LOG_DIR: /tmp/deeppin-logs" },
+          { type: "p", text: "conftest.py also sets defaults, so running pytest locally requires no .env file at all." },
+
+          { type: "h1", text: "Part 3 — Layer 2: Deployment + Smoke test" },
+          { type: "p", text: "After unit tests pass, GitHub Actions SSHs into the Oracle Cloud server. This isn't a simple pull-and-restart — it's an ordered rolling deployment:" },
+
+          { type: "h2", text: "Deployment sequence" },
+          { type: "code", text: "# 1. Pull latest code\ngit pull origin main\n\n# 2. Start backend + searxng first (nginx waits for them)\ndocker compose up -d --build backend searxng\n\n# 3. Wait for backend healthcheck to pass (up to 120s)\nfor i in $(seq 1 24); do\n  STATUS=$(docker inspect --format='{{.State.Health.Status}}' deeppin-backend-1)\n  [ \"$STATUS\" = \"healthy\" ] && break\n  sleep 5\ndone\n\n# 4. Start nginx only after backend is healthy\ndocker compose up -d nginx\n\n# 5. Clean up old images\ndocker image prune -f\n\n# 6. Run smoke test\nbash scripts/smoke_test.sh https://deeppin.duckdns.org" },
+
+          { type: "h2", text: "Aggregated health check (/health)" },
+          { type: "p", text: "The entire deployment flow hinges on the /health endpoint. Docker healthcheck calls it every 15 seconds, and it concurrently probes all external dependencies:" },
+          { type: "code", text: "# health.py — concurrent component checks\nsearxng_ok, supabase_ok, embedding_info, groq_info = await asyncio.gather(\n    _check_searxng(),      # SearXNG search engine reachable\n    _check_supabase(),     # Supabase database connection healthy\n    _check_embedding(),    # bge-m3 model loaded, dim=1024, similarity > 0.5\n    _check_groq(),         # Groq API key valid, can make requests\n)\n\nall_ok = searxng_ok and supabase_ok and embedding_info[\"ok\"] and groq_info[\"ok\"]\n# 200 = healthy, 503 = degraded → Docker marks unhealthy" },
+          { type: "p", text: "Nginx's depends_on is set to condition: service_healthy, meaning it only starts accepting traffic when the backend and all its dependencies are healthy. Users never see a half-initialized service." },
+
+          { type: "h2", text: "Smoke test" },
+          { type: "p", text: "Immediately after deployment, a bash script verifies end-to-end connectivity from the external HTTPS endpoint:" },
+          { type: "ul", items: [
+            "HTTPS reachable + returns valid JSON",
+            "backend / searxng / supabase / embedding / groq all report true",
+            "Embedding model dimension is 1024, model name contains bge-m3",
+            "Unauthenticated request correctly returns 401",
+          ]},
+          { type: "p", text: "Any failure causes the script to exit non-zero, GitHub Actions turns red, and CI email notifications fire." },
+
+          { type: "h1", text: "Part 4 — Layer 3: Integration tests (real API, real auth)" },
+          { type: "p", text: "Smoke tests verify connectivity; integration tests verify business logic. They send real HTTP requests from the GitHub Runner to the live production API." },
+
+          { type: "h2", text: "Dynamic test users" },
+          { type: "p", text: "Integration tests don't depend on any pre-existing accounts. They dynamically create temporary users via the Supabase Admin API, then auto-delete them after tests complete:" },
+          { type: "code", text: "# test fixture (session scope — one user shared across all tests)\ntest_email = f\"ci-{uuid4().hex[:8]}@deeppin-ci.test\"\ncreate_r = httpx.post(\n    f\"{supabase_url}/auth/v1/admin/users\",\n    headers=admin_headers,\n    json={\"email\": test_email, \"password\": random_password, \"email_confirm\": True},\n)\n# yield fixture auto-cleans up after tests\nyield auth_headers\nhttpx.delete(f\"{supabase_url}/auth/v1/admin/users/{user_id}\", ...)" },
+
+          { type: "h2", text: "Test coverage" },
+          { type: "ul", items: [
+            "TestHealth — /health endpoint reachable, each component status correct",
+            "TestAuth — no token returns 401, invalid token returns 401, missing Bearer prefix returns 401",
+            "TestSession — create → appears in list → fetch detail → delete → nonexistent returns 404 (full lifecycle)",
+            "TestProviders — individually verify every provider + key combination is functional, catching dead keys",
+          ]},
+          { type: "note", text: "Integration tests run after deployment (needs: deploy), hitting the real live API. If they fail, it means the deployment succeeded but business functionality is broken — something neither unit tests nor smoke tests can catch." },
+
+          { type: "h1", text: "Part 5 — Docker orchestration" },
+          { type: "p", text: "Production runs on Oracle Cloud's permanently-free ARM instance (4 cores, 24GB), managed by Docker Compose with three services:" },
+          { type: "code", text: "services:\n  backend:       # FastAPI + uvicorn + LiteLLM + bge-m3\n    healthcheck:\n      test: [\"CMD-SHELL\", \"curl -sf http://localhost:8000/health | grep -q '\\\"status\\\":\\\"ok\\\"'\"]\n      interval: 15s\n      retries: 5\n      start_period: 45s   # embedding model needs time to load\n\n  searxng:       # Search engine (no separate healthcheck; backend /health covers it)\n\n  nginx:         # Reverse proxy + HTTPS (Let's Encrypt)\n    depends_on:\n      backend:\n        condition: service_healthy  # healthy = all dependencies ready" },
+          { type: "p", text: "Startup chain: backend + searxng start in parallel → backend passes healthcheck (which includes searxng connectivity) → nginx starts → traffic flows. This chain guarantees users never hit a half-initialized service." },
+
+          { type: "h1", text: "Part 6 — Local development loop" },
+          { type: "p", text: "CI/CD protects production; local development has its own fast feedback loop:" },
+          { type: "code", text: "# Standard flow after writing code\ncd backend && pytest tests/ -q        # Run unit tests locally (~25s)\ngit add . && git commit -m \"feat: ...\" # Commit after passing\ngit push                               # Triggers CI/CD\n\n# Debugging CI failures\ngh run view --log                      # View Actions logs\ndocker compose logs backend --tail 50  # SSH to server, check logs" },
+          { type: "p", text: "Local tests complete in 25 seconds, full CI takes 3-5 minutes (including deployment and integration tests). The vast majority of issues are caught at the local unit test stage." },
+
+          { type: "h1", text: "Part 7 — What this system prevents" },
+          { type: "ul", items: [
+            "Regressions: 200+ unit tests cover all edge cases in context building, META parsing, streaming truncation, and more",
+            "Deployment incidents: healthcheck + smoke test ensure the service is fully ready before receiving traffic",
+            "Configuration drift: integration tests verify real API keys, real database, real auth chain",
+            "Environment differences: Docker guarantees dev and production run the same code",
+            "Slow debugging: three-layer testing narrows the search — which layer failed tells you where to look",
+          ]},
+          { type: "p", text: "On a solo project, you can't rely on manual checking. You rely on automated confidence. Every git push has three gates standing behind you." },
+        ],
+      },
+    },
+  },
+
 ];
