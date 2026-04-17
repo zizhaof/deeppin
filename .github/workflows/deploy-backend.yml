@@ -61,6 +61,7 @@ jobs:
               mv "${ENV_FILE}.tmp" "$ENV_FILE"
             }
 
+            update_key GROQ_API_KEYS '${{ secrets.GROQ_API_KEYS }}'
             update_key CEREBRAS_API_KEYS '${{ secrets.CEREBRAS_API_KEYS }}'
             update_key SAMBANOVA_API_KEYS '${{ secrets.SAMBANOVA_API_KEYS }}'
             update_key GEMINI_API_KEYS '${{ secrets.GEMINI_API_KEYS }}'
