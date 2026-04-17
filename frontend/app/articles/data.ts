@@ -1847,4 +1847,381 @@ export const articles: Article[] = [
     },
   },
 
+  // ─────────────────────────────────────────────────────────────
+  // 15. 系统组件全景图
+  // ─────────────────────────────────────────────────────────────
+  {
+    slug: "system-components",
+    title: {
+      zh: "Deeppin 系统组件全景：每个零件的作用与协作",
+      en: "Deeppin System Components: What Every Part Does and How They Work Together",
+    },
+    date: "2026-04-16",
+    summary: {
+      zh: "从 Nginx 到 Supabase，从 SmartRouter 到 bge-m3，逐一拆解 Deeppin 的每个组件——它是什么、为什么需要它、什么时候被调用、数据怎么流过它。",
+      en: "From Nginx to Supabase, from SmartRouter to bge-m3 — a component-by-component breakdown of what each part is, why it exists, when it's invoked, and how data flows through it.",
+    },
+    tags: ["architecture", "components", "overview"],
+    content: {
+      zh: {
+        title: "Deeppin 系统组件全景：每个零件的作用与协作",
+        body: [
+          { type: "p", text: "Deeppin 由十几个组件协作完成「插针深度思考」这件事。本文逐一介绍每个组件的职责、何时被调用、以及它和其他组件的关系。先看全局，再逐层拆解。" },
+
+          { type: "h1", text: "全局架构" },
+          { type: "diagram", text: "用户浏览器\n  │\n  ├── HTTPS ──→ Vercel（Next.js 前端）\n  │              ├── components/    UI 渲染\n  │              ├── stores/        Zustand 状态\n  │              └── lib/sse.ts     SSE 客户端\n  │\n  └── HTTPS ──→ Oracle Cloud（Docker Compose）\n                 ├── Nginx          反向代理 + TLS\n                 ├── FastAPI         后端主进程\n                 │    ├── routers/       9 个路由模块\n                 │    ├── services/      7 个服务模块\n                 │    └── db/            Supabase 连接\n                 └── SearXNG         搜索引擎" },
+          { type: "p", text: "下面按数据流经的顺序，从外到内逐个介绍。" },
+
+          { type: "h1", text: "一、基础设施层" },
+
+          { type: "h2", text: "1.1 Nginx — 反向代理" },
+          { type: "p", text: "Nginx 是用户请求进入后端的第一道门。它负责 TLS 终止（Let's Encrypt 证书）、HTTP→HTTPS 重定向、以及将请求转发给 FastAPI。" },
+          { type: "p", text: "对 Deeppin 来说，Nginx 最关键的配置是 SSE 相关的三行：" },
+          { type: "code", text: "proxy_buffering off;     # 禁用缓冲，否则 SSE 流会被攒批\nproxy_cache off;         # 禁用缓存\nproxy_read_timeout 300s; # LLM 生成可能很慢" },
+          { type: "p", text: "何时工作：每一个到达后端的请求都经过 Nginx。它是永远在线的网关。" },
+
+          { type: "h2", text: "1.2 Docker Compose — 容器编排" },
+          { type: "p", text: "三个服务（backend、searxng、nginx）由 Docker Compose 管理。启动顺序通过健康检查链保证：" },
+          { type: "diagram", text: "backend + searxng 并行启动\n        │\n        ▼\nbackend healthcheck 通过\n（/health 聚合检查 searxng + supabase + embedding + groq）\n        │\n        ▼\n  nginx 启动，开始接收流量" },
+          { type: "p", text: "backend 的 healthcheck 每 15 秒运行一次，start_period 45 秒（给 embedding 模型加载留时间）。nginx 设置了 depends_on: backend: condition: service_healthy，确保用户永远不会打到半初始化的服务。" },
+
+          { type: "h2", text: "1.3 Supabase — 数据库 + 认证" },
+          { type: "p", text: "Supabase 提供两个核心能力：" },
+          { type: "ul", items: [
+            "PostgreSQL 数据库：存储 sessions、threads、messages、thread_summaries、attachment_chunks、conversation_memories 六张表",
+            "Auth 认证：用户注册/登录、JWT 签发与验证、RLS（Row Level Security）行级权限控制",
+          ]},
+          { type: "p", text: "后端通过两个 key 访问 Supabase：service_role_key（管理员权限，用于 JWT 验证和后台操作）和 anon_key（用户权限，配合 RLS）。前端只持有 anon_key。" },
+          { type: "p", text: "何时工作：几乎每个 API 请求都会读写 Supabase——创建 session、保存消息、读取历史、存取向量等。" },
+
+          { type: "h2", text: "1.4 SearXNG — 元搜索引擎" },
+          { type: "p", text: "SearXNG 是一个自部署的搜索引擎聚合器。它把用户的搜索查询同时发给 Google、Bing、DuckDuckGo 等多个引擎，汇总去重后返回结果。" },
+          { type: "p", text: "Deeppin 用它实现「联网搜索」功能：当用户的问题需要实时信息（新闻、价格、天气等）时，后端先通过 SearXNG 搜索，再把搜索结果喂给 LLM 做总结。" },
+          { type: "code", text: "# 后端通过 JSON API 调用\nGET http://searxng:8080/search?q=query&format=json" },
+          { type: "p", text: "何时工作：仅当 classify_search_intent() 判断用户问题需要联网搜索时才调用。普通对话不会触发。" },
+
+          { type: "h1", text: "二、后端路由层（routers/）" },
+          { type: "p", text: "FastAPI 的 9 个路由模块各自负责一类 API 端点：" },
+
+          { type: "h2", text: "2.1 health.py — 健康检查" },
+          { type: "p", text: "提供 /health（聚合所有依赖状态）和 /health/providers（逐个验证每个 LLM provider+key 组合）两个端点。Docker healthcheck 和 CI smoke test 都依赖它。" },
+          { type: "p", text: "何时调用：Docker 每 15 秒自动调用 /health；部署后 smoke test 调用；也可手动检查系统状态。" },
+
+          { type: "h2", text: "2.2 sessions.py — 会话管理" },
+          { type: "p", text: "CRUD 操作：创建 session、列出用户的所有 session、获取 session 详情（含线程树）、删除 session。还支持批量获取 session 下所有消息（用于合并输出）。" },
+          { type: "p", text: "何时调用：用户新建对话、打开历史对话、删除对话时。" },
+
+          { type: "h2", text: "2.3 threads.py — 线程管理" },
+          { type: "p", text: "创建子线程（插针）、获取线程详情和消息历史、获取追问建议。创建子线程时会异步触发 LLM 生成标题和建议追问。" },
+          { type: "p", text: "何时调用：用户选中文字插针时创建子线程；打开子线程时获取历史。" },
+
+          { type: "h2", text: "2.4 stream.py — SSE 流式端点" },
+          { type: "p", text: "核心端点 POST /api/threads/:id/chat。接收用户消息，返回 SSE 流。它是连接前端和 stream_manager 的桥梁。" },
+          { type: "p", text: "何时调用：用户每发一条消息就调用一次，无论主线还是子线程。" },
+
+          { type: "h2", text: "2.5 search.py — 联网搜索" },
+          { type: "p", text: "SSE 流式端点。先调 SearXNG 搜索，再让 LLM 基于搜索结果回答用户问题。支持自动搜索意图检测和手动触发两种模式。" },
+          { type: "p", text: "何时调用：用户问题被判断为需要实时信息时自动触发，或用户显式点击搜索按钮。" },
+
+          { type: "h2", text: "2.6 merge.py — 合并输出" },
+          { type: "p", text: "收集主线和所有子线程的对话内容，LLM 合并为结构化输出（自由总结 / 要点列表 / 结构化分析 / 对话原文）。流式返回。" },
+          { type: "p", text: "何时调用：用户点击「合并输出」按钮时。" },
+
+          { type: "h2", text: "2.7 attachments.py — 文件上传" },
+          { type: "p", text: "接收用户上传的文件，调 attachment_processor 处理（提取文本 → 分块 → 向量化 → 存库）。" },
+          { type: "p", text: "何时调用：用户在对话中上传文件（PDF、Word、代码文件等）时。" },
+
+          { type: "h2", text: "2.8 relevance.py — 相关性评估" },
+          { type: "p", text: "在合并输出前，LLM 评估每个子线程与主线的相关程度，决定哪些子线程默认选中参与合并。" },
+          { type: "p", text: "何时调用：用户打开合并面板时，在渲染前自动调用一次。" },
+
+          { type: "h2", text: "2.9 users.py — 用户配置" },
+          { type: "p", text: "获取和更新用户元数据（如偏好设置）。基于 Supabase Auth 的 user_metadata 字段。" },
+          { type: "p", text: "何时调用：用户修改个人设置时。" },
+
+          { type: "h1", text: "三、后端服务层（services/）" },
+          { type: "p", text: "路由层负责接请求、返响应；服务层负责真正的业务逻辑。7 个服务模块是后端的核心。" },
+
+          { type: "h2", text: "3.1 llm_client.py — SmartRouter 智能路由" },
+          { type: "p", text: "系统中所有 LLM 调用的统一入口。内置 SmartRouter，管理 4 家 Provider（Groq、Cerebras、SambaNova、Gemini）的多个模型和多个 API key。" },
+          { type: "diagram", text: "调用方（stream_manager / search / merge）\n        │\n        ▼\n  SmartRouter._pick_slot(group)\n        │\n        ├── 按 score 排序所有 slot\n        ├── score = min(RPM剩余%, TPM剩余%, RPD剩余%)\n        ├── 最近失败的 slot 额外惩罚（30s半衰期）\n        └── 全部耗尽 → 选恢复最快的 slot\n        │\n        ▼\n  litellm.acompletion(model, messages, api_key)\n        │\n        ├── 成功 → record_success()\n        └── 失败 → record_failure() → 重试下一个 slot\n                    └── 当前 group 全部失败 → fallback 链" },
+          { type: "p", text: "模型按用途分为 4 组：chat（主对话）、merge（合并输出）、summarizer（摘要/分类）、vision（图片理解）。Fallback 链：chat→summarizer，merge→chat→summarizer。" },
+          { type: "p", text: "何时工作：系统中每一次 LLM 调用都经过 SmartRouter——主对话、摘要、合并、搜索意图分类、子线程标题生成、相关性评估。" },
+
+          { type: "h2", text: "3.2 stream_manager.py — SSE 流式管理器" },
+          { type: "p", text: "整个系统最复杂的服务。它编排一次完整的对话流程：" },
+          { type: "diagram", text: "用户消息到达\n  │\n  ├─ 1. yield ping（防止连接超时）\n  ├─ 2. 保存用户消息到 DB\n  ├─ 3. 查线程元数据（depth / session_id / 是否首轮）\n  ├─ 4. 构建 context（context_builder）+ RAG 注入（memory_service）\n  ├─ 5. 检测搜索意图（classify_search_intent）\n  │     ├── 需要搜索 → yield search 事件，走 search_service\n  │     └── 不需要 → 继续\n  ├─ 6. 调 LLM 流式生成（chat_stream）\n  │     ├── 实时 yield token 给前端\n  │     └── 实时截断 META 块（摘要 + 标题）\n  ├─ 7. 保存 assistant 消息到 DB\n  ├─ 8. yield done\n  └─ 9. 后台任务（_track 追踪）\n        ├── 从 META 写摘要（失败则 fallback merge_summary）\n        ├── 首轮主线写标题\n        └── 每 N 轮写 conversation_memory embedding" },
+          { type: "p", text: "何时工作：用户每发一条消息都会完整走一遍这个流程。" },
+
+          { type: "h2", text: "3.3 context_builder.py — Context 构建" },
+          { type: "p", text: "为每次 LLM 调用组装 messages 数组。核心是「越深越压缩」的 compact 策略：" },
+          { type: "code", text: "# 各层 token 预算\n_BUDGETS_BY_DEPTH = [800, 500, 300, 150]\n\n# 主线 context：摘要（若消息>10条） + RAG + 最近 10 条消息\n# 子线程 context：祖先摘要链 + 锚点 + RAG + 当前线程历史" },
+          { type: "p", text: "何时工作：每次调 LLM 之前都会调 build_context() 组装上下文。主线和子线程走不同的构建逻辑。" },
+
+          { type: "h2", text: "3.4 memory_service.py — 双轨 RAG 记忆" },
+          { type: "p", text: "管理两条并行的 RAG 检索轨道：" },
+          { type: "ul", items: [
+            "attachment_chunks：用户上传文件的分块向量。用户问「第三段说了什么」时精准召回对应段落",
+            "conversation_memories：每轮对话的向量化摘要。用户问「我们之前讨论了什么」时召回历史",
+          ]},
+          { type: "p", text: "何时工作：context_builder 在构建上下文时调 retrieve_rag_context() 并发检索两轨；stream_manager 在每轮对话结束后调 store_conversation_memory() 存入新记忆。" },
+
+          { type: "h2", text: "3.5 embedding_service.py — 向量嵌入" },
+          { type: "p", text: "基于 sentence-transformers 的 BAAI/bge-m3 模型（1024 维，支持中英文）。单例模式，首次调用时加载模型（约 570MB），之后复用。所有 encode 操作通过 run_in_executor 在线程池中执行，不阻塞 asyncio 事件循环。" },
+          { type: "p", text: "何时工作：文件上传分块后向量化、每轮对话记忆向量化、RAG 检索时将查询文本向量化。" },
+
+          { type: "h2", text: "3.6 search_service.py — 搜索服务" },
+          { type: "p", text: "封装 SearXNG 调用：发送搜索请求、过滤低质量结果、清洗 HTML 标签。使用持久化 httpx 客户端复用连接池，超时 5 秒，失败时返回空列表（由调用方降级为普通 AI 回答）。" },
+          { type: "p", text: "何时工作：仅在联网搜索场景下被 stream_manager 或 search router 调用。" },
+
+          { type: "h2", text: "3.7 attachment_processor.py — 附件处理" },
+          { type: "p", text: "文件上传的完整流水线：" },
+          { type: "diagram", text: "上传字节\n  │\n  ├─ 文本提取（Kreuzberg 库：支持 PDF/DOCX/PPTX/等 30+ 格式）\n  │   └── fallback：UTF-8 直接解码（txt/md/csv/json 等）\n  ├─ 短文本（<3000 字符）→ 直接作为消息 context，不进 RAG\n  ├─ 长文本 → 语义分块（相邻句子余弦相似度 < 0.75 时切断）\n  ├─ 批量向量化（embed_texts 一次处理所有块）\n  └─ 存入 attachment_chunks 表" },
+          { type: "p", text: "何时工作：用户上传文件时。处理完成后原始字节自动释放，不写磁盘。" },
+
+          { type: "h1", text: "四、前端层" },
+
+          { type: "h2", text: "4.1 组件架构" },
+          { type: "diagram", text: "app/\n  ├── page.tsx              首页（输入框 + 新建对话）\n  ├── chat/[sessionId]/     主对话页\n  └── login/                登录页\n\ncomponents/\n  ├── MainThread/\n  │    ├── MessageList.tsx    消息列表（滚动、流式追加）\n  │    ├── MessageBubble.tsx  单条消息（支持选中插针）\n  │    └── InputBar.tsx       底部输入框（跟随当前线程）\n  ├── SubThread/\n  │    ├── SideColumn.tsx     侧边栏容器（左/右）\n  │    ├── ThreadCard.tsx     单个子线程卡片\n  │    └── PinRoll.tsx        Pin 滚动列表\n  ├── Layout/\n  │    ├── ThreadNav.tsx      线程导航（面包屑）\n  │    └── ThreadTree.tsx     线程树视图\n  ├── PinMenu.tsx             选中文字后的浮动工具栏\n  ├── PinStartDialog.tsx      插针确认对话框\n  ├── MergeOutput.tsx         合并输出面板\n  ├── MergeTreeCanvas.tsx     合并时的线程树可视化\n  ├── SessionDrawer.tsx       历史会话抽屉\n  ├── MarkdownContent.tsx     Markdown 渲染器\n  ├── ThemeToggle.tsx         主题切换\n  └── Mobile/\n       └── MobileChatLayout.tsx  移动端布局" },
+
+          { type: "h2", text: "4.2 状态管理（Zustand）" },
+          { type: "p", text: "三个 store 各管一个维度：" },
+          { type: "ul", items: [
+            "useThreadStore — 线程树结构、当前激活线程、消息内容、流式状态。这是最核心的 store，管理所有对话数据",
+            "useLangStore — 语言切换（中/英），持久化到 localStorage",
+            "useThemeStore — 主题切换（明/暗），持久化到 localStorage",
+          ]},
+
+          { type: "h2", text: "4.3 lib/ — 工具库" },
+          { type: "ul", items: [
+            "api.ts — 后端 API 调用封装，统一处理认证、错误、重试",
+            "sse.ts — SSE 客户端，管理流式连接的建立、token 接收、错误处理、401 自动跳转登录",
+            "supabase.ts — Supabase 客户端初始化（浏览器端）",
+            "i18n.ts — 国际化文案（中英文切换）",
+          ]},
+
+          { type: "h1", text: "五、数据存储层" },
+          { type: "p", text: "Supabase PostgreSQL 中的 6 张核心表：" },
+          { type: "diagram", text: "sessions\n  │ 1:N\n  ▼\nthreads（parent_thread_id 自引用 → 无限嵌套树）\n  │ 1:N\n  ▼\nmessages\n\nthread_summaries（1:1 关联 threads）\n\nattachment_chunks（session 级文件向量块）\n\nconversation_memories（session 级对话记忆向量）" },
+          { type: "ul", items: [
+            "sessions — 对话会话，关联 user_id",
+            "threads — 线程树，parent_thread_id=null 表示主线，否则是子线程。存储锚点文本、位置、深度",
+            "messages — 消息记录，role=user/assistant",
+            "thread_summaries — 线程摘要缓存，按 token_budget 索引",
+            "attachment_chunks — 文件向量块，含 embedding 列（pgvector）",
+            "conversation_memories — 对话记忆向量，每轮对话一条",
+          ]},
+
+          { type: "h1", text: "六、外部 AI 服务" },
+
+          { type: "h2", text: "6.1 LLM Provider 池" },
+          { type: "p", text: "SmartRouter 管理 4 家 Provider，全部使用免费 tier：" },
+          { type: "ul", items: [
+            "Groq — 主力 Provider，7 个模型（llama-3.3-70b、llama-4-scout、qwen3-32b 等），速度快",
+            "Cerebras — 1 个模型（llama3.1-8b），60K TPM，适合 summarizer",
+            "SambaNova — 2 个模型（Llama-3.3-70B、Llama-4-Maverick），100K TPM，高吞吐",
+            "Gemini — 2 个模型（gemini-2.5-flash/flash-lite），250K TPM，超大吞吐量",
+          ]},
+          { type: "p", text: "所有 Provider 通过 LiteLLM 统一调用格式（provider/model_id），SmartRouter 根据实时用量打分选择最优 slot。" },
+
+          { type: "h2", text: "6.2 bge-m3 嵌入模型" },
+          { type: "p", text: "BAAI/bge-m3 是自部署在后端服务器上的向量嵌入模型（不依赖外部 API）。1024 维，支持中英文，最大输入 8192 tokens。约 570MB，首次启动时从 HuggingFace 下载并缓存。" },
+          { type: "p", text: "它负责所有向量化操作：文件分块嵌入、对话记忆嵌入、RAG 查询嵌入。因为是本地模型，没有 rate limit，不会成为瓶颈。" },
+
+          { type: "h1", text: "七、CI/CD 与运维组件" },
+          { type: "ul", items: [
+            "GitHub Actions — 三阶段流水线：单元测试 → 部署（SSH + Docker Compose + healthcheck + smoke test）→ 集成测试",
+            "smoke_test.sh — 9 个 curl 检查：HTTPS 可达、状态正常、各组件健康、embedding 维度正确、认证拦截有效",
+            "集成测试（test_api.py）— 从 GitHub runner 打真实 API：健康检查、认证验证、session 生命周期、provider 验证",
+            "Let's Encrypt — 自动续期 TLS 证书，挂载到 nginx 容器",
+          ]},
+
+          { type: "h1", text: "八、一次完整请求的组件调用链" },
+          { type: "p", text: "用户在子线程中发送一条消息，涉及的全部组件：" },
+          { type: "diagram", text: "浏览器 InputBar\n  → lib/sse.ts（建立 SSE 连接）\n    → Nginx（TLS 终止 + 转发）\n      → stream.py（路由入口）\n        → stream_manager.py（编排）\n          ├── Supabase：保存用户消息\n          ├── context_builder.py：构建上下文\n          │    ├── Supabase：读祖先链 + 摘要 + 历史消息\n          │    └── memory_service.py：RAG 检索\n          │         ├── embedding_service.py：查询向量化（bge-m3）\n          │         └── Supabase：pgvector 相似度搜索\n          ├── llm_client.py → SmartRouter\n          │    → LiteLLM → Groq/Cerebras/SambaNova/Gemini\n          ├── Supabase：保存 assistant 消息\n          └── 后台任务：\n               ├── Supabase：写摘要\n               └── embedding_service → Supabase：写对话记忆" },
+          { type: "p", text: "一条消息，12 个组件协作，全部在 2-5 秒内完成。用户看到的是流式逐字出现的 AI 回复。" },
+        ],
+      },
+      en: {
+        title: "Deeppin System Components: What Every Part Does and How They Work Together",
+        body: [
+          { type: "p", text: "Deeppin uses over a dozen components working together to deliver the \"pin-and-explore\" deep thinking experience. This article introduces each component's responsibility, when it's invoked, and how it relates to other parts. We start with the big picture, then go layer by layer." },
+
+          { type: "h1", text: "Architecture overview" },
+          { type: "diagram", text: "User Browser\n  |\n  |-- HTTPS --> Vercel (Next.js frontend)\n  |              |-- components/    UI rendering\n  |              |-- stores/        Zustand state\n  |              +-- lib/sse.ts     SSE client\n  |\n  +-- HTTPS --> Oracle Cloud (Docker Compose)\n                 |-- Nginx          Reverse proxy + TLS\n                 |-- FastAPI         Backend main process\n                 |    |-- routers/       9 route modules\n                 |    |-- services/      7 service modules\n                 |    +-- db/            Supabase connector\n                 +-- SearXNG         Search engine" },
+          { type: "p", text: "Below, we walk through each component in the order data flows through them — from the outside in." },
+
+          { type: "h1", text: "Part 1 — Infrastructure layer" },
+
+          { type: "h2", text: "1.1 Nginx — Reverse proxy" },
+          { type: "p", text: "Nginx is the first door every request passes through to reach the backend. It handles TLS termination (Let's Encrypt certificates), HTTP-to-HTTPS redirection, and forwarding requests to FastAPI." },
+          { type: "p", text: "The most critical configuration for Deeppin is the three SSE-related directives:" },
+          { type: "code", text: "proxy_buffering off;     # Disable buffering — otherwise SSE streams batch up\nproxy_cache off;         # Disable caching\nproxy_read_timeout 300s; # LLM generation can be slow" },
+          { type: "p", text: "When it works: every single request reaching the backend passes through Nginx. It's the always-on gateway." },
+
+          { type: "h2", text: "1.2 Docker Compose — Container orchestration" },
+          { type: "p", text: "Three services (backend, searxng, nginx) are managed by Docker Compose. Startup order is guaranteed through a healthcheck chain:" },
+          { type: "diagram", text: "backend + searxng start in parallel\n        |\n        v\nbackend healthcheck passes\n(/health aggregates searxng + supabase + embedding + groq checks)\n        |\n        v\n  nginx starts, begins accepting traffic" },
+          { type: "p", text: "The backend healthcheck runs every 15 seconds with a 45-second start_period (to give the embedding model time to load). Nginx sets depends_on: backend: condition: service_healthy, ensuring users never hit a half-initialized service." },
+
+          { type: "h2", text: "1.3 Supabase — Database + Auth" },
+          { type: "p", text: "Supabase provides two core capabilities:" },
+          { type: "ul", items: [
+            "PostgreSQL database: stores sessions, threads, messages, thread_summaries, attachment_chunks, and conversation_memories — six tables",
+            "Auth: user signup/login, JWT issuance and verification, RLS (Row Level Security) for per-user data isolation",
+          ]},
+          { type: "p", text: "The backend accesses Supabase with two keys: service_role_key (admin privileges, for JWT verification and backend operations) and anon_key (user-scoped, works with RLS). The frontend only holds the anon_key." },
+          { type: "p", text: "When it works: nearly every API request reads from or writes to Supabase — creating sessions, saving messages, reading history, storing and searching vectors." },
+
+          { type: "h2", text: "1.4 SearXNG — Meta search engine" },
+          { type: "p", text: "SearXNG is a self-hosted search engine aggregator. It sends the user's query to Google, Bing, DuckDuckGo, and other engines simultaneously, then deduplicates and returns the results." },
+          { type: "p", text: "Deeppin uses it for the \"web search\" feature: when a question needs real-time information (news, prices, weather, etc.), the backend searches via SearXNG first, then feeds the results to an LLM for synthesis." },
+          { type: "code", text: "# Backend calls via JSON API\nGET http://searxng:8080/search?q=query&format=json" },
+          { type: "p", text: "When it works: only when classify_search_intent() determines the user's question needs live information. Regular conversations never trigger it." },
+
+          { type: "h1", text: "Part 2 — Backend route layer (routers/)" },
+          { type: "p", text: "FastAPI's 9 router modules each handle one category of API endpoints:" },
+
+          { type: "h2", text: "2.1 health.py — Health checks" },
+          { type: "p", text: "Exposes /health (aggregated dependency status) and /health/providers (individually verifies every LLM provider+key combination). Docker healthchecks and CI smoke tests both depend on it." },
+          { type: "p", text: "When called: Docker automatically calls /health every 15 seconds; the smoke test calls it post-deployment; also useful for manual system status checks." },
+
+          { type: "h2", text: "2.2 sessions.py — Session management" },
+          { type: "p", text: "CRUD operations: create session, list a user's sessions, get session details (with thread tree), delete session. Also supports bulk-fetching all messages under a session (used for merge output)." },
+          { type: "p", text: "When called: when the user creates a new conversation, opens a past one, or deletes one." },
+
+          { type: "h2", text: "2.3 threads.py — Thread management" },
+          { type: "p", text: "Creates sub-threads (pins), fetches thread details and message history, generates follow-up suggestions. Creating a sub-thread asynchronously triggers LLM-generated title and suggested questions." },
+          { type: "p", text: "When called: when a user selects text and pins it to create a sub-thread; when opening a sub-thread to view history." },
+
+          { type: "h2", text: "2.4 stream.py — SSE streaming endpoint" },
+          { type: "p", text: "The core endpoint: POST /api/threads/:id/chat. Receives the user message and returns an SSE stream. It bridges the frontend to stream_manager." },
+          { type: "p", text: "When called: every time the user sends a message, whether in the main thread or a sub-thread." },
+
+          { type: "h2", text: "2.5 search.py — Web search" },
+          { type: "p", text: "An SSE streaming endpoint. First queries SearXNG, then has the LLM answer the user's question based on search results. Supports both automatic intent detection and manual trigger." },
+          { type: "p", text: "When called: auto-triggered when a question is classified as needing real-time information, or when the user explicitly clicks the search button." },
+
+          { type: "h2", text: "2.6 merge.py — Merge output" },
+          { type: "p", text: "Collects the main thread and all sub-thread conversations, then has the LLM merge them into structured output (free summary / bullet points / structured analysis / raw transcript). Streamed." },
+          { type: "p", text: "When called: when the user clicks the \"Merge Output\" button." },
+
+          { type: "h2", text: "2.7 attachments.py — File upload" },
+          { type: "p", text: "Receives user-uploaded files and hands them to attachment_processor (text extraction → chunking → embedding → DB storage)." },
+          { type: "p", text: "When called: when the user uploads a file (PDF, Word, code files, etc.) during a conversation." },
+
+          { type: "h2", text: "2.8 relevance.py — Relevance assessment" },
+          { type: "p", text: "Before merge output, the LLM evaluates each sub-thread's relevance to the main thread, deciding which sub-threads should be selected by default for merging." },
+          { type: "p", text: "When called: automatically invoked once when the user opens the merge panel, before rendering." },
+
+          { type: "h2", text: "2.9 users.py — User configuration" },
+          { type: "p", text: "Gets and updates user metadata (preferences, settings). Built on Supabase Auth's user_metadata field." },
+          { type: "p", text: "When called: when the user modifies their personal settings." },
+
+          { type: "h1", text: "Part 3 — Backend service layer (services/)" },
+          { type: "p", text: "The route layer handles requests and responses; the service layer handles the actual business logic. The 7 service modules are the backend's core." },
+
+          { type: "h2", text: "3.1 llm_client.py — SmartRouter" },
+          { type: "p", text: "The unified entry point for every LLM call in the system. Houses the SmartRouter, which manages models and API keys across 4 providers (Groq, Cerebras, SambaNova, Gemini)." },
+          { type: "diagram", text: "Caller (stream_manager / search / merge)\n        |\n        v\n  SmartRouter._pick_slot(group)\n        |\n        |-- Score all slots by availability\n        |-- score = min(RPM_remaining%, TPM_remaining%, RPD_remaining%)\n        |-- Recently failed slots get extra penalty (30s half-life)\n        +-- All exhausted -> pick slot with soonest recovery\n        |\n        v\n  litellm.acompletion(model, messages, api_key)\n        |\n        |-- Success -> record_success()\n        +-- Failure -> record_failure() -> retry next slot\n                        +-- All slots in group failed -> fallback chain" },
+          { type: "p", text: "Models are grouped into 4 tiers: chat (main conversations), merge (merge output), summarizer (summaries/classification), vision (image understanding). Fallback chain: chat->summarizer, merge->chat->summarizer." },
+          { type: "p", text: "When it works: every single LLM call goes through SmartRouter — main chat, summaries, merge, search intent classification, sub-thread title generation, relevance assessment." },
+
+          { type: "h2", text: "3.2 stream_manager.py — SSE stream manager" },
+          { type: "p", text: "The most complex service in the entire system. It orchestrates the complete flow for one conversation turn:" },
+          { type: "diagram", text: "User message arrives\n  |\n  |-- 1. yield ping (prevent connection timeout)\n  |-- 2. Save user message to DB\n  |-- 3. Fetch thread metadata (depth / session_id / is_first_round)\n  |-- 4. Build context (context_builder) + RAG injection (memory_service)\n  |-- 5. Detect search intent (classify_search_intent)\n  |     |-- Needs search -> yield search event, use search_service\n  |     +-- No search -> continue\n  |-- 6. Call LLM streaming (chat_stream)\n  |     |-- yield tokens to frontend in real time\n  |     +-- Strip META block in real time (summary + title)\n  |-- 7. Save assistant message to DB\n  |-- 8. yield done\n  +-- 9. Background tasks (_track lifecycle)\n        |-- Write summary from META (fallback: merge_summary)\n        |-- Write title on first main-thread round\n        +-- Write conversation_memory embedding every N rounds" },
+          { type: "p", text: "When it works: every message the user sends runs through this complete pipeline." },
+
+          { type: "h2", text: "3.3 context_builder.py — Context construction" },
+          { type: "p", text: "Assembles the messages array for each LLM call. The core strategy is \"deeper = more compressed\":" },
+          { type: "code", text: "# Token budgets by depth\n_BUDGETS_BY_DEPTH = [800, 500, 300, 150]\n\n# Main thread: summary (if >10 messages) + RAG + last 10 messages\n# Sub-thread: ancestor summary chain + anchor text + RAG + current thread history" },
+          { type: "p", text: "When it works: build_context() is called before every LLM invocation. Main threads and sub-threads follow different construction logic." },
+
+          { type: "h2", text: "3.4 memory_service.py — Dual-track RAG memory" },
+          { type: "p", text: "Manages two parallel RAG retrieval tracks:" },
+          { type: "ul", items: [
+            "attachment_chunks: vector chunks from user-uploaded files. When the user asks \"what does paragraph three say?\", it precisely recalls that chunk",
+            "conversation_memories: vectorized summaries of each conversation turn. When the user asks \"what did we discuss earlier?\", it recalls relevant history",
+          ]},
+          { type: "p", text: "When it works: context_builder calls retrieve_rag_context() to search both tracks concurrently when building context; stream_manager calls store_conversation_memory() after each turn to store new memories." },
+
+          { type: "h2", text: "3.5 embedding_service.py — Vector embedding" },
+          { type: "p", text: "Built on sentence-transformers with BAAI/bge-m3 (1024 dimensions, Chinese + English support). Singleton pattern — model loads on first call (~570MB), then reuses. All encode operations run in a thread-pool executor via run_in_executor to avoid blocking the asyncio event loop." },
+          { type: "p", text: "When it works: embedding file chunks after upload, embedding conversation memories after each turn, embedding query text for RAG retrieval." },
+
+          { type: "h2", text: "3.6 search_service.py — Search service" },
+          { type: "p", text: "Wraps SearXNG calls: sends search requests, filters low-quality results, strips HTML tags. Uses a persistent httpx client for connection pool reuse. 5-second timeout; returns an empty list on failure (caller degrades to plain AI response)." },
+          { type: "p", text: "When it works: only in web-search scenarios, called by stream_manager or the search router." },
+
+          { type: "h2", text: "3.7 attachment_processor.py — Attachment processing" },
+          { type: "p", text: "The complete file upload pipeline:" },
+          { type: "diagram", text: "Uploaded bytes\n  |\n  |-- Text extraction (Kreuzberg: supports PDF/DOCX/PPTX/30+ formats)\n  |    +-- Fallback: direct UTF-8 decode (txt/md/csv/json etc.)\n  |-- Short text (<3000 chars) -> inline as message context, skip RAG\n  |-- Long text -> semantic chunking (cut when cosine similarity < 0.75)\n  |-- Batch embedding (embed_texts processes all chunks in one call)\n  +-- Store in attachment_chunks table" },
+          { type: "p", text: "When it works: when a user uploads a file. Raw bytes are released after processing — nothing is written to disk." },
+
+          { type: "h1", text: "Part 4 — Frontend layer" },
+
+          { type: "h2", text: "4.1 Component architecture" },
+          { type: "diagram", text: "app/\n  |-- page.tsx              Home (input + new chat)\n  |-- chat/[sessionId]/     Main chat page\n  +-- login/                Login page\n\ncomponents/\n  |-- MainThread/\n  |    |-- MessageList.tsx    Message list (scroll, stream append)\n  |    |-- MessageBubble.tsx  Single message (supports text selection + pin)\n  |    +-- InputBar.tsx       Bottom input (follows active thread)\n  |-- SubThread/\n  |    |-- SideColumn.tsx     Side panel container (left/right)\n  |    |-- ThreadCard.tsx     Individual sub-thread card\n  |    +-- PinRoll.tsx        Pin scroll list\n  |-- Layout/\n  |    |-- ThreadNav.tsx      Thread navigation (breadcrumbs)\n  |    +-- ThreadTree.tsx     Thread tree view\n  |-- PinMenu.tsx             Floating toolbar after text selection\n  |-- PinStartDialog.tsx      Pin confirmation dialog\n  |-- MergeOutput.tsx         Merge output panel\n  |-- MergeTreeCanvas.tsx     Thread tree visualization for merge\n  |-- SessionDrawer.tsx       History session drawer\n  |-- MarkdownContent.tsx     Markdown renderer\n  |-- ThemeToggle.tsx         Theme toggle\n  +-- Mobile/\n       +-- MobileChatLayout.tsx  Mobile layout" },
+
+          { type: "h2", text: "4.2 State management (Zustand)" },
+          { type: "p", text: "Three stores, each managing one dimension:" },
+          { type: "ul", items: [
+            "useThreadStore — thread tree structure, active thread, message content, streaming state. The core store managing all conversation data",
+            "useLangStore — language toggle (zh/en), persisted to localStorage",
+            "useThemeStore — theme toggle (light/dark), persisted to localStorage",
+          ]},
+
+          { type: "h2", text: "4.3 lib/ — Utility library" },
+          { type: "ul", items: [
+            "api.ts — Backend API call wrapper, unified auth handling, error handling, retry logic",
+            "sse.ts — SSE client, manages streaming connection setup, token reception, error handling, auto-redirect to login on 401",
+            "supabase.ts — Supabase client initialization (browser-side)",
+            "i18n.ts — Internationalization strings (zh/en toggle)",
+          ]},
+
+          { type: "h1", text: "Part 5 — Data storage layer" },
+          { type: "p", text: "Six core tables in Supabase PostgreSQL:" },
+          { type: "diagram", text: "sessions\n  | 1:N\n  v\nthreads (parent_thread_id self-reference -> infinite nesting tree)\n  | 1:N\n  v\nmessages\n\nthread_summaries (1:1 with threads)\n\nattachment_chunks (session-level file vector chunks)\n\nconversation_memories (session-level conversation memory vectors)" },
+          { type: "ul", items: [
+            "sessions — conversation sessions, linked to user_id",
+            "threads — thread tree; parent_thread_id=null means main thread, otherwise sub-thread. Stores anchor text, position offsets, depth",
+            "messages — message records, role=user/assistant",
+            "thread_summaries — thread summary cache, indexed by token_budget",
+            "attachment_chunks — file vector chunks with embedding column (pgvector)",
+            "conversation_memories — conversation memory vectors, one per round",
+          ]},
+
+          { type: "h1", text: "Part 6 — External AI services" },
+
+          { type: "h2", text: "6.1 LLM provider pool" },
+          { type: "p", text: "SmartRouter manages 4 providers, all on free tiers:" },
+          { type: "ul", items: [
+            "Groq — Primary provider, 7 models (llama-3.3-70b, llama-4-scout, qwen3-32b, etc.), fast inference",
+            "Cerebras — 1 model (llama3.1-8b), 60K TPM, great for summarizer tasks",
+            "SambaNova — 2 models (Llama-3.3-70B, Llama-4-Maverick), 100K TPM, high throughput",
+            "Gemini — 2 models (gemini-2.5-flash/flash-lite), 250K TPM, highest throughput",
+          ]},
+          { type: "p", text: "All providers are called through LiteLLM's unified format (provider/model_id). SmartRouter scores each slot based on real-time usage and picks the best one." },
+
+          { type: "h2", text: "6.2 bge-m3 embedding model" },
+          { type: "p", text: "BAAI/bge-m3 is self-hosted on the backend server (no external API dependency). 1024 dimensions, supports Chinese and English, max input 8192 tokens. ~570MB, downloaded from HuggingFace on first startup and cached." },
+          { type: "p", text: "It handles all vectorization: file chunk embedding, conversation memory embedding, RAG query embedding. Since it's a local model, there's no rate limit — it never becomes a bottleneck." },
+
+          { type: "h1", text: "Part 7 — CI/CD and operations" },
+          { type: "ul", items: [
+            "GitHub Actions — Three-stage pipeline: unit tests -> deploy (SSH + Docker Compose + healthcheck + smoke test) -> integration tests",
+            "smoke_test.sh — 9 curl checks: HTTPS reachable, status OK, all components healthy, embedding dimensions correct, auth rejection works",
+            "Integration tests (test_api.py) — Hit the real live API from GitHub runners: health checks, auth verification, session lifecycle, provider verification",
+            "Let's Encrypt — Auto-renewing TLS certificates, mounted into the nginx container",
+          ]},
+
+          { type: "h1", text: "Part 8 — Full request call chain" },
+          { type: "p", text: "When a user sends a message in a sub-thread, every component involved:" },
+          { type: "diagram", text: "Browser InputBar\n  -> lib/sse.ts (establish SSE connection)\n    -> Nginx (TLS termination + forwarding)\n      -> stream.py (route entry)\n        -> stream_manager.py (orchestration)\n          |-- Supabase: save user message\n          |-- context_builder.py: build context\n          |    |-- Supabase: read ancestor chain + summaries + history\n          |    +-- memory_service.py: RAG retrieval\n          |         |-- embedding_service.py: vectorize query (bge-m3)\n          |         +-- Supabase: pgvector similarity search\n          |-- llm_client.py -> SmartRouter\n          |    -> LiteLLM -> Groq/Cerebras/SambaNova/Gemini\n          |-- Supabase: save assistant message\n          +-- Background tasks:\n               |-- Supabase: write summary\n               +-- embedding_service -> Supabase: write conversation memory" },
+          { type: "p", text: "One message, 12 components working together, all completing within 2–5 seconds. What the user sees is an AI reply streaming in character by character." },
+        ],
+      },
+    },
+  },
+
 ];
