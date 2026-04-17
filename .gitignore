@@ -54,3 +54,6 @@ logs/
 .superpowers/
 docs/
 .vercel
+
+# 本地 sandbox（Remotion 等）
+demo/
