@@ -84,8 +84,8 @@ Context 向下传递时自动 compact，越深越压缩：
 数据库：Supabase（PostgreSQL + Auth）
         Google OAuth + 四张表全部 RLS + 后端 JWT 依赖
 
-AI：    LiteLLM Router 统一调度 6 个 provider（全部免费 tier 叠加）
-        Groq / Cerebras / SambaNova / Gemini / NVIDIA NIM / OpenRouter
+AI：    LiteLLM Router 统一调度 5 个 provider（全部免费 tier 叠加）
+        Groq / Cerebras / SambaNova / Gemini / OpenRouter
         分组：chat / merge / summarizer / vision / whisper
         usage-based routing + 429 自动 fallback，chat 耗尽降级 summarizer
 
@@ -315,7 +315,6 @@ LiteLLM Router 把 `provider × key × model` 展开成扁平 model_list，usage
 | Cerebras | qwen-3-235b / llama3.1-8b | 大上下文 + 高 TPM |
 | SambaNova | Llama-3.3-70B / Llama-4-Maverick-17B | RPD 1K |
 | Gemini | gemini-2.5-flash / flash-lite | 原生多模态，flash 进 vision |
-| NVIDIA NIM | llama-3.3-70b / llama-4-maverick / gemma-3-27b / nemotron-super-49b | gemma-3-27b 进 vision |
 | OpenRouter | `:free` 系列（gpt-oss-120b / llama-3.3-70b / nemotron-super-120b / hermes-3-405b）| `:free` 有上游全局节流，见「已知问题」|
 
 #### 健康检查端点

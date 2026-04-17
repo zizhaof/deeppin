@@ -1826,7 +1826,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "八、部署配置" },
           { type: "p", text: "新增 Provider 只需添加环境变量，SmartRouter 自动识别：" },
-          { type: "code", text: "# backend/.env — 每个值是 JSON 数组，支持多 key 叠加\nGROQ_API_KEYS=[\"gsk_key1\", \"gsk_key2\"]\nCEREBRAS_API_KEYS=[\"csk_key1\", \"csk_key2\"]\nSAMBANOVA_API_KEYS=[\"sk_key1\", \"sk_key2\"]\nGEMINI_API_KEYS=[\"AIza_key1\"]\nNVIDIA_NIM_API_KEYS=[\"nvapi_key1\"]\nOPENROUTER_API_KEYS=[\"sk-or-v1-key1\", \"sk-or-v1-key2\"]\n\n# 未配置的 Provider 不产生任何 slot，不影响运行\n# 新增 key 后重启即生效" },
+          { type: "code", text: "# backend/.env — 每个值是 JSON 数组，支持多 key 叠加\nGROQ_API_KEYS=[\"gsk_key1\", \"gsk_key2\"]\nCEREBRAS_API_KEYS=[\"csk_key1\", \"csk_key2\"]\nSAMBANOVA_API_KEYS=[\"sk_key1\", \"sk_key2\"]\nGEMINI_API_KEYS=[\"AIza_key1\"]\nOPENROUTER_API_KEYS=[\"sk-or-v1-key1\", \"sk-or-v1-key2\"]\n\n# 未配置的 Provider 不产生任何 slot，不影响运行\n# 新增 key 后重启即生效" },
           { type: "p", text: "GitHub Actions 部署时通过 Secrets 自动同步 key 到服务器，无需手动 SSH。" },
 
           { type: "h1", text: "九、健康检查" },
@@ -1902,7 +1902,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "Part 8 — Deployment configuration" },
           { type: "p", text: "Adding a new provider requires only an environment variable — SmartRouter auto-discovers it:" },
-          { type: "code", text: "# backend/.env — each value is a JSON array, supports multi-key stacking\nGROQ_API_KEYS=[\"gsk_key1\", \"gsk_key2\"]\nCEREBRAS_API_KEYS=[\"csk_key1\", \"csk_key2\"]\nSAMBANOVA_API_KEYS=[\"sk_key1\", \"sk_key2\"]\nGEMINI_API_KEYS=[\"AIza_key1\"]\nNVIDIA_NIM_API_KEYS=[\"nvapi_key1\"]\nOPENROUTER_API_KEYS=[\"sk-or-v1-key1\", \"sk-or-v1-key2\"]\n\n# Unconfigured providers produce zero slots, no impact on operation\n# Restart after adding keys to take effect" },
+          { type: "code", text: "# backend/.env — each value is a JSON array, supports multi-key stacking\nGROQ_API_KEYS=[\"gsk_key1\", \"gsk_key2\"]\nCEREBRAS_API_KEYS=[\"csk_key1\", \"csk_key2\"]\nSAMBANOVA_API_KEYS=[\"sk_key1\", \"sk_key2\"]\nGEMINI_API_KEYS=[\"AIza_key1\"]\nOPENROUTER_API_KEYS=[\"sk-or-v1-key1\", \"sk-or-v1-key2\"]\n\n# Unconfigured providers produce zero slots, no impact on operation\n# Restart after adding keys to take effect" },
           { type: "p", text: "GitHub Actions deployment automatically syncs keys to the server via Secrets — no manual SSH needed." },
 
           { type: "h1", text: "Part 9 — Health check" },

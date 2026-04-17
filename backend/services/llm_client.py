@@ -5,7 +5,7 @@ SmartRouter — Multi-provider intelligent routing with usage tracking,
 proactive selection, and soonest-recovery fallback.
 
 Provider 支持 / Provider support:
-  Groq, Cerebras, SambaNova, Gemini, NVIDIA NIM, OpenRouter — 全部免费 tier 叠加
+  Groq, Cerebras, SambaNova, Gemini, OpenRouter — 全部免费 tier 叠加
   All free tiers stacked together.
 
 模型分组 / Model groups:
@@ -22,7 +22,9 @@ import time
 import random
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, date
 from typing import AsyncGenerator
+from zoneinfo import ZoneInfo
 
 import litellm
 from dotenv import load_dotenv
@@ -58,7 +60,6 @@ GROQ_API_KEYS: list[str] = _load_groq_keys()
 CEREBRAS_API_KEYS: list[str] = _load_keys("CEREBRAS_API_KEYS")
 SAMBANOVA_API_KEYS: list[str] = _load_keys("SAMBANOVA_API_KEYS")
 GEMINI_API_KEYS: list[str] = _load_keys("GEMINI_API_KEYS")
-NVIDIA_NIM_API_KEYS: list[str] = _load_keys("NVIDIA_NIM_API_KEYS")
 OPENROUTER_API_KEYS: list[str] = _load_keys("OPENROUTER_API_KEYS")
 
 
@@ -69,13 +70,16 @@ OPENROUTER_API_KEYS: list[str] = _load_keys("OPENROUTER_API_KEYS")
 @dataclass
 class ModelSpec:
     """一个模型的规格定义 / Specification for a single model."""
-    provider: str        # "groq", "cerebras", "sambanova", "gemini", "nvidia_nim", "openrouter"
+    provider: str        # "groq", "cerebras", "sambanova", "gemini", "openrouter"
     model_id: str        # provider 内模型名
     rpm: int = 30        # 每分钟请求数 / requests per minute
     tpm: int = 6000      # 每分钟 token 数 / tokens per minute
     rpd: int = 1000      # 每天请求数 / requests per day
     tpd: int = 500_000   # 每天 token 数 / tokens per day
     groups: list[str] = field(default_factory=list)  # 所属分组
+    # 日限额重置时区（00:00 为界）/ Timezone whose 00:00 boundary resets daily counters.
+    # Groq / Cerebras / SambaNova / OpenRouter → "UTC"；Gemini → "America/Los_Angeles"
+    reset_tz: str = "UTC"
 
 # Groq 模型（免费 tier：30 RPM, 6K TPM, 14.4K RPD）
 # kimi-k2-instruct-0905 于 2026-04-15 下线；gpt-oss-20b 为推理模型做 summarizer 会浪费 TPM
@@ -103,21 +107,11 @@ SAMBANOVA_MODELS = [
 
 # Gemini 模型（免费 tier：10-15 RPM, 250K TPM, 1K RPD）
 # gemini-2.5-flash 原生多模态，加入 vision 分组
+# 注意：Gemini 日限额按 Pacific Time 00:00 重置，不是 UTC
+# Note: Gemini daily quotas reset at Pacific Time 00:00, not UTC.
 GEMINI_MODELS = [
-    ModelSpec("gemini", "gemini-2.5-flash",      rpm=10, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "merge", "vision"]),
-    ModelSpec("gemini", "gemini-2.5-flash-lite",  rpm=15, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "summarizer"]),
-]
-
-# NVIDIA NIM 模型（免费 tier：40 RPM，TPM 未公开，保守估计 10K）
-# 10K TPM 不适合 merge（一次调用就打满分钟额度），故移除 merge 分组
-# gemma-3-27b-it 原生多模态，加入 vision 分组
-# nemotron-nano-8b-v1 为推理模型，做 summarizer 浪费 TPM，已移除
-NVIDIA_NIM_MODELS = [
-    ModelSpec("nvidia_nim", "meta/llama-3.3-70b-instruct",                rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
-    ModelSpec("nvidia_nim", "meta/llama-4-maverick-17b-128e-instruct",    rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
-    ModelSpec("nvidia_nim", "nvidia/llama-3.3-nemotron-super-49b-v1",     rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
-    ModelSpec("nvidia_nim", "google/gemma-3-27b-it",                      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "vision"]),
-    ModelSpec("nvidia_nim", "meta/llama-3.1-8b-instruct",                 rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["summarizer"]),
+    ModelSpec("gemini", "gemini-2.5-flash",      rpm=10, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "merge", "vision"], reset_tz="America/Los_Angeles"),
+    ModelSpec("gemini", "gemini-2.5-flash-lite",  rpm=15, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "summarizer"],       reset_tz="America/Los_Angeles"),
 ]
 
 # OpenRouter 免费模型（20 RPM, 200 RPD，买 $10 credit 可升到 1000 RPD）
@@ -130,7 +124,7 @@ OPENROUTER_MODELS = [
     ModelSpec("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free",    rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
 ]
 
-ALL_MODELS = GROQ_MODELS + CEREBRAS_MODELS + SAMBANOVA_MODELS + GEMINI_MODELS + NVIDIA_NIM_MODELS + OPENROUTER_MODELS
+ALL_MODELS = GROQ_MODELS + CEREBRAS_MODELS + SAMBANOVA_MODELS + GEMINI_MODELS + OPENROUTER_MODELS
 
 # 兼容旧代码 / Backward compatibility
 CHAT_MODELS = [m.model_id for m in ALL_MODELS if "chat" in m.groups]
@@ -154,21 +148,28 @@ class UsageBucket:
     """
     时间窗口用量桶：按分钟追踪 RPM/TPM，按天追踪 RPD/TPD。
     Time-windowed usage bucket: tracks RPM/TPM per minute, RPD/TPD per day.
+
+    分钟窗口为滚动 60s（与 provider 端一致）；日窗口按 spec.reset_tz 的自然日边界，
+    跨日时归零 —— 对齐 provider 真实的 00:00 重置时点而不是进程启动后的 86400s 漂移。
+    Minute window is a rolling 60s (matches provider-side behavior);
+    day window is aligned to the natural date boundary in spec.reset_tz,
+    so it zeroes at provider's actual 00:00 reset, not 86400s from process start.
     """
     __slots__ = (
         "rpm_used", "tpm_used", "rpd_used", "tpd_used",
-        "_minute_ts", "_day_ts",
+        "_minute_ts", "_day_date", "_spec",
         "_last_fail_ts", "_fail_count",
     )
 
-    def __init__(self):
+    def __init__(self, spec: ModelSpec):
         now = time.monotonic()
+        self._spec = spec
         self.rpm_used = 0
         self.tpm_used = 0
         self.rpd_used = 0
         self.tpd_used = 0
         self._minute_ts = now
-        self._day_ts = now
+        self._day_date: date = datetime.now(ZoneInfo(spec.reset_tz)).date()
         self._last_fail_ts = 0.0
         self._fail_count = 0
 
@@ -179,10 +180,13 @@ class UsageBucket:
             self.rpm_used = 0
             self.tpm_used = 0
             self._minute_ts = now
-        if now - self._day_ts >= 86400:
+        # 日窗口：provider 对应时区跨日 → 归零
+        # Day window: zero out when provider's timezone has rolled to a new date.
+        today = datetime.now(ZoneInfo(self._spec.reset_tz)).date()
+        if today != self._day_date:
             self.rpd_used = 0
             self.tpd_used = 0
-            self._day_ts = now
+            self._day_date = today
 
     def record_request(self, tokens: int = 0):
         """记录一次请求 / Record a request."""
@@ -230,6 +234,9 @@ class UsageBucket:
         """
         预估恢复可用的最短等待时间（秒）。
         Estimate shortest wait until this slot becomes available again (seconds).
+
+        日维度的恢复时间 = 距 spec.reset_tz 下一个 00:00 的秒数。
+        Daily recovery = seconds until next 00:00 in spec.reset_tz.
         """
         self._maybe_reset()
         waits = []
@@ -238,7 +245,11 @@ class UsageBucket:
         if self.tpm_used >= spec.tpm:
             waits.append(60 - (time.monotonic() - self._minute_ts))
         if self.rpd_used >= spec.rpd:
-            waits.append(86400 - (time.monotonic() - self._day_ts))
+            now_tz = datetime.now(ZoneInfo(spec.reset_tz))
+            next_midnight = (now_tz + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            waits.append((next_midnight - now_tz).total_seconds())
         return max(0, min(waits)) if waits else 0
 
 
@@ -251,7 +262,12 @@ class UsageBucket:
 class Slot:
     spec: ModelSpec
     api_key: str
-    usage: UsageBucket = field(default_factory=UsageBucket)
+    usage: UsageBucket = field(init=False)
+
+    def __post_init__(self):
+        # UsageBucket 需要绑定 spec 以读取 reset_tz
+        # UsageBucket needs the spec to know its reset timezone.
+        self.usage = UsageBucket(self.spec)
 
     @property
     def litellm_model(self) -> str:
@@ -443,7 +459,6 @@ def _build_router() -> SmartRouter:
         "cerebras": CEREBRAS_API_KEYS,
         "sambanova": SAMBANOVA_API_KEYS,
         "gemini": GEMINI_API_KEYS,
-        "nvidia_nim": NVIDIA_NIM_API_KEYS,
         "openrouter": OPENROUTER_API_KEYS,
     }
     return SmartRouter(ALL_MODELS, keys_by_provider)
