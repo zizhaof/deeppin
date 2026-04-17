@@ -173,6 +173,172 @@ async def health_providers():
     )
 
 
+# ─── /health/providers/keys：零 quota 的 key + 模型清单校验 ──────────────
+# Zero-quota key + model-catalog validation via each provider's GET /v1/models.
+# 不消耗任何 LLM quota：只校验 key 是否合法 + 配置里声明的 model_id 是否仍在 provider 清单里。
+# Does not consume LLM quota; validates key legitimacy and that configured model_ids still exist upstream.
+
+# Provider -> (models_list_url, auth_style)
+#   auth_style: "bearer" → Authorization: Bearer <key>
+#               "query"  → ?key=<key>（Gemini）
+_MODELS_ENDPOINTS: dict[str, tuple[str, str]] = {
+    "groq":       ("https://api.groq.com/openai/v1/models",           "bearer"),
+    "cerebras":   ("https://api.cerebras.ai/v1/models",               "bearer"),
+    "sambanova":  ("https://api.sambanova.ai/v1/models",              "bearer"),
+    "nvidia_nim": ("https://integrate.api.nvidia.com/v1/models",      "bearer"),
+    "openrouter": ("https://openrouter.ai/api/v1/models",             "bearer"),
+    "gemini":     ("https://generativelanguage.googleapis.com/v1beta/models", "query"),
+}
+
+
+def _extract_model_ids(provider: str, payload: dict) -> set[str]:
+    """
+    从各 provider 的 /models 响应提取模型 id 集合。
+    Extract the set of model IDs from each provider's /models response.
+    """
+    if provider == "gemini":
+        # {"models": [{"name": "models/gemini-2.5-flash", ...}, ...]}
+        out = set()
+        for m in payload.get("models", []):
+            name = m.get("name", "")
+            out.add(name.removeprefix("models/"))
+        return out
+    # OpenAI 兼容：{"data": [{"id": "..."}, ...]}
+    return {m["id"] for m in payload.get("data", []) if m.get("id")}
+
+
+async def _check_key_and_catalog(
+    provider: str,
+    api_key: str,
+    configured_model_ids: set[str],
+) -> dict:
+    """
+    对单个 (provider, key) 拉 /models：验证 key 合法 + 比对配置的模型是否仍挂在清单上。
+    For a single (provider, key), fetch /models: validate key + diff configured models vs. upstream catalog.
+    """
+    endpoint = _MODELS_ENDPOINTS.get(provider)
+    if endpoint is None:
+        return {
+            "provider": provider,
+            "key": api_key[:8] + "...",
+            "ok": False,
+            "error": f"no /models endpoint configured for provider {provider}",
+        }
+
+    url, auth_style = endpoint
+    params: dict | None = None
+    headers: dict = {}
+    if auth_style == "bearer":
+        headers["Authorization"] = f"Bearer {api_key}"
+    else:  # query
+        params = {"key": api_key}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except Exception as e:
+        return {
+            "provider": provider,
+            "key": api_key[:8] + "...",
+            "ok": False,
+            "key_valid": False,
+            "error": f"request failed: {e}",
+        }
+
+    if r.status_code in (401, 403):
+        return {
+            "provider": provider,
+            "key": api_key[:8] + "...",
+            "ok": False,
+            "key_valid": False,
+            "status_code": r.status_code,
+            "error": f"key rejected: {r.text[:200]}",
+        }
+    if r.status_code != 200:
+        return {
+            "provider": provider,
+            "key": api_key[:8] + "...",
+            "ok": False,
+            "key_valid": None,  # 不确定 / unknown
+            "status_code": r.status_code,
+            "error": f"unexpected status: {r.text[:200]}",
+        }
+
+    try:
+        available = _extract_model_ids(provider, r.json())
+    except Exception as e:
+        return {
+            "provider": provider,
+            "key": api_key[:8] + "...",
+            "ok": False,
+            "key_valid": True,
+            "error": f"failed to parse /models response: {e}",
+        }
+
+    missing = sorted(configured_model_ids - available)
+    return {
+        "provider": provider,
+        "key": api_key[:8] + "...",
+        "ok": not missing,
+        "key_valid": True,
+        "configured": sorted(configured_model_ids),
+        "missing_models": missing,          # 配置里有但 provider 不再暴露 / configured but no longer upstream
+        "available_count": len(available),
+    }
+
+
+@router.get("/health/providers/keys")
+async def health_providers_keys():
+    """
+    零 quota key 合法性 + 模型清单校验。
+    Zero-quota key validity + model-catalog drift check.
+
+    每个 (provider, key) 拉一次 /v1/models（OpenAI 兼容）或等价端点（Gemini）：
+      - 401/403 → key 失效 / key rejected
+      - 200 → 比对配置里的 model_id 是否都还在 provider 返回的清单里
+    For each (provider, key), fetch /models once and diff configured model_ids against the catalog.
+
+    Quota 消耗：0 / Quota cost: zero.
+
+    返回 / Returns:
+      { "total": N, "ok": M, "failed": K, "results": [...] }
+    """
+    from services.llm_client import router as smart_router, ALL_MODELS
+
+    # 每 provider 声明的 model_id 集合
+    configured_by_provider: dict[str, set[str]] = {}
+    for spec in ALL_MODELS:
+        configured_by_provider.setdefault(spec.provider, set()).add(spec.model_id)
+
+    # 按 (provider, key) 去重
+    seen: set[tuple[str, str]] = set()
+    pairs: list[tuple[str, str]] = []
+    for slot in smart_router.slots:
+        pair = (slot.spec.provider, slot.api_key)
+        if pair not in seen:
+            seen.add(pair)
+            pairs.append(pair)
+
+    results = await asyncio.gather(*[
+        _check_key_and_catalog(p, k, configured_by_provider.get(p, set()))
+        for p, k in pairs
+    ])
+
+    ok_count = sum(1 for r in results if r["ok"])
+    failed_count = len(results) - ok_count
+
+    body = {
+        "total": len(results),
+        "ok": ok_count,
+        "failed": failed_count,
+        "results": results,
+    }
+    return JSONResponse(
+        content=body,
+        status_code=200 if failed_count == 0 else 503,
+    )
+
+
 @router.get("/health/providers/full")
 async def health_providers_full():
     """

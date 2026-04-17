@@ -207,22 +207,23 @@ class TestSession:
 
 class TestProviders:
     """
-    验证每个 provider 至少有一个 key 可用 — 无需认证。
-    Verify every provider has at least one functioning key — no auth required.
+    零 quota provider 校验 — 无需认证。
+    Zero-quota provider validation — no auth required.
 
-    单 key 偶发 429/limit 不视为失败（只要同 provider 的其他 key 通过）；
-    整个 provider 全部 key 失败才算硬失败。每个 slot 细粒度检查由 daily-provider-check 负责。
-    A single-key 429/transient hiccup is not a failure as long as another key for the same
-    provider succeeds. Only when every key of a provider fails do we hard-fail.
-    Per-slot drift detection belongs to the daily-provider-check workflow.
+    通过 provider 的 /v1/models 端点校验：
+      - 每个 key 合法（非 401/403）
+      - 配置里声明的 model_id 仍挂在 provider 的模型清单上（无 drift）
+    真实推理验证由 daily-provider-check workflow 每日跑一次，不放这里。
+
+    Validates via each provider's /v1/models endpoint that keys are legitimate and
+    configured model_ids still appear in the upstream catalog. Actual inference
+    testing lives in the daily-provider-check workflow.
     """
 
-    # 免费额度特别紧、会周期性 RPD 爆的 provider；即便全部 key 失败也只警告，不挂 CI
-    # Providers with tight free quotas that exhaust periodically; warn-only even if all keys fail.
-    FLAKY_PROVIDERS = {"gemini"}
-
-    def test_all_providers_reachable(self):
-        r = httpx.get(f"{BASE_URL}/health/providers", timeout=60)
+    def test_keys_and_model_catalog(self):
+        """每个 (provider, key) 的 key 合法 + 配置的模型仍在清单上。
+        Every (provider, key) has a valid key AND all configured models are in its catalog."""
+        r = httpx.get(f"{BASE_URL}/health/providers/keys", timeout=30)
         assert r.status_code in (200, 503), f"Unexpected status: {r.status_code}"
         data = r.json()
 
@@ -230,33 +231,24 @@ class TestProviders:
 
         # 打印每个结果方便 CI 调试 / Print each result for CI debugging
         for result in data["results"]:
-            status = "OK" if result["ok"] else f"FAIL: {result.get('error', 'unknown')}"
-            print(f"  {result['provider']}/{result['model']} [{result['key']}] → {status}")
+            if result["ok"]:
+                print(f"  {result['provider']} [{result['key']}] → OK "
+                      f"(catalog has {result.get('available_count', '?')} models)")
+            elif result.get("missing_models"):
+                print(f"  {result['provider']} [{result['key']}] → DRIFT: "
+                      f"missing {result['missing_models']}")
+            else:
+                print(f"  {result['provider']} [{result['key']}] → FAIL: "
+                      f"{result.get('error', 'unknown')}")
 
-        # 按 provider 聚合：每个 provider 至少一个 key ok 即算通过
-        # Aggregate by provider: provider passes if at least one of its keys is ok
-        by_provider: dict[str, list[dict]] = {}
-        for r in data["results"]:
-            by_provider.setdefault(r["provider"], []).append(r)
-
-        dead_providers = []   # 硬失败 / hard fail
-        flaky_dead = []       # 仅警告 / warn-only
-        for provider, results in by_provider.items():
-            if any(r["ok"] for r in results):
-                continue
-            (flaky_dead if provider in self.FLAKY_PROVIDERS else dead_providers).append(provider)
-
-        if flaky_dead:
-            print(f"\nWARNING: flaky providers with all keys failing (tolerated): {flaky_dead}")
-
-        assert not dead_providers, (
-            f"Providers with ALL keys failing: {dead_providers}. Details: "
+        failures = [r for r in data["results"] if not r["ok"]]
+        assert not failures, (
+            f"{len(failures)}/{data['total']} (provider, key) pairs failed key/catalog check: "
             + "; ".join(
-                f"{p}: " + ", ".join(
-                    f"{r['model']}[{r['key']}]={r.get('error', '?')[:80]}"
-                    for r in by_provider[p]
-                )
-                for p in dead_providers
+                f"{r['provider']}[{r['key']}]: "
+                + (f"missing={r['missing_models']}" if r.get("missing_models")
+                   else r.get("error", "?"))
+                for r in failures
             )
         )
 
