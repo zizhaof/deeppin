@@ -408,8 +408,8 @@ Oracle Free Tier 配置：
 | workflow | 触发 | 动作 |
 |---|---|---|
 | `test-backend.yml` | PR 到 main / 非 main 分支 push（`backend/**`） | 跑 `pytest tests/ --ignore=tests/integration` |
-| `deploy-backend.yml` | push 到 main（`backend/**` / compose / nginx / scripts） | 单测 → prod 部署 → smoke test → 集成测试 |
-| `deploy-staging.yml` | `workflow_dispatch`（手动或 bot） | 单测 → 部指定分支到 staging（覆盖上一个） |
+| `deploy-backend.yml` | push 到 main（`backend/**` / compose / nginx / scripts / **workflow 自身**） | 单测 → prod 部署 → smoke test → 集成测试 |
+| `deploy-staging.yml` | `workflow_dispatch`（手动或 bot） | 单测 → 部指定分支到 staging（覆盖上一个）→ 集成测试 |
 
 ### Staging 架构
 
@@ -439,11 +439,6 @@ Oracle 同一台：
 
 **实务影响**：同一时间只能在 staging 验一个分支。多人协作时要先约好谁占着 staging；单人开发不是问题。
 
-### 已知 CI 缺口
-
-- **`deploy-staging.yml` 没跑 integration test**：只 unit-test + deploy 两段，没有像 prod 那样部完真打一遍 `tests/integration/`。意味着 staging 的"绿"只代表服务起得来 + 单测过，不代表真实端到端没回归。补的话照搬 `deploy-backend.yml` 的 integration-test job，把 `TEST_BASE_URL` 换成 `https://staging-deeppin.duckdns.org`。
-- **改 `.github/workflows/**` 不会触发 `deploy-backend.yml`**：paths filter 没含 workflow 文件本身。修 deploy 配置后必须再随便改一个 `backend/**` 文件才会触发同步。或把 `.github/workflows/deploy-backend.yml` 加进 paths。
-
 ### Docker compose env 重载坑
 
 `docker compose restart <svc>` **不重读** `env_file`。env vars 在容器 *create* 时被烘进去，restart 只是 SIGTERM/SIGKILL 重跑 entrypoint，沿用旧 env。改 `.env` 后要让新值生效得用 `docker compose up -d --force-recreate <svc>`。
@@ -471,7 +466,6 @@ docker compose -p deeppin-staging --env-file compose.staging.env \
 3. 把 GitHub PAT（有 `repo` + `workflow` 权限）写到 claude-telegram bot 的 `.env`：`GITHUB_TOKEN=ghp_...`
 4. 首次 `gh workflow run deploy-staging.yml -r main` 拉起 staging 环境
 
-### 旧 deploy-backend.yml 省略，详见文件内容（单测 → prod → smoke → 集成测试）
 
 ---
 

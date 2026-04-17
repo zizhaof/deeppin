@@ -1585,8 +1585,8 @@ export const articles: Article[] = [
     },
     date: "2026-04-15",
     summary: {
-      zh: "Deeppin 完全建立在免费服务上：六家 LLM Provider（Groq + Cerebras + SambaNova + Gemini + NVIDIA NIM + OpenRouter，SmartRouter 叠加）、Oracle ARM、Supabase、Vercel。逐一分析每个环节的实际上限，找出当前瓶颈，以及理论上如何突破每一个瓶颈。",
-      en: "Deeppin runs entirely on free tiers: 6 LLM providers (Groq + Cerebras + SambaNova + Gemini + NVIDIA NIM + OpenRouter, stacked via SmartRouter), Oracle ARM, Supabase, Vercel. A component-by-component analysis of actual capacity limits, the current bottleneck, and the theoretical path to break through each one.",
+      zh: "Deeppin 完全建立在免费服务上：五家 LLM Provider（Groq + Cerebras + SambaNova + Gemini + OpenRouter，SmartRouter 叠加）、Oracle ARM、Supabase、Vercel。逐一分析每个环节的实际上限，找出当前瓶颈，以及理论上如何突破每一个瓶颈。",
+      en: "Deeppin runs entirely on free tiers: 5 LLM providers (Groq + Cerebras + SambaNova + Gemini + OpenRouter, stacked via SmartRouter), Oracle ARM, Supabase, Vercel. A component-by-component analysis of actual capacity limits, the current bottleneck, and the theoretical path to break through each one.",
     },
     tags: ["capacity", "cost-optimization", "architecture"],
     content: {
@@ -1595,17 +1595,17 @@ export const articles: Article[] = [
         body: [
           { type: "p", text: "Deeppin 的基础设施完全是免费的：Groq 免费 tier、Oracle Cloud Free Tier（ARM 实例）、Supabase 免费 tier、Vercel Hobby。零成本运营一个 AI 应用——但这套系统的极限在哪里？" },
 
-          { type: "h1", text: "一、LLM API（六家 Provider）——容量已充裕，瓶颈维度翻转" },
-          { type: "p", text: "SmartRouter 叠加了 6 家免费 Provider（Groq、Cerebras、SambaNova、Gemini、NVIDIA NIM、OpenRouter），生产配置 10 keys × 20 模型 = 33 slots：" },
+          { type: "h1", text: "一、LLM API（五家 Provider）——容量已充裕，瓶颈维度翻转" },
+          { type: "p", text: "SmartRouter 叠加了 5 家免费 Provider（Groq、Cerebras、SambaNova、Gemini、OpenRouter），生产配置 10 keys、共 33 slots（3 Groq×5 + 2 Cerebras×2 + 2 SambaNova×2 + 1 Gemini×2 + 2 OpenRouter×4）：" },
           { type: "ul", items: [
-            "全局峰值 TPM：1.38M（≈ 23,000 tok/s sustained，相当于 8×H100 DGX 满载）",
-            "全局每日 RPD 上限：约 243,000 次请求（六家累加）",
-            "全局每日 token 额度：237M tokens/day",
-            "按每条消息 ~2.5K tokens 算，可支撑约 95,000 条消息/天",
-            "每日可完整对话：9,500-19,000 个（假设每对话 5-10 轮）",
-            "折算 DAU：约 6,000-12,000 个活跃用户（假设每人每天 6 轮对话）",
+            "全局峰值 TPM：~1.34M（≈ 22,000 tok/s sustained，相当于 8×H100 DGX 满载）",
+            "全局每日 RPD 上限：约 240,000 次请求（五家累加）",
+            "全局每日 token 额度：~210M tokens/day",
+            "按每条消息 ~2.5K tokens 算，可支撑约 84,000 条消息/天",
+            "每日可完整对话：8,400-16,800 个（假设每对话 5-10 轮）",
+            "折算 DAU：约 5,000-10,000 个活跃用户（假设每人每天 6 轮对话）",
           ]},
-          { type: "p", text: "六家叠加后比之前的 4 家方案再翻一倍，比单 Groq 时代提升 20 倍以上。瓶颈维度也从 TPM 紧（单模型 6K）翻转到 RPD 紧——OpenRouter 单 key 仅 200 RPD/模型（4 模型 ×200 = 800 RPD/key），Gemini 和 SambaNova 单模型也只有 1K RPD。" },
+          { type: "p", text: "五家叠加比单 Groq 时代提升约 15 倍以上。瓶颈维度也从 TPM 紧（单模型 6K）翻转到 RPD 紧——OpenRouter 单 key 仅 200 RPD/模型（4 模型 ×200 = 800 RPD/key），Gemini 和 SambaNova 单模型也只有 1K RPD。" },
           { type: "note", text: "优化路径：第一优先是给 Gemini 加第二个 key——单 key 即贡献 36% 的 TPM，加第二个 key 立刻把全局峰值推到 1.88M TPM；第二优先是 Groq/Cerebras 多账号扩 RPD（线性扩展，零成本）；最终形态可启用本地推理（Ollama + 量化）做极端兜底。" },
 
           { type: "h1", text: "二、计算层（Oracle ARM）——过剩" },
@@ -1658,8 +1658,8 @@ export const articles: Article[] = [
           { type: "note", text: "优化路径：Vercel 的静态资源有全球 CDN，基本不需要优化。如果后端 API 也搬到 Vercel，利用 Vercel Functions 的冷启动优化（Fluid Compute）。" },
 
           { type: "h1", text: "六、综合能力分析" },
-          { type: "code", text: `组件                  免费上限                  当前利用率    瓶颈?\nLLM API (6 Provider)  ~6000-12000 DAU           低            ★★  RPD 紧\nSupabase DB           ~7500 注册用户            低            ★★★ 存储紧\nOracle ARM (CPU)      ~2-3个并发上传            极低          ★   上传时\nOracle ARM (mem)      ~6000 并发连接            极低          ·   过剩\nVercel                ~100K 页面加载/月         极低          ·   过剩` },
-          { type: "p", text: "当前阶段（早期用户验证），这套系统完全够用。SmartRouter 将六家 Provider 的额度叠加后，LLM 瓶颈从单 Provider 的 300 DAU 提升到了 6000+ DAU——已经不再是最紧的环节，反而 Supabase 500MB 存储成了下一个上限（约 7500 注册用户）。" },
+          { type: "code", text: `组件                  免费上限                  当前利用率    瓶颈?\nLLM API (5 Provider)  ~5000-10000 DAU           低            ★★  RPD 紧\nSupabase DB           ~7500 注册用户            低            ★★★ 存储紧\nOracle ARM (CPU)      ~2-3个并发上传            极低          ★   上传时\nOracle ARM (mem)      ~6000 并发连接            极低          ·   过剩\nVercel                ~100K 页面加载/月         极低          ·   过剩` },
+          { type: "p", text: "当前阶段（早期用户验证），这套系统完全够用。SmartRouter 将五家 Provider 的额度叠加后，LLM 瓶颈从单 Provider 的 300 DAU 提升到了 5000+ DAU——已经不再是最紧的环节，反而 Supabase 500MB 存储成了下一个上限（约 7500 注册用户）。" },
 
           { type: "h1", text: "七、瓶颈突破优先级" },
           { type: "ul", items: [
@@ -1678,17 +1678,17 @@ export const articles: Article[] = [
         body: [
           { type: "p", text: "Deeppin's infrastructure is entirely free: Groq free tier, Oracle Cloud Free Tier (ARM instance), Supabase free tier, Vercel Hobby. Zero cost to run an AI application — but where are the limits?" },
 
-          { type: "h1", text: "Part 1 — LLM API (six providers) — capacity now ample, bottleneck dimension flipped" },
-          { type: "p", text: "SmartRouter stacks 6 free providers (Groq, Cerebras, SambaNova, Gemini, NVIDIA NIM, OpenRouter). Production config: 10 keys × 20 models = 33 slots:" },
+          { type: "h1", text: "Part 1 — LLM API (five providers) — capacity now ample, bottleneck dimension flipped" },
+          { type: "p", text: "SmartRouter stacks 5 free providers (Groq, Cerebras, SambaNova, Gemini, OpenRouter). Production config: 10 keys, 33 slots total (3 Groq×5 + 2 Cerebras×2 + 2 SambaNova×2 + 1 Gemini×2 + 2 OpenRouter×4):" },
           { type: "ul", items: [
-            "Global peak TPM: 1.38M (≈ 23,000 tok/s sustained, equivalent to a fully loaded 8×H100 DGX)",
-            "Global daily RPD ceiling: ~243,000 requests (six providers combined)",
-            "Global daily token quota: 237M tokens/day",
-            "At ~2.5K tokens per message, supports ~95,000 messages/day",
-            "Complete conversations per day: 9,500–19,000 (assuming 5–10 turns each)",
-            "Equivalent DAU: ~6,000–12,000 active users (6 turns/user/day)",
+            "Global peak TPM: ~1.34M (≈ 22,000 tok/s sustained, equivalent to a fully loaded 8×H100 DGX)",
+            "Global daily RPD ceiling: ~240,000 requests (five providers combined)",
+            "Global daily token quota: ~210M tokens/day",
+            "At ~2.5K tokens per message, supports ~84,000 messages/day",
+            "Complete conversations per day: 8,400–16,800 (assuming 5–10 turns each)",
+            "Equivalent DAU: ~5,000–10,000 active users (6 turns/user/day)",
           ]},
-          { type: "p", text: "Six-provider stacking doubles the capacity over the previous 4-provider setup, and is 20x+ over the original Groq-only era. The bottleneck dimension also flips from TPM-tight (6K per model) to RPD-tight — OpenRouter is only 200 RPD per model per key (4 models × 200 = 800 RPD/key), and Gemini and SambaNova are 1K RPD per model." },
+          { type: "p", text: "Five-provider stacking is roughly 15x+ over the original Groq-only era. The bottleneck dimension also flips from TPM-tight (6K per model) to RPD-tight — OpenRouter is only 200 RPD per model per key (4 models × 200 = 800 RPD/key), and Gemini and SambaNova are 1K RPD per model." },
           { type: "note", text: "Optimization path: top priority is adding a second Gemini key — a single key already contributes 36% of TPM, so doubling pushes global peak to 1.88M TPM. Second priority is more Groq/Cerebras accounts to expand RPD (linear, zero cost). End state: enable local inference (Ollama + quantized) as extreme fallback." },
 
           { type: "h1", text: "Part 2 — Compute (Oracle ARM) — surplus" },
@@ -1740,8 +1740,8 @@ export const articles: Article[] = [
           { type: "note", text: "Optimization: Vercel's static assets have global CDN, minimal optimization needed. If the backend API moves to Vercel, leverage Fluid Compute for cold-start optimization." },
 
           { type: "h1", text: "Part 6 — Combined capacity summary" },
-          { type: "code", text: `Component              Free Limit                Utilization   Bottleneck?\nLLM API (6 Providers)  ~6,000-12,000 DAU         Low           ★★  RPD-tight\nSupabase DB            ~7,500 registered         Low           ★★★ Storage-tight\nOracle ARM (CPU)       ~2-3 concurrent uploads   Very low      ★   On upload\nOracle ARM (memory)    ~6,000 connections        Very low      ·   Surplus\nVercel                 ~100K page loads/mo       Very low      ·   Surplus` },
-          { type: "p", text: "At the current stage (early user validation), this stack is entirely sufficient. SmartRouter's six-provider stacking raised the LLM bottleneck from 300 DAU (single provider) to 6,000+ DAU — LLM is no longer the tightest link. Supabase's 500MB storage cap (~7,500 registered users) is now the next bound." },
+          { type: "code", text: `Component              Free Limit                Utilization   Bottleneck?\nLLM API (5 Providers)  ~5,000-10,000 DAU         Low           ★★  RPD-tight\nSupabase DB            ~7,500 registered         Low           ★★★ Storage-tight\nOracle ARM (CPU)       ~2-3 concurrent uploads   Very low      ★   On upload\nOracle ARM (memory)    ~6,000 connections        Very low      ·   Surplus\nVercel                 ~100K page loads/mo       Very low      ·   Surplus` },
+          { type: "p", text: "At the current stage (early user validation), this stack is entirely sufficient. SmartRouter's five-provider stacking raised the LLM bottleneck from 300 DAU (single provider) to 5,000+ DAU — LLM is no longer the tightest link. Supabase's 500MB storage cap (~7,500 registered users) is now the next bound." },
 
           { type: "h1", text: "Part 7 — Bottleneck breakthrough priority" },
           { type: "ul", items: [
@@ -1766,8 +1766,8 @@ export const articles: Article[] = [
     },
     date: "2026-04-16",
     summary: {
-      zh: "Deeppin 的 SmartRouter 将 Groq、Cerebras、SambaNova、Gemini、NVIDIA NIM、OpenRouter 六家免费 LLM Provider 共 20 个模型的额度叠加在一起，通过实时用量追踪和主动评分选择最优的 (provider, model, key) 组合，在 429 发生之前就避开即将耗尽的 slot。",
-      en: "Deeppin's SmartRouter stacks free-tier quotas from 6 providers (Groq, Cerebras, SambaNova, Gemini, NVIDIA NIM, OpenRouter) across 20 models. Real-time usage tracking and proactive scoring select the best (provider, model, key) slot before 429 errors occur.",
+      zh: "Deeppin 的 SmartRouter 将 Groq、Cerebras、SambaNova、Gemini、OpenRouter 五家免费 LLM Provider 共 15 个模型的额度叠加在一起，通过实时用量追踪和主动评分选择最优的 (provider, model, key) 组合，在 429 发生之前就避开即将耗尽的 slot。",
+      en: "Deeppin's SmartRouter stacks free-tier quotas from 5 providers (Groq, Cerebras, SambaNova, Gemini, OpenRouter) across 15 models. Real-time usage tracking and proactive scoring select the best (provider, model, key) slot before 429 errors occur.",
     },
     tags: ["SmartRouter", "multi-provider", "cost-optimization"],
     content: {
@@ -1781,13 +1781,13 @@ export const articles: Article[] = [
 
           { type: "h1", text: "二、数据结构" },
           { type: "p", text: "SmartRouter 的核心有三层数据结构：" },
-          { type: "code", text: "ModelSpec — 模型规格（静态配置）\n  provider: \"groq\" | \"cerebras\" | \"sambanova\" | \"gemini\" | \"nvidia_nim\" | \"openrouter\"\n  model_id: \"llama-3.3-70b-versatile\"\n  rpm / tpm / rpd / tpd: 速率限制\n  groups: [\"chat\", \"merge\"]  ← 属于哪些分组\n\nSlot = ModelSpec + API Key + UsageBucket\n  一个 slot 是路由的最小单位\n  例：(groq/llama-3.3-70b, gsk_key1, 用量桶)\n  例：(groq/llama-3.3-70b, gsk_key2, 用量桶)  ← 同模型不同 key = 不同 slot\n\nUsageBucket — 用量追踪（每个 slot 独立）\n  rpm_used / tpm_used → 每 60 秒自动清零\n  rpd_used / tpd_used → 每 24 小时自动清零\n  fail_count / last_fail_ts → 失败惩罚" },
+          { type: "code", text: "ModelSpec — 模型规格（静态配置）\n  provider: \"groq\" | \"cerebras\" | \"sambanova\" | \"gemini\" | \"openrouter\"\n  model_id: \"llama-3.3-70b-versatile\"\n  rpm / tpm / rpd / tpd: 速率限制\n  groups: [\"chat\", \"merge\"]  ← 属于哪些分组\n\nSlot = ModelSpec + API Key + UsageBucket\n  一个 slot 是路由的最小单位\n  例：(groq/llama-3.3-70b, gsk_key1, 用量桶)\n  例：(groq/llama-3.3-70b, gsk_key2, 用量桶)  ← 同模型不同 key = 不同 slot\n\nUsageBucket — 用量追踪（每个 slot 独立）\n  rpm_used / tpm_used → 每 60 秒自动清零\n  rpd_used / tpd_used → 按 spec.reset_tz 时区跨日时归零（Gemini=PT，其它=UTC）\n  fail_count / last_fail_ts → 失败惩罚" },
 
-          { type: "h1", text: "三、六家 Provider × 20 模型 — 按场景分类排序" },
-          { type: "p", text: "20 个模型按使用场景分到 4 个分组（chat / merge / summarizer / vision）。每个组内按该任务的「能力」排序：chat 看模型规模，merge 看一次能塞下的最大输入（TPM 主导），summarizer 看出 token 速度，vision 看多模态质量。下面表里的 RPM/TPM/RPD/TPD 是 per-slot 的，乘上 key 数才是这个槽位贡献的总额度。" },
+          { type: "h1", text: "三、五家 Provider × 15 模型 — 按场景分类排序" },
+          { type: "p", text: "15 个模型按使用场景分到 4 个分组（chat / merge / summarizer / vision）。每个组内按该任务的「能力」排序：chat 看模型规模，merge 看一次能塞下的最大输入（TPM 主导），summarizer 看出 token 速度，vision 看多模态质量。下面表里的 RPM/TPM/RPD/TPD 是 per-slot 的，乘上 key 数才是这个槽位贡献的总额度。" },
 
           { type: "h2", text: "chat（主对话）— 按模型规模降序" },
-          { type: "code", text: "#   Provider/Model                                    规模              RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1   openrouter/hermes-3-llama-3.1-405b:free           405B 稠密         20   10K   200    2M\n2   cerebras/qwen-3-235b-a22b-instruct-2507           235B MoE          30   60K   14.4K  1M\n3   sambanova/Llama-4-Maverick-17B-128E-Instruct      400B MoE/17B 活   20   100K  1K     20M\n4   nvidia_nim/meta/llama-4-maverick-17b-128e         400B MoE          40   10K   5K     5M\n5   openrouter/nvidia/nemotron-3-super-120b:free      120B MoE          20   10K   200    2M\n6   groq/openai/gpt-oss-120b                          120B              30   6K    1K     500K\n7   openrouter/openai/gpt-oss-120b:free               120B              20   10K   200    2M\n8   groq/meta-llama/llama-4-scout-17b-16e-instruct    100B MoE/17B 活   30   15K   14.4K  500K\n9   sambanova/Meta-Llama-3.3-70B-Instruct             70B               20   100K  1K     20M\n10  groq/llama-3.3-70b-versatile                      70B               30   6K    14.4K  500K\n11  nvidia_nim/meta/llama-3.3-70b-instruct            70B               40   10K   5K     5M\n12  openrouter/meta-llama/llama-3.3-70b:free          70B               20   10K   200    2M\n13  nvidia_nim/nvidia/llama-3.3-nemotron-super-49b    49B 推理优化      40   10K   5K     5M\n14  groq/qwen/qwen3-32b                               32B               30   6K    14.4K  500K\n15  nvidia_nim/google/gemma-3-27b-it                  27B               40   10K   5K     5M\n16  gemini/gemini-2.5-flash                           小但精调          10   250K  1K     50M\n17  gemini/gemini-2.5-flash-lite                      极小              15   250K  1K     50M" },
+          { type: "code", text: "#   Provider/Model                                    规模              RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1   openrouter/hermes-3-llama-3.1-405b:free           405B 稠密         20   10K   200    2M\n2   cerebras/qwen-3-235b-a22b-instruct-2507           235B MoE          30   60K   14.4K  1M\n3   sambanova/Llama-4-Maverick-17B-128E-Instruct      400B MoE/17B 活   20   100K  1K     20M\n4   openrouter/nvidia/nemotron-3-super-120b:free      120B MoE          20   10K   200    2M\n5   groq/openai/gpt-oss-120b                          120B              30   6K    1K     500K\n6   openrouter/openai/gpt-oss-120b:free               120B              20   10K   200    2M\n7   groq/meta-llama/llama-4-scout-17b-16e-instruct    100B MoE/17B 活   30   15K   14.4K  500K\n8   sambanova/Meta-Llama-3.3-70B-Instruct             70B               20   100K  1K     20M\n9   groq/llama-3.3-70b-versatile                      70B               30   6K    14.4K  500K\n10  openrouter/meta-llama/llama-3.3-70b:free          70B               20   10K   200    2M\n11  groq/qwen/qwen3-32b                               32B               30   6K    14.4K  500K\n12  gemini/gemini-2.5-flash                           小但精调          10   250K  1K     50M\n13  gemini/gemini-2.5-flash-lite                      极小              15   250K  1K     50M" },
 
           { type: "h2", text: "merge（合并输出）— 按一次可合并的最大尺寸排序" },
           { type: "p", text: "merge 调用经常一次塞 5-15K tokens（多个子线程合在一起），TPM 主导可用性——TPM 太小的模型一次合并就把分钟额度打满。" },
@@ -1795,12 +1795,12 @@ export const articles: Article[] = [
 
           { type: "h2", text: "summarizer（摘要/分类/格式化）— 按速度排序" },
           { type: "p", text: "summarizer 是轻量内部任务（compact 摘要、意图分类、JSON 格式化），输入输出都短，但调用频繁——速度比规模重要。" },
-          { type: "code", text: "#  Provider/Model                            速度 (tok/s)        RPM  TPM   RPD    TPD\n──────────────────────────────────────────────────────────────────────────────────────\n1  cerebras/llama3.1-8b                      ~3,000（业界最快）  30   60K   14.4K  1M\n2  gemini/gemini-2.5-flash-lite              ~500，TPM 极高      15   250K  1K     50M\n3  groq/llama-3.1-8b-instant                 ~750                30   6K    14.4K  500K\n4  nvidia_nim/meta/llama-3.1-8b-instruct     ~150                40   10K   5K     5M" },
+          { type: "code", text: "#  Provider/Model                            速度 (tok/s)        RPM  TPM   RPD    TPD\n──────────────────────────────────────────────────────────────────────────────────────\n1  cerebras/llama3.1-8b                      ~3,000（业界最快）  30   60K   14.4K  1M\n2  gemini/gemini-2.5-flash-lite              ~500，TPM 极高      15   250K  1K     50M\n3  groq/llama-3.1-8b-instant                 ~750                30   6K    14.4K  500K" },
 
           { type: "h2", text: "vision（图片理解）— 按多模态质量排序" },
-          { type: "code", text: "#  Provider/Model                                  多模态特点              RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1  gemini/gemini-2.5-flash                         Google 原生多模态，最强 10   250K  1K     50M\n2  nvidia_nim/google/gemma-3-27b-it                Gemma 多模态，27B       40   10K   5K     5M\n3  groq/meta-llama/llama-4-scout-17b-16e           Llama 4 多模态，速度快  30   15K   14.4K  500K" },
+          { type: "code", text: "#  Provider/Model                                  多模态特点              RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1  gemini/gemini-2.5-flash                         Google 原生多模态，最强 10   250K  1K     50M\n2  groq/meta-llama/llama-4-scout-17b-16e           Llama 4 多模态，速度快  30   15K   14.4K  500K" },
 
-          { type: "note", text: "关键互补：Gemini 单 key 250K TPM 是 merge 的主力（占 35%）；SambaNova 双 100K TPM 撑住 merge 备份和 70B chat；Cerebras 跑 235B MoE 拿到「大模型 + 60K TPM + 极快速度」三合一；OpenRouter 包含独家 405B（hermes-3）；NVIDIA NIM 提供 5 个差异化模型（含 reasoning-tuned 49B）；Groq 速度快、RPD 最高（14.4K/模型）但单模型 TPM 最小，适合高频小请求。" },
+          { type: "note", text: "关键互补：Gemini 单 key 250K TPM 是 merge 的主力；SambaNova 双 100K TPM 撑住 merge 备份和 70B chat；Cerebras 跑 235B MoE 拿到「大模型 + 60K TPM + 极快速度」三合一；OpenRouter 包含独家 405B（hermes-3）和 nvidia/nemotron 推理模型；Groq 速度快、RPD 最高（14.4K/模型）但单模型 TPM 最小，适合高频小请求。" },
 
           { type: "h1", text: "四、评分机制" },
           { type: "p", text: "每个 slot 的「可用性得分」由 UsageBucket 实时计算：" },
@@ -1812,10 +1812,10 @@ export const articles: Article[] = [
           { type: "code", text: "router.completion(group=\"chat\", messages=...)\n│\n├── 第一步：从 chat 组取所有 slot\n│   按 score 降序排列，选最高分发起请求\n│   （加少量随机扰动避免所有请求集中打一个 slot）\n│\n├── 成功 → 返回结果\n│\n├── 失败（429/5xx）→ 标记失败，尝试下一个 slot\n│   ... 所有 chat slot 都失败 ...\n│\n├── 进入 fallback 链\n│   chat → summarizer\n│   merge → chat → summarizer\n│   summarizer → chat\n│\n└── 全部耗尽 → 选恢复最快的 slot\n    slot A: rpm 打满，还要等 45 秒\n    slot B: rpd 打满，还要等 8 小时\n    → 选 slot A" },
 
           { type: "h1", text: "六、时间窗口自动重置" },
-          { type: "p", text: "UsageBucket 的计数器基于 time.monotonic()，不依赖外部时钟：" },
+          { type: "p", text: "UsageBucket 的计数器：分钟窗口基于 time.monotonic() 滚动 60s；日窗口对齐 spec.reset_tz 时区的自然日 00:00 边界（Gemini=America/Los_Angeles，其它 provider=UTC），跨日时归零，与 provider 真实重置时点对齐。" },
           { type: "ul", items: [
             "rpm_used / tpm_used：距上次重置 ≥ 60 秒时自动清零",
-            "rpd_used / tpd_used：距上次重置 ≥ 86400 秒时自动清零",
+            "rpd_used / tpd_used：当 provider 时区跨自然日时清零",
             "每次 record_request() 和 score() 调用前自动检查",
             "无需定时器或后台线程——惰性重置，零开销",
           ]},
@@ -1834,17 +1834,17 @@ export const articles: Article[] = [
           { type: "code", text: "GET /health/providers\n{\n  \"total\": 8,\n  \"ok\": 7,\n  \"failed\": 1,\n  \"results\": [\n    {\"provider\": \"groq\", \"model\": \"llama-3.3-70b\", \"key\": \"gsk_abc1...\", \"ok\": true},\n    {\"provider\": \"cerebras\", \"model\": \"llama3.3-70b\", \"key\": \"csk_xyz...\", \"ok\": true},\n    {\"provider\": \"sambanova\", \"model\": \"...\", \"key\": \"sk_...\", \"ok\": false, \"error\": \"401 Unauthorized\"},\n    ...\n  ]\n}" },
 
           { type: "h1", text: "十、实际容量估算" },
-          { type: "p", text: "以当前生产配置为例：2 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 1 NVIDIA NIM + 2 OpenRouter = 10 keys × 20 模型 = 33 slots。" },
+          { type: "p", text: "以当前生产配置为例：3 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 2 OpenRouter = 10 keys，共 33 slots（按 provider 的模型数加权：3×5 + 2×2 + 2×2 + 1×2 + 2×4）。" },
           { type: "ul", items: [
-            "chat 组：28 slots，累计 725 RPM、1.21M TPM、145K RPD、222M TPD",
-            "merge 组：11 slots，累计 200 RPM、711K TPM、35K RPD、184M TPD",
-            "summarizer 组：6 slots，累计 130 RPM、326K TPM、32K RPD、53M TPD",
-            "vision 组：4 slots，累计 90 RPM、290K TPM、30K RPD、56M TPD",
-            "全局峰值 TPM：1.38M（≈ 23,000 tok/s sustained，相当于 8×H100 DGX 满载）",
-            "全局日额度：237M tokens/day，按每条消息 2.5K tokens 算，可支撑 ~95K 条/天",
-            "折算 DAU：约 6,000-12,000 活跃用户（每人每天 6 轮对话）",
+            "chat 组：28 slots，累计 ~685 RPM、~1.20M TPM、~168K RPD、~203M TPD",
+            "merge 组：13 slots，累计 ~330 RPM、~1.03M TPM、~120K RPD、~135M TPD",
+            "summarizer 组：6 slots，累计 ~165 RPM、~388K TPM、~73K RPD、~54M TPD",
+            "vision 组：4 slots，累计 ~100 RPM、~295K TPM、~44K RPD、~52M TPD",
+            "全局峰值 TPM：~1.34M（≈ 22,000 tok/s sustained，相当于 8×H100 DGX 满载）",
+            "全局日额度：~210M tokens/day，按每条消息 2.5K tokens 算，可支撑 ~84K 条/天",
+            "折算 DAU：约 5,000-10,000 活跃用户（每人每天 6 轮对话）",
           ]},
-          { type: "p", text: "相比单 Provider Groq 的 300-600 DAU，六家叠加将容量提升了 20 倍以上。瓶颈维度也彻底翻转：原本 TPM 紧（单模型 6K），现在 RPD 紧——OpenRouter 单 key 仅 200 RPD（4 模型 ×200 = 800 RPD/key），Gemini/SambaNova 也只有 1K-2K RPD。继续扩容的最高 ROI 是给 Gemini 加第二个 key（单 key 即贡献 36% TPM）。" },
+          { type: "p", text: "相比单 Provider Groq 的 300-600 DAU，五家叠加将容量提升约 15 倍。瓶颈维度也彻底翻转：原本 TPM 紧（单模型 6K），现在 RPD 紧——OpenRouter 单 key 仅 200 RPD（4 模型 ×200 = 800 RPD/key），Gemini/SambaNova 也只有 1K-2K RPD。继续扩容的最高 ROI 是给 Gemini 加第二个 key（单 key 即贡献 36% TPM）。" },
         ],
       },
       en: {
@@ -1857,13 +1857,13 @@ export const articles: Article[] = [
 
           { type: "h1", text: "Part 2 — Data structures" },
           { type: "p", text: "SmartRouter has three layers of data structures:" },
-          { type: "code", text: "ModelSpec — Model specification (static config)\n  provider: \"groq\" | \"cerebras\" | \"sambanova\" | \"gemini\" | \"nvidia_nim\" | \"openrouter\"\n  model_id: \"llama-3.3-70b-versatile\"\n  rpm / tpm / rpd / tpd: rate limits\n  groups: [\"chat\", \"merge\"]  ← which groups it belongs to\n\nSlot = ModelSpec + API Key + UsageBucket\n  A slot is the smallest routing unit\n  e.g.: (groq/llama-3.3-70b, gsk_key1, usage_bucket)\n  e.g.: (groq/llama-3.3-70b, gsk_key2, usage_bucket)  ← same model, different key = different slot\n\nUsageBucket — Usage tracking (independent per slot)\n  rpm_used / tpm_used → auto-reset every 60 seconds\n  rpd_used / tpd_used → auto-reset every 24 hours\n  fail_count / last_fail_ts → failure penalty" },
+          { type: "code", text: "ModelSpec — Model specification (static config)\n  provider: \"groq\" | \"cerebras\" | \"sambanova\" | \"gemini\" | \"openrouter\"\n  model_id: \"llama-3.3-70b-versatile\"\n  rpm / tpm / rpd / tpd: rate limits\n  groups: [\"chat\", \"merge\"]  ← which groups it belongs to\n\nSlot = ModelSpec + API Key + UsageBucket\n  A slot is the smallest routing unit\n  e.g.: (groq/llama-3.3-70b, gsk_key1, usage_bucket)\n  e.g.: (groq/llama-3.3-70b, gsk_key2, usage_bucket)  ← same model, different key = different slot\n\nUsageBucket — Usage tracking (independent per slot)\n  rpm_used / tpm_used → auto-reset every 60 seconds\n  rpd_used / tpd_used → reset on natural-day rollover in spec.reset_tz (Gemini=PT, others=UTC)\n  fail_count / last_fail_ts → failure penalty" },
 
-          { type: "h1", text: "Part 3 — Six providers × 20 models — categorized and ranked" },
-          { type: "p", text: "20 models split into 4 use-case groups (chat / merge / summarizer / vision). Within each group, ranked by capability for that task: chat by model size, merge by maximum input it can fit (TPM-dominated), summarizer by output speed, vision by multimodal quality. Rate limits below are per-slot — multiply by key count for total contribution." },
+          { type: "h1", text: "Part 3 — Five providers × 15 models — categorized and ranked" },
+          { type: "p", text: "15 models split into 4 use-case groups (chat / merge / summarizer / vision). Within each group, ranked by capability for that task: chat by model size, merge by maximum input it can fit (TPM-dominated), summarizer by output speed, vision by multimodal quality. Rate limits below are per-slot — multiply by key count for total contribution." },
 
           { type: "h2", text: "chat (main conversation) — sorted by model size, descending" },
-          { type: "code", text: "#   Provider/Model                                    Size              RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1   openrouter/hermes-3-llama-3.1-405b:free           405B dense        20   10K   200    2M\n2   cerebras/qwen-3-235b-a22b-instruct-2507           235B MoE          30   60K   14.4K  1M\n3   sambanova/Llama-4-Maverick-17B-128E-Instruct      400B MoE/17B act  20   100K  1K     20M\n4   nvidia_nim/meta/llama-4-maverick-17b-128e         400B MoE          40   10K   5K     5M\n5   openrouter/nvidia/nemotron-3-super-120b:free      120B MoE          20   10K   200    2M\n6   groq/openai/gpt-oss-120b                          120B              30   6K    1K     500K\n7   openrouter/openai/gpt-oss-120b:free               120B              20   10K   200    2M\n8   groq/meta-llama/llama-4-scout-17b-16e-instruct    100B MoE/17B act  30   15K   14.4K  500K\n9   sambanova/Meta-Llama-3.3-70B-Instruct             70B               20   100K  1K     20M\n10  groq/llama-3.3-70b-versatile                      70B               30   6K    14.4K  500K\n11  nvidia_nim/meta/llama-3.3-70b-instruct            70B               40   10K   5K     5M\n12  openrouter/meta-llama/llama-3.3-70b:free          70B               20   10K   200    2M\n13  nvidia_nim/nvidia/llama-3.3-nemotron-super-49b    49B reasoning     40   10K   5K     5M\n14  groq/qwen/qwen3-32b                               32B               30   6K    14.4K  500K\n15  nvidia_nim/google/gemma-3-27b-it                  27B               40   10K   5K     5M\n16  gemini/gemini-2.5-flash                           Small but tuned   10   250K  1K     50M\n17  gemini/gemini-2.5-flash-lite                      Smallest          15   250K  1K     50M" },
+          { type: "code", text: "#   Provider/Model                                    Size              RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1   openrouter/hermes-3-llama-3.1-405b:free           405B dense        20   10K   200    2M\n2   cerebras/qwen-3-235b-a22b-instruct-2507           235B MoE          30   60K   14.4K  1M\n3   sambanova/Llama-4-Maverick-17B-128E-Instruct      400B MoE/17B act  20   100K  1K     20M\n4   openrouter/nvidia/nemotron-3-super-120b:free      120B MoE          20   10K   200    2M\n5   groq/openai/gpt-oss-120b                          120B              30   6K    1K     500K\n6   openrouter/openai/gpt-oss-120b:free               120B              20   10K   200    2M\n7   groq/meta-llama/llama-4-scout-17b-16e-instruct    100B MoE/17B act  30   15K   14.4K  500K\n8   sambanova/Meta-Llama-3.3-70B-Instruct             70B               20   100K  1K     20M\n9   groq/llama-3.3-70b-versatile                      70B               30   6K    14.4K  500K\n10  openrouter/meta-llama/llama-3.3-70b:free          70B               20   10K   200    2M\n11  groq/qwen/qwen3-32b                               32B               30   6K    14.4K  500K\n12  gemini/gemini-2.5-flash                           Small but tuned   10   250K  1K     50M\n13  gemini/gemini-2.5-flash-lite                      Smallest          15   250K  1K     50M" },
 
           { type: "h2", text: "merge (combined output) — sorted by max single-call merge size" },
           { type: "p", text: "Merge calls often pack 5-15K tokens at once (multiple sub-threads combined). TPM dominates — models with low TPM saturate the per-minute quota in a single merge." },
@@ -1871,12 +1871,12 @@ export const articles: Article[] = [
 
           { type: "h2", text: "summarizer (summaries / classification / formatting) — sorted by speed" },
           { type: "p", text: "Summarizer is for lightweight internal tasks (compact summaries, intent classification, JSON formatting). Inputs and outputs are short but calls are frequent — speed matters more than size." },
-          { type: "code", text: "#  Provider/Model                            Speed (tok/s)        RPM  TPM   RPD    TPD\n───────────────────────────────────────────────────────────────────────────────────────\n1  cerebras/llama3.1-8b                      ~3,000 (fastest)     30   60K   14.4K  1M\n2  gemini/gemini-2.5-flash-lite              ~500, very high TPM  15   250K  1K     50M\n3  groq/llama-3.1-8b-instant                 ~750                 30   6K    14.4K  500K\n4  nvidia_nim/meta/llama-3.1-8b-instruct     ~150                 40   10K   5K     5M" },
+          { type: "code", text: "#  Provider/Model                            Speed (tok/s)        RPM  TPM   RPD    TPD\n───────────────────────────────────────────────────────────────────────────────────────\n1  cerebras/llama3.1-8b                      ~3,000 (fastest)     30   60K   14.4K  1M\n2  gemini/gemini-2.5-flash-lite              ~500, very high TPM  15   250K  1K     50M\n3  groq/llama-3.1-8b-instant                 ~750                 30   6K    14.4K  500K" },
 
           { type: "h2", text: "vision (image understanding) — sorted by multimodal quality" },
-          { type: "code", text: "#  Provider/Model                                  Multimodal note         RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1  gemini/gemini-2.5-flash                         Native Google, best     10   250K  1K     50M\n2  nvidia_nim/google/gemma-3-27b-it                Gemma multimodal, 27B   40   10K   5K     5M\n3  groq/meta-llama/llama-4-scout-17b-16e           Llama 4 multimodal, fast 30  15K   14.4K  500K" },
+          { type: "code", text: "#  Provider/Model                                  Multimodal note         RPM  TPM   RPD    TPD\n────────────────────────────────────────────────────────────────────────────────────────────\n1  gemini/gemini-2.5-flash                         Native Google, best     10   250K  1K     50M\n2  groq/meta-llama/llama-4-scout-17b-16e           Llama 4 multimodal, fast 30  15K   14.4K  500K" },
 
-          { type: "note", text: "Key complementarity: Gemini's single key contributes 250K TPM, the backbone of merge (35% share); SambaNova's dual 100K TPM keys back up merge and serve 70B chat; Cerebras packs 235B MoE with 60K TPM and ultra-fast inference all in one; OpenRouter brings exclusive 405B (hermes-3); NVIDIA NIM offers 5 differentiated models including a reasoning-tuned 49B; Groq is fastest with the highest RPD (14.4K/model) but the smallest per-model TPM, ideal for high-frequency small requests." },
+          { type: "note", text: "Key complementarity: Gemini's single key contributes 250K TPM, the backbone of merge; SambaNova's dual 100K TPM keys back up merge and serve 70B chat; Cerebras packs 235B MoE with 60K TPM and ultra-fast inference all in one; OpenRouter brings exclusive 405B (hermes-3) and the nvidia/nemotron reasoning model; Groq is fastest with the highest RPD (14.4K/model) but the smallest per-model TPM, ideal for high-frequency small requests." },
 
           { type: "h1", text: "Part 4 — Scoring mechanism" },
           { type: "p", text: "Each slot's availability score is computed in real-time by its UsageBucket:" },
@@ -1888,10 +1888,10 @@ export const articles: Article[] = [
           { type: "code", text: "router.completion(group=\"chat\", messages=...)\n│\n├── Step 1: Get all slots from the chat group\n│   Sort by score descending, pick highest for the request\n│   (add small random jitter to avoid thundering herd)\n│\n├── Success → return result\n│\n├── Failure (429/5xx) → mark failure, try next slot\n│   ... all chat slots failed ...\n│\n├── Enter fallback chain\n│   chat → summarizer\n│   merge → chat → summarizer\n│   summarizer → chat\n│\n└── All exhausted → pick soonest-recovery slot\n    slot A: rpm full, 45 seconds until reset\n    slot B: rpd full, 8 hours until reset\n    → pick slot A" },
 
           { type: "h1", text: "Part 6 — Time-window auto-reset" },
-          { type: "p", text: "UsageBucket counters are based on time.monotonic(), independent of wall clock:" },
+          { type: "p", text: "UsageBucket counters: minute window is a rolling 60s based on time.monotonic(); day window is aligned to the natural date boundary in spec.reset_tz (Gemini=America/Los_Angeles, others=UTC), zeroing on rollover so it matches the provider's actual 00:00 reset rather than drifting from process start." },
           { type: "ul", items: [
             "rpm_used / tpm_used: auto-reset when ≥60 seconds since last reset",
-            "rpd_used / tpd_used: auto-reset when ≥86,400 seconds since last reset",
+            "rpd_used / tpd_used: zero out when the provider's timezone rolls to a new date",
             "Checked automatically before every record_request() and score() call",
             "No timers or background threads needed — lazy reset, zero overhead",
           ]},
@@ -1910,17 +1910,17 @@ export const articles: Article[] = [
           { type: "code", text: "GET /health/providers\n{\n  \"total\": 8,\n  \"ok\": 7,\n  \"failed\": 1,\n  \"results\": [\n    {\"provider\": \"groq\", \"model\": \"llama-3.3-70b\", \"key\": \"gsk_abc1...\", \"ok\": true},\n    {\"provider\": \"cerebras\", \"model\": \"llama3.3-70b\", \"key\": \"csk_xyz...\", \"ok\": true},\n    {\"provider\": \"sambanova\", \"model\": \"...\", \"key\": \"sk_...\", \"ok\": false, \"error\": \"401 Unauthorized\"},\n    ...\n  ]\n}" },
 
           { type: "h1", text: "Part 10 — Actual capacity estimate" },
-          { type: "p", text: "Current production config: 2 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 1 NVIDIA NIM + 2 OpenRouter = 10 keys × 20 models = 33 slots." },
+          { type: "p", text: "Current production config: 3 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 2 OpenRouter = 10 keys, 33 slots total (weighted by per-provider model count: 3×5 + 2×2 + 2×2 + 1×2 + 2×4)." },
           { type: "ul", items: [
-            "Chat group: 28 slots, aggregate 725 RPM, 1.21M TPM, 145K RPD, 222M TPD",
-            "Merge group: 11 slots, aggregate 200 RPM, 711K TPM, 35K RPD, 184M TPD",
-            "Summarizer group: 6 slots, aggregate 130 RPM, 326K TPM, 32K RPD, 53M TPD",
-            "Vision group: 4 slots, aggregate 90 RPM, 290K TPM, 30K RPD, 56M TPD",
-            "Global peak TPM: 1.38M (≈ 23,000 tok/s sustained, equivalent to a fully loaded 8×H100 DGX)",
-            "Global daily quota: 237M tokens/day; at 2.5K tokens/message, supports ~95K messages/day",
-            "Equivalent DAU: ~6,000-12,000 active users (6 conversation turns per user per day)",
+            "Chat group: 28 slots, aggregate ~685 RPM, ~1.20M TPM, ~168K RPD, ~203M TPD",
+            "Merge group: 13 slots, aggregate ~330 RPM, ~1.03M TPM, ~120K RPD, ~135M TPD",
+            "Summarizer group: 6 slots, aggregate ~165 RPM, ~388K TPM, ~73K RPD, ~54M TPD",
+            "Vision group: 4 slots, aggregate ~100 RPM, ~295K TPM, ~44K RPD, ~52M TPD",
+            "Global peak TPM: ~1.34M (≈ 22,000 tok/s sustained, equivalent to a fully loaded 8×H100 DGX)",
+            "Global daily quota: ~210M tokens/day; at 2.5K tokens/message, supports ~84K messages/day",
+            "Equivalent DAU: ~5,000-10,000 active users (6 conversation turns per user per day)",
           ]},
-          { type: "p", text: "Compared to the original Groq-only setup (300-600 DAU), six-provider stacking lifts capacity by 20x+. The bottleneck dimension also flips: previously TPM-bound (6K per model), now RPD-bound — OpenRouter's free tier is only 200 RPD per key (4 models × 200 = 800 RPD/key), and Gemini/SambaNova are 1K-2K RPD. Highest-ROI next step: add a second Gemini key (a single key already contributes 36% of total TPM)." },
+          { type: "p", text: "Compared to the original Groq-only setup (300-600 DAU), five-provider stacking lifts capacity by ~15x. The bottleneck dimension also flips: previously TPM-bound (6K per model), now RPD-bound — OpenRouter's free tier is only 200 RPD per key (4 models × 200 = 800 RPD/key), and Gemini/SambaNova are 1K-2K RPD. Highest-ROI next step: add a second Gemini key (a single key already contributes 36% of total TPM)." },
         ],
       },
     },

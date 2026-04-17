@@ -89,7 +89,7 @@ Main summary / 主线摘要    300 tokens
 | Backend / 后端 | FastAPI + Python 3.11 + asyncio |
 | Database / 数据库 | Supabase (PostgreSQL) with RLS on all tables |
 | Auth / 认证 | Supabase Auth (Google OAuth) + FastAPI JWT middleware |
-| AI | LiteLLM Router across 6 free-tier providers (Groq / Cerebras / SambaNova / Gemini / NVIDIA NIM / OpenRouter) with usage-based routing + 429 fallback / 6 家免费 provider 叠加，usage-based 路由 + 429 自动 fallback |
+| AI | LiteLLM Router across 5 free-tier providers (Groq / Cerebras / SambaNova / Gemini / OpenRouter) with usage-based routing + 429 fallback / 5 家免费 provider 叠加，usage-based 路由 + 429 自动 fallback |
 | Embedding / 嵌入 | BAAI/bge-m3 (1024-dim, local inference via sentence-transformers) |
 | Search / 搜索 | SearXNG (self-hosted on Oracle) / 自托管 |
 | Deployment / 部署 | Vercel (frontend) + Oracle Cloud Free Tier (backend, Nginx + Docker Compose) |
