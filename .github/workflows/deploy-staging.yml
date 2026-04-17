@@ -93,3 +93,29 @@ jobs:
 
             docker image prune -f
             echo "Staging 部署完成: branch=$BRANCH"
+
+  # ── Job 3: 集成测试（部署完成后，从 GitHub runner 打 staging endpoint）────
+  # ── Job 3: integration tests, hits the freshly-deployed staging URL.
+  integration-test:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest httpx
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+        working-directory: backend
+        env:
+          TEST_BASE_URL: https://staging-deeppin.duckdns.org
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
