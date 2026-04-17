@@ -66,7 +66,11 @@ async def _check_single_slot(slot) -> dict:
             model=slot.litellm_model,
             messages=[{"role": "user", "content": "Reply with the single word: ok"}],
             api_key=slot.api_key,
-            max_tokens=5,
+            # 100 而不是 5：推理模型（groq gpt-oss / nvidia nemotron）会先吃 reasoning token，
+            # 预算太小会导致 content 为空被误判失败
+            # 100 instead of 5: reasoning models (groq gpt-oss / nvidia nemotron) spend budget on
+            # reasoning tokens first; too-small cap leaves content empty and misclassifies as failed
+            max_tokens=100,
             timeout=15,
         )
         text = (response.choices[0].message.content or "").strip()
