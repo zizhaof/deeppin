@@ -464,21 +464,21 @@ export default function ChatPage() {
       setSuggestions(threadId, placeholders);
       setPinDialog({ threadId, anchorText: info.text, suggestions: placeholders, loading: true });
 
-      // 后台等 LLM 完成（_generate_and_patch 约 500-800ms），追加真实建议
-      setTimeout(() => {
-        getSuggestions(threadId).then((questions) => {
-          if (questions.length === 0) return;
-          // 占位符保留，AI 建议追加在后面（去重）
-          const merged = [...placeholders, ...questions.filter((q) => !placeholders.includes(q))];
-          setSuggestions(threadId, merged);
-          // 仅当弹窗仍为该线程时才更新，避免重新打开已关闭的弹窗
-          setPinDialog((prev) =>
-            prev?.threadId === threadId
-              ? { ...prev, suggestions: merged, loading: false }
-              : prev
-          );
-        });
-      }, 750);
+      // /suggest 后端已做 server-side 轮询（cache_hit → poll_hit → sync_gen，最长 3s）
+      // LLM 结果直接替换占位符；失败 / 空响应时退化保留占位符
+      // Backend /suggest already polls server-side (up to 3s). Replace placeholders with the
+      // real LLM questions; on failure / empty response keep placeholders as a graceful fallback.
+      getSuggestions(threadId).then((questions) => {
+        const next = questions.length > 0 ? questions : placeholders;
+        if (questions.length > 0) {
+          setSuggestions(threadId, questions);
+        }
+        setPinDialog((prev) =>
+          prev?.threadId === threadId
+            ? { ...prev, suggestions: next, loading: false }
+            : prev
+        );
+      });
     } catch (e) {
       setError(String(e));
     }
