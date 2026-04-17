@@ -87,16 +87,16 @@ GROQ_MODELS = [
 ]
 
 # Cerebras 模型（免费 tier：30 RPM, ~1M TPD）
+# 2026-04 大批模型下架，仅剩 llama3.1-8b
 CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "llama-3.3-70b",  rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["chat", "merge"]),
-    ModelSpec("cerebras", "llama3.1-8b",    rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["summarizer"]),
+    ModelSpec("cerebras", "llama3.1-8b",  rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["summarizer"]),
 ]
 
-# SambaNova 模型（免费 tier：10-30 RPM, 20M TPD）
+# SambaNova 模型（免费 tier：20 RPM, 100K TPM）
+# 2026-04 大批模型下架，仅剩以下可用
 SAMBANOVA_MODELS = [
-    ModelSpec("sambanova", "Meta-Llama-3.1-405B-Instruct",   rpm=10, tpm=100000, rpd=1000, tpd=20_000_000, groups=["chat", "merge"]),
-    ModelSpec("sambanova", "Meta-Llama-3.3-70B-Instruct",    rpm=20, tpm=100000, rpd=1000, tpd=20_000_000, groups=["chat", "merge"]),
-    ModelSpec("sambanova", "Meta-Llama-3.1-8B-Instruct",     rpm=30, tpm=100000, rpd=1000, tpd=20_000_000, groups=["summarizer"]),
+    ModelSpec("sambanova", "Meta-Llama-3.3-70B-Instruct",            rpm=20, tpm=100000, rpd=1000, tpd=20_000_000, groups=["chat", "merge"]),
+    ModelSpec("sambanova", "Llama-4-Maverick-17B-128E-Instruct",     rpm=20, tpm=100000, rpd=1000, tpd=20_000_000, groups=["chat", "merge"]),
 ]
 
 # Gemini 模型（免费 tier：10-15 RPM, 250K TPM, 1K RPD）
