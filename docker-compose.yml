@@ -49,3 +49,41 @@ services:
     depends_on:
       backend:
         condition: service_healthy   # backend healthy = backend + searxng + supabase 全部正常
+
+  prometheus:
+    # 监控栈 / Monitoring stack
+    # 只 expose 到内网回环，通过 nginx 的 /grafana/ 访问 Grafana；Prometheus UI 仅限 SSH 隧道
+    # Only exposed on loopback; Grafana is reached via nginx /grafana/; Prometheus UI via SSH tunnel
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./ops/monitoring/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --storage.tsdb.retention.size=10GB
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:9090:9090"   # 仅监听本机回环 / loopback only
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./ops/monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_ROOT_URL=https://deeppin.duckdns.org/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:
