@@ -640,37 +640,32 @@ export function ComponentChainDiagram() {
 /* ─── System Components Connectivity ────────────────────────────────────── */
 export function SystemConnectivityDiagram() {
   // 4 columns: Frontend | Backend Routers | Backend Services | External
-  const W = 820, BH = 34, gap = 10;
+  const W = 820, BH = 34;
   const col1x = 10,  col1w = 150;  // Frontend
   const col2x = 195, col2w = 150;  // Routers
   const col3x = 380, col3w = 150;  // Services
   const col4x = 565, col4w = 150;  // External
 
-  // Column centers
   const c1 = col1x + col1w / 2;
   const c2 = col2x + col2w / 2;
   const c3 = col3x + col3w / 2;
   const c4 = col4x + col4w / 2;
 
-  // Y positions — rows
+  // Y positions — rows (fewer external rows now)
   const headerY = 14;
-  const r0 = 30;   // Nginx / Vercel
-  const r1 = 80;   // InputBar / stream.py / stream_manager / LLM Providers
-  const r2 = 130;  // MessageBubble / threads.py / context_builder / bge-m3
-  const r3 = 180;  // PinMenu / sessions.py / memory_service / SearXNG
-  const r4 = 230;  // MergeOutput / search.py / search_service / Supabase DB
-  const r5 = 280;  // ThreadNav / merge.py / llm_client
-  const r6 = 330;  // SSE Client / attachments.py / attachment_proc
+  const r0 = 30;   // Nginx
+  const r1 = 80;   // InputBar / stream.py / stream_manager / LiteLLM
+  const r2 = 130;  // MessageBubble / threads.py / context_builder / Supabase DB
+  const r3 = 180;  // PinMenu / sessions.py / memory_service / Supabase Auth
+  const r4 = 230;  // MergeOutput / search.py / search_service / SearXNG
+  const r5 = 280;  // ThreadNav / merge.py / llm_client / bge-m3
+  const r6 = 330;  // sse.ts / attachments.py / attachment_proc
   const r7 = 380;  // Zustand / health.py / embedding_service
-  const r8 = 430;  // SessionDrawer / relevance.py / users.py row
+  const r8 = 430;  // SessionDrawer / relevance.py
   const H = 490;
 
-  // Arrow helpers
   function tipR(x: number, y: number) {
     return <polygon points={`${x-6},${y-3.5} ${x-6},${y+3.5} ${x},${y}`} fill={C.arrow} />;
-  }
-  function tipL(x: number, y: number) {
-    return <polygon points={`${x+6},${y-3.5} ${x+6},${y+3.5} ${x},${y}`} fill={C.arrow} />;
   }
   function tipD(x: number, y: number) {
     return <polygon points={`${x-3.5},${y-6} ${x+3.5},${y-6} ${x},${y}`} fill={C.arrow} />;
@@ -678,20 +673,15 @@ export function SystemConnectivityDiagram() {
   function tipU(x: number, y: number) {
     return <polygon points={`${x-3.5},${y+6} ${x+3.5},${y+6} ${x},${y}`} fill={C.arrow} />;
   }
-  // Horizontal arrow (left to right)
   function hArr(x1: number, x2: number, y: number, dash?: boolean) {
     return <line x1={x1} y1={y} x2={x2-6} y2={y} stroke={C.arrow} strokeWidth={1} strokeDasharray={dash ? "4 3" : undefined} />;
   }
-  // Vertical arrow (top to bottom)
   function vArr(x: number, y1: number, y2: number, dash?: boolean) {
     return <line x1={x} y1={y1} x2={x} y2={y2-6} stroke={C.arrow} strokeWidth={1} strokeDasharray={dash ? "4 3" : undefined} />;
   }
-  // Label on arrow
   function aLabel(x: number, y: number, text: string, color?: string) {
     return <text x={x} y={y} textAnchor="middle" fill={color || C.textMut} fontSize={7.5} fontFamily="inherit">{text}</text>;
   }
-
-  // Column background bands
   function colBand(x: number, w: number, color: string) {
     return <rect x={x-5} y={22} width={w+10} height={H-30} rx={10} fill={color} />;
   }
@@ -710,16 +700,13 @@ export function SystemConnectivityDiagram() {
       <text x={c3} y={headerY} textAnchor="middle" fill={C.warn} fontSize={9} fontWeight={700} fontFamily="inherit" letterSpacing="0.08em">SERVICES</text>
       <text x={c4} y={headerY} textAnchor="middle" fill={C.ok} fontSize={9} fontWeight={700} fontFamily="inherit" letterSpacing="0.08em">EXTERNAL</text>
 
-      {/* ─── EXTERNAL (col4) ─────────────────────────────────────── */}
+      {/* ─── EXTERNAL (col4) — simplified ────────────────────────── */}
       <Box x={col4x} y={r0} w={col4w} h={BH} label="Nginx" sub="TLS + reverse proxy" />
-      <Box x={col4x} y={r1} w={col4w} h={BH} label="Groq" sub="7 models · 14.4K RPD" accent />
-      <Box x={col4x} y={r2} w={col4w} h={BH} label="SambaNova" sub="2 models · 100K TPM" />
-      <Box x={col4x} y={r3} w={col4w} h={BH} label="Cerebras" sub="1 model · 60K TPM" />
-      <Box x={col4x} y={r4} w={col4w} h={BH} label="Gemini" sub="2 models · 250K TPM" />
-      <Box x={col4x} y={r5} w={col4w} h={BH} label="Supabase DB" sub="6 tables + pgvector" accent />
-      <Box x={col4x} y={r6} w={col4w} h={BH} label="Supabase Auth" sub="JWT + RLS" />
-      <Box x={col4x} y={r7} w={col4w} h={BH} label="SearXNG" sub="meta search engine" />
-      <Box x={col4x} y={r8} w={col4w} h={BH} label="bge-m3" sub="1024-dim · self-hosted" />
+      <Box x={col4x} y={r1} w={col4w} h={BH} label="LiteLLM" sub="4 providers · 12 models" accent />
+      <Box x={col4x} y={r2} w={col4w} h={BH} label="Supabase DB" sub="6 tables + pgvector" accent />
+      <Box x={col4x} y={r3} w={col4w} h={BH} label="Supabase Auth" sub="JWT + RLS" />
+      <Box x={col4x} y={r4} w={col4w} h={BH} label="SearXNG" sub="meta search engine" />
+      <Box x={col4x} y={r5} w={col4w} h={BH} label="bge-m3" sub="1024-dim · self-hosted" />
 
       {/* ─── SERVICES (col3) ──────────────────────────────────────── */}
       <Box x={col3x} y={r1} w={col3w} h={BH} label="stream_manager" sub="SSE orchestrator" warn />
@@ -752,149 +739,125 @@ export function SystemConnectivityDiagram() {
 
       {/* ═══ CONNECTIONS ═══════════════════════════════════════════ */}
 
-      {/* --- Frontend → Routers (via Nginx) --- */}
-      {/* InputBar → stream.py */}
+      {/* --- Frontend → Routers --- */}
       {hArr(col1x+col1w, col2x, r1+BH/2)}
       {tipR(col2x, r1+BH/2)}
       {aLabel((col1x+col1w+col2x)/2, r1+BH/2-5, "SSE")}
 
-      {/* PinMenu → threads.py */}
       {hArr(col1x+col1w, col2x, r2+BH/2+3, true)}
       {tipR(col2x, r2+BH/2+3)}
 
-      {/* SessionDrawer → sessions.py */}
       {hArr(col1x+col1w, col2x, r3+BH/2, true)}
       {tipR(col2x, r3+BH/2)}
 
-      {/* MergeOutput → merge.py */}
       <path d={`M ${col1x+col1w} ${r4+BH/2} L ${col2x-6} ${r5+BH/2}`} stroke={C.arrow} strokeWidth={1} strokeDasharray="4 3" />
       {tipR(col2x, r5+BH/2)}
 
-      {/* InputBar → attachments.py (file upload) */}
       <path d={`M ${col1x+col1w} ${r1+BH-2} L ${col2x-6} ${r6+BH/2}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
       {tipR(col2x, r6+BH/2)}
       {aLabel((col1x+col1w+col2x)/2, (r1+BH+r6+BH/2)/2-2, "file", C.textMut)}
 
       {/* --- Routers → Services --- */}
-      {/* stream.py → stream_manager */}
       {hArr(col2x+col2w, col3x, r1+BH/2)}
       {tipR(col3x, r1+BH/2)}
 
-      {/* threads.py → llm_client (title gen) */}
       <path d={`M ${col2x+col2w} ${r2+BH/2} L ${col3x-6} ${r5+BH/2-3}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
       {tipR(col3x, r5+BH/2-3)}
 
-      {/* search.py → search_service */}
       {hArr(col2x+col2w, col3x, r4+BH/2)}
       {tipR(col3x, r4+BH/2)}
 
-      {/* merge.py → llm_client */}
       {hArr(col2x+col2w, col3x, r5+BH/2)}
       {tipR(col3x, r5+BH/2)}
 
-      {/* attachments.py → attachment_proc */}
       {hArr(col2x+col2w, col3x, r6+BH/2)}
       {tipR(col3x, r6+BH/2)}
 
-      {/* relevance.py → llm_client */}
       <path d={`M ${col2x+col2w} ${r8+BH/2} L ${col3x-6} ${r5+BH/2+3}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
       {tipR(col3x, r5+BH/2+3)}
 
-      {/* --- Services internal connections --- */}
-      {/* stream_manager → context_builder */}
+      {/* --- Services internal --- */}
       {vArr(c3-20, r1+BH, r2)}
       {tipD(c3-20, r2)}
 
-      {/* stream_manager → llm_client */}
       <path d={`M ${col3x+col3w-10} ${r1+BH} L ${col3x+col3w-10} ${r5}`} stroke={C.arrow} strokeWidth={1} fill="none" />
       {tipD(col3x+col3w-10, r5)}
 
-      {/* stream_manager → memory_service (store memory) */}
       <path d={`M ${col3x+10} ${r1+BH} L ${col3x+10} ${r3}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
       {tipD(col3x+10, r3)}
       {aLabel(col3x+2, (r1+BH+r3)/2+3, "bg", C.warn)}
 
-      {/* context_builder → memory_service */}
       {vArr(c3, r2+BH, r3)}
       {tipD(c3, r3)}
 
-      {/* memory_service → embedding_service */}
       <path d={`M ${c3} ${r3+BH} L ${c3} ${r7}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
       {tipD(c3, r7)}
 
-      {/* attachment_proc → embedding_service */}
       {vArr(c3+20, r6+BH, r7)}
       {tipD(c3+20, r7)}
 
-      {/* search_service → llm_client (synthesis) */}
       {vArr(c3-20, r4+BH, r5)}
       {tipD(c3-20, r5)}
 
       {/* --- Services → External --- */}
-      {/* llm_client → Groq/SambaNova/Cerebras/Gemini */}
-      <path d={`M ${col3x+col3w} ${r5+BH/2-8} L ${col4x-6} ${r1+BH/2}`} stroke={C.arrow} strokeWidth={1} fill="none" />
-      {tipR(col4x, r1+BH/2)}
-      <path d={`M ${col3x+col3w} ${r5+BH/2-3} L ${col4x-6} ${r2+BH/2}`} stroke={C.arrow} strokeWidth={0.75} fill="none" />
-      {tipR(col4x, r2+BH/2)}
-      <path d={`M ${col3x+col3w} ${r5+BH/2+3} L ${col4x-6} ${r3+BH/2}`} stroke={C.arrow} strokeWidth={0.75} fill="none" />
-      {tipR(col4x, r3+BH/2)}
-      <path d={`M ${col3x+col3w} ${r5+BH/2+8} L ${col4x-6} ${r4+BH/2}`} stroke={C.arrow} strokeWidth={0.75} fill="none" />
-      {tipR(col4x, r4+BH/2)}
+      {/* llm_client → LiteLLM */}
+      {hArr(col3x+col3w, col4x, r5+BH/2-4)}
+      {tipR(col4x, r5+BH/2-4)}
+      <path d={`M ${col4x+col4w/2} ${r5} L ${col4x+col4w/2} ${r1+BH}`} stroke={C.arrow} strokeWidth={0.75} fill="none" />
+      {tipU(col4x+col4w/2, r1+BH)}
+      {aLabel(col4x+col4w/2+30, (r1+BH+r5)/2+3, "SmartRouter")}
 
       {/* search_service → SearXNG */}
-      {hArr(col3x+col3w, col4x, r7+BH/2-15, true)}
-      {tipR(col4x, r7+BH/2-15)}
-      {aLabel((col3x+col3w+col4x)/2, r7+BH/2-20, "JSON API")}
+      {hArr(col3x+col3w, col4x, r4+BH/2)}
+      {tipR(col4x, r4+BH/2)}
+      {aLabel((col3x+col3w+col4x)/2, r4+BH/2-5, "JSON API")}
 
       {/* embedding_service → bge-m3 */}
-      {hArr(col3x+col3w, col4x, r8+BH/2-8)}
-      {tipR(col4x, r8+BH/2-8)}
-      {aLabel((col3x+col3w+col4x)/2, r8+BH/2-13, "encode")}
+      {hArr(col3x+col3w, col4x, r5+BH/2+4, true)}
+      {tipR(col4x, r5+BH/2+4)}
+      {aLabel((col3x+col3w+col4x)/2, r5+BH/2+12, "encode")}
 
-      {/* memory_service → Supabase DB (pgvector search) */}
-      <path d={`M ${col3x+col3w} ${r3+BH/2} L ${col4x-6} ${r5+BH/2-5}`} stroke={C.arrow} strokeWidth={1} fill="none" />
-      {tipR(col4x, r5+BH/2-5)}
+      {/* memory_service → Supabase DB */}
+      <path d={`M ${col3x+col3w} ${r3+BH/2} L ${col4x-6} ${r2+BH/2+5}`} stroke={C.arrow} strokeWidth={1} fill="none" />
+      {tipR(col4x, r2+BH/2+5)}
 
-      {/* context_builder → Supabase DB (read) */}
-      <path d={`M ${col3x+col3w} ${r2+BH/2} L ${col4x-6} ${r5+BH/2-10}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
-      {tipR(col4x, r5+BH/2-10)}
+      {/* context_builder → Supabase DB */}
+      {hArr(col3x+col3w, col4x, r2+BH/2-3, true)}
+      {tipR(col4x, r2+BH/2-3)}
 
-      {/* stream_manager → Supabase DB (write messages) */}
-      <path d={`M ${col3x+col3w} ${r1+BH/2+5} L ${col4x-6} ${r5+BH/2+5}`} stroke={C.arrow} strokeWidth={0.75} fill="none" />
-      {tipR(col4x, r5+BH/2+5)}
-      {aLabel((col3x+col3w+col4x)/2+5, r3-2, "read/write")}
+      {/* stream_manager → Supabase DB */}
+      <path d={`M ${col3x+col3w} ${r1+BH/2+5} L ${col4x-6} ${r2+BH/2-8}`} stroke={C.arrow} strokeWidth={0.75} fill="none" />
+      {tipR(col4x, r2+BH/2-8)}
+      {aLabel((col3x+col3w+col4x)/2+5, r1+BH+10, "read/write")}
 
-      {/* attachment_proc → Supabase DB (store chunks) */}
-      <path d={`M ${col3x+col3w} ${r6+BH/2} L ${col4x-6} ${r5+BH/2+10}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
-      {tipR(col4x, r5+BH/2+10)}
+      {/* attachment_proc → Supabase DB */}
+      <path d={`M ${col3x+col3w} ${r6+BH/2} L ${col4x-6} ${r2+BH/2+10}`} stroke={C.arrow} strokeWidth={0.75} strokeDasharray="4 3" fill="none" />
+      {tipR(col4x, r2+BH/2+10)}
 
-      {/* health.py → all externals (aggregated check) */}
-      <path d={`M ${col2x+col2w} ${r7+BH/2} Q ${col3x+col3w/2} ${r7+BH+20} ${col4x-6} ${r7+BH/2}`}
+      {/* health.py → externals (aggregated) */}
+      <path d={`M ${col2x+col2w} ${r7+BH/2} Q ${col3x+col3w/2} ${r7+BH+20} ${col4x-6} ${r4+BH/2+5}`}
         stroke={C.ok} strokeWidth={0.75} strokeDasharray="3 3" fill="none" />
-      {tipR(col4x, r7+BH/2)}
+      {tipR(col4x, r4+BH/2+5)}
       {aLabel(c3, r7+BH+16, "healthcheck", C.ok)}
 
-      {/* Routers → Supabase Auth (JWT verify) */}
-      <path d={`M ${col2x+col2w} ${r3+BH/2+5} Q ${col3x+col3w/2} ${r6+5} ${col4x-6} ${r6+BH/2}`}
+      {/* Routers → Supabase Auth (JWT) */}
+      <path d={`M ${col2x+col2w} ${r3+BH/2+5} Q ${col3x+col3w/2} ${r3+BH+18} ${col4x-6} ${r3+BH/2}`}
         stroke={C.arrow} strokeWidth={0.75} strokeDasharray="3 3" fill="none" />
-      {tipR(col4x, r6+BH/2)}
-      {aLabel(c3+15, r6+2, "JWT verify")}
+      {tipR(col4x, r3+BH/2)}
+      {aLabel(c3+15, r3+BH+14, "JWT verify")}
 
       {/* --- Frontend internal --- */}
-      {/* InputBar → MessageBubble (via Zustand) */}
       {vArr(c1, r1+BH, r2)}
       {tipD(c1, r2)}
 
-      {/* MessageBubble → PinMenu */}
       {vArr(c1, r2+BH, r3)}
       {tipD(c1, r3)}
 
-      {/* sse.ts → Zustand */}
       {vArr(c1, r6+BH, r7)}
       {tipD(c1, r7)}
       {aLabel(c1+25, (r6+BH+r7)/2+3, "tokens")}
 
-      {/* Nginx fan-in: all frontend requests go through Nginx */}
+      {/* Nginx label */}
       <path d={`M ${col4x+col4w/2} ${r0+BH} L ${col4x+col4w/2} ${r0+BH+12}`}
         stroke={C.textMut} strokeWidth={0.75} strokeDasharray="2 2" fill="none" />
       <text x={col4x+col4w/2} y={r0+BH+20} textAnchor="middle" fill={C.textMut} fontSize={7} fontFamily="inherit">
