@@ -1869,7 +1869,7 @@ export const articles: Article[] = [
           { type: "p", text: "Deeppin 由十几个组件协作完成「插针深度思考」这件事。本文逐一介绍每个组件的职责、何时被调用、以及它和其他组件的关系。先看全局，再逐层拆解。" },
 
           { type: "h1", text: "全局架构" },
-          { type: "diagram", text: "用户浏览器\n  │\n  ├── HTTPS ──→ Vercel（Next.js 前端）\n  │              ├── components/    UI 渲染\n  │              ├── stores/        Zustand 状态\n  │              └── lib/sse.ts     SSE 客户端\n  │\n  └── HTTPS ──→ Oracle Cloud（Docker Compose）\n                 ├── Nginx          反向代理 + TLS\n                 ├── FastAPI         后端主进程\n                 │    ├── routers/       9 个路由模块\n                 │    ├── services/      7 个服务模块\n                 │    └── db/            Supabase 连接\n                 └── SearXNG         搜索引擎" },
+          { type: "code", text: "用户浏览器\n  │\n  ├── HTTPS ──→ Vercel（Next.js 前端）\n  │              ├── components/    UI 渲染\n  │              ├── stores/        Zustand 状态\n  │              └── lib/sse.ts     SSE 客户端\n  │\n  └── HTTPS ──→ Oracle Cloud（Docker Compose）\n                 ├── Nginx          反向代理 + TLS\n                 ├── FastAPI         后端主进程\n                 │    ├── routers/       9 个路由模块\n                 │    ├── services/      7 个服务模块\n                 │    └── db/            Supabase 连接\n                 └── SearXNG         搜索引擎" },
           { type: "p", text: "下面按数据流经的顺序，从外到内逐个介绍。" },
 
           { type: "h1", text: "一、基础设施层" },
@@ -1882,7 +1882,7 @@ export const articles: Article[] = [
 
           { type: "h2", text: "1.2 Docker Compose — 容器编排" },
           { type: "p", text: "三个服务（backend、searxng、nginx）由 Docker Compose 管理。启动顺序通过健康检查链保证：" },
-          { type: "diagram", text: "backend + searxng 并行启动\n        │\n        ▼\nbackend healthcheck 通过\n（/health 聚合检查 searxng + supabase + embedding + groq）\n        │\n        ▼\n  nginx 启动，开始接收流量" },
+          { type: "code", text: "backend + searxng 并行启动\n        │\n        ▼\nbackend healthcheck 通过\n（/health 聚合检查 searxng + supabase + embedding + groq）\n        │\n        ▼\n  nginx 启动，开始接收流量" },
           { type: "p", text: "backend 的 healthcheck 每 15 秒运行一次，start_period 45 秒（给 embedding 模型加载留时间）。nginx 设置了 depends_on: backend: condition: service_healthy，确保用户永远不会打到半初始化的服务。" },
 
           { type: "h2", text: "1.3 Supabase — 数据库 + 认证" },
@@ -1944,13 +1944,13 @@ export const articles: Article[] = [
 
           { type: "h2", text: "3.1 llm_client.py — SmartRouter 智能路由" },
           { type: "p", text: "系统中所有 LLM 调用的统一入口。内置 SmartRouter，管理 4 家 Provider（Groq、Cerebras、SambaNova、Gemini）的多个模型和多个 API key。" },
-          { type: "diagram", text: "调用方（stream_manager / search / merge）\n        │\n        ▼\n  SmartRouter._pick_slot(group)\n        │\n        ├── 按 score 排序所有 slot\n        ├── score = min(RPM剩余%, TPM剩余%, RPD剩余%)\n        ├── 最近失败的 slot 额外惩罚（30s半衰期）\n        └── 全部耗尽 → 选恢复最快的 slot\n        │\n        ▼\n  litellm.acompletion(model, messages, api_key)\n        │\n        ├── 成功 → record_success()\n        └── 失败 → record_failure() → 重试下一个 slot\n                    └── 当前 group 全部失败 → fallback 链" },
+          { type: "code", text: "调用方（stream_manager / search / merge）\n        │\n        ▼\n  SmartRouter._pick_slot(group)\n        │\n        ├── 按 score 排序所有 slot\n        ├── score = min(RPM剩余%, TPM剩余%, RPD剩余%)\n        ├── 最近失败的 slot 额外惩罚（30s半衰期）\n        └── 全部耗尽 → 选恢复最快的 slot\n        │\n        ▼\n  litellm.acompletion(model, messages, api_key)\n        │\n        ├── 成功 → record_success()\n        └── 失败 → record_failure() → 重试下一个 slot\n                    └── 当前 group 全部失败 → fallback 链" },
           { type: "p", text: "模型按用途分为 4 组：chat（主对话）、merge（合并输出）、summarizer（摘要/分类）、vision（图片理解）。Fallback 链：chat→summarizer，merge→chat→summarizer。" },
           { type: "p", text: "何时工作：系统中每一次 LLM 调用都经过 SmartRouter——主对话、摘要、合并、搜索意图分类、子线程标题生成、相关性评估。" },
 
           { type: "h2", text: "3.2 stream_manager.py — SSE 流式管理器" },
           { type: "p", text: "整个系统最复杂的服务。它编排一次完整的对话流程：" },
-          { type: "diagram", text: "用户消息到达\n  │\n  ├─ 1. yield ping（防止连接超时）\n  ├─ 2. 保存用户消息到 DB\n  ├─ 3. 查线程元数据（depth / session_id / 是否首轮）\n  ├─ 4. 构建 context（context_builder）+ RAG 注入（memory_service）\n  ├─ 5. 检测搜索意图（classify_search_intent）\n  │     ├── 需要搜索 → yield search 事件，走 search_service\n  │     └── 不需要 → 继续\n  ├─ 6. 调 LLM 流式生成（chat_stream）\n  │     ├── 实时 yield token 给前端\n  │     └── 实时截断 META 块（摘要 + 标题）\n  ├─ 7. 保存 assistant 消息到 DB\n  ├─ 8. yield done\n  └─ 9. 后台任务（_track 追踪）\n        ├── 从 META 写摘要（失败则 fallback merge_summary）\n        ├── 首轮主线写标题\n        └── 每 N 轮写 conversation_memory embedding" },
+          { type: "code", text: "用户消息到达\n  │\n  ├─ 1. yield ping（防止连接超时）\n  ├─ 2. 保存用户消息到 DB\n  ├─ 3. 查线程元数据（depth / session_id / 是否首轮）\n  ├─ 4. 构建 context（context_builder）+ RAG 注入（memory_service）\n  ├─ 5. 检测搜索意图（classify_search_intent）\n  │     ├── 需要搜索 → yield search 事件，走 search_service\n  │     └── 不需要 → 继续\n  ├─ 6. 调 LLM 流式生成（chat_stream）\n  │     ├── 实时 yield token 给前端\n  │     └── 实时截断 META 块（摘要 + 标题）\n  ├─ 7. 保存 assistant 消息到 DB\n  ├─ 8. yield done\n  └─ 9. 后台任务（_track 追踪）\n        ├── 从 META 写摘要（失败则 fallback merge_summary）\n        ├── 首轮主线写标题\n        └── 每 N 轮写 conversation_memory embedding" },
           { type: "p", text: "何时工作：用户每发一条消息都会完整走一遍这个流程。" },
 
           { type: "h2", text: "3.3 context_builder.py — Context 构建" },
@@ -1976,13 +1976,13 @@ export const articles: Article[] = [
 
           { type: "h2", text: "3.7 attachment_processor.py — 附件处理" },
           { type: "p", text: "文件上传的完整流水线：" },
-          { type: "diagram", text: "上传字节\n  │\n  ├─ 文本提取（Kreuzberg 库：支持 PDF/DOCX/PPTX/等 30+ 格式）\n  │   └── fallback：UTF-8 直接解码（txt/md/csv/json 等）\n  ├─ 短文本（<3000 字符）→ 直接作为消息 context，不进 RAG\n  ├─ 长文本 → 语义分块（相邻句子余弦相似度 < 0.75 时切断）\n  ├─ 批量向量化（embed_texts 一次处理所有块）\n  └─ 存入 attachment_chunks 表" },
+          { type: "code", text: "上传字节\n  │\n  ├─ 文本提取（Kreuzberg 库：支持 PDF/DOCX/PPTX/等 30+ 格式）\n  │   └── fallback：UTF-8 直接解码（txt/md/csv/json 等）\n  ├─ 短文本（<3000 字符）→ 直接作为消息 context，不进 RAG\n  ├─ 长文本 → 语义分块（相邻句子余弦相似度 < 0.75 时切断）\n  ├─ 批量向量化（embed_texts 一次处理所有块）\n  └─ 存入 attachment_chunks 表" },
           { type: "p", text: "何时工作：用户上传文件时。处理完成后原始字节自动释放，不写磁盘。" },
 
           { type: "h1", text: "四、前端层" },
 
           { type: "h2", text: "4.1 组件架构" },
-          { type: "diagram", text: "app/\n  ├── page.tsx              首页（输入框 + 新建对话）\n  ├── chat/[sessionId]/     主对话页\n  └── login/                登录页\n\ncomponents/\n  ├── MainThread/\n  │    ├── MessageList.tsx    消息列表（滚动、流式追加）\n  │    ├── MessageBubble.tsx  单条消息（支持选中插针）\n  │    └── InputBar.tsx       底部输入框（跟随当前线程）\n  ├── SubThread/\n  │    ├── SideColumn.tsx     侧边栏容器（左/右）\n  │    ├── ThreadCard.tsx     单个子线程卡片\n  │    └── PinRoll.tsx        Pin 滚动列表\n  ├── Layout/\n  │    ├── ThreadNav.tsx      线程导航（面包屑）\n  │    └── ThreadTree.tsx     线程树视图\n  ├── PinMenu.tsx             选中文字后的浮动工具栏\n  ├── PinStartDialog.tsx      插针确认对话框\n  ├── MergeOutput.tsx         合并输出面板\n  ├── MergeTreeCanvas.tsx     合并时的线程树可视化\n  ├── SessionDrawer.tsx       历史会话抽屉\n  ├── MarkdownContent.tsx     Markdown 渲染器\n  ├── ThemeToggle.tsx         主题切换\n  └── Mobile/\n       └── MobileChatLayout.tsx  移动端布局" },
+          { type: "code", text: "app/\n  ├── page.tsx              首页（输入框 + 新建对话）\n  ├── chat/[sessionId]/     主对话页\n  └── login/                登录页\n\ncomponents/\n  ├── MainThread/\n  │    ├── MessageList.tsx    消息列表（滚动、流式追加）\n  │    ├── MessageBubble.tsx  单条消息（支持选中插针）\n  │    └── InputBar.tsx       底部输入框（跟随当前线程）\n  ├── SubThread/\n  │    ├── SideColumn.tsx     侧边栏容器（左/右）\n  │    ├── ThreadCard.tsx     单个子线程卡片\n  │    └── PinRoll.tsx        Pin 滚动列表\n  ├── Layout/\n  │    ├── ThreadNav.tsx      线程导航（面包屑）\n  │    └── ThreadTree.tsx     线程树视图\n  ├── PinMenu.tsx             选中文字后的浮动工具栏\n  ├── PinStartDialog.tsx      插针确认对话框\n  ├── MergeOutput.tsx         合并输出面板\n  ├── MergeTreeCanvas.tsx     合并时的线程树可视化\n  ├── SessionDrawer.tsx       历史会话抽屉\n  ├── MarkdownContent.tsx     Markdown 渲染器\n  ├── ThemeToggle.tsx         主题切换\n  └── Mobile/\n       └── MobileChatLayout.tsx  移动端布局" },
 
           { type: "h2", text: "4.2 状态管理（Zustand）" },
           { type: "p", text: "三个 store 各管一个维度：" },
@@ -2002,7 +2002,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "五、数据存储层" },
           { type: "p", text: "Supabase PostgreSQL 中的 6 张核心表：" },
-          { type: "diagram", text: "sessions\n  │ 1:N\n  ▼\nthreads（parent_thread_id 自引用 → 无限嵌套树）\n  │ 1:N\n  ▼\nmessages\n\nthread_summaries（1:1 关联 threads）\n\nattachment_chunks（session 级文件向量块）\n\nconversation_memories（session 级对话记忆向量）" },
+          { type: "code", text: "sessions\n  │ 1:N\n  ▼\nthreads（parent_thread_id 自引用 → 无限嵌套树）\n  │ 1:N\n  ▼\nmessages\n\nthread_summaries（1:1 关联 threads）\n\nattachment_chunks（session 级文件向量块）\n\nconversation_memories（session 级对话记忆向量）" },
           { type: "ul", items: [
             "sessions — 对话会话，关联 user_id",
             "threads — 线程树，parent_thread_id=null 表示主线，否则是子线程。存储锚点文本、位置、深度",
@@ -2038,7 +2038,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "八、一次完整请求的组件调用链" },
           { type: "p", text: "用户在子线程中发送一条消息，涉及的全部组件：" },
-          { type: "diagram", text: "浏览器 InputBar\n  → lib/sse.ts（建立 SSE 连接）\n    → Nginx（TLS 终止 + 转发）\n      → stream.py（路由入口）\n        → stream_manager.py（编排）\n          ├── Supabase：保存用户消息\n          ├── context_builder.py：构建上下文\n          │    ├── Supabase：读祖先链 + 摘要 + 历史消息\n          │    └── memory_service.py：RAG 检索\n          │         ├── embedding_service.py：查询向量化（bge-m3）\n          │         └── Supabase：pgvector 相似度搜索\n          ├── llm_client.py → SmartRouter\n          │    → LiteLLM → Groq/Cerebras/SambaNova/Gemini\n          ├── Supabase：保存 assistant 消息\n          └── 后台任务：\n               ├── Supabase：写摘要\n               └── embedding_service → Supabase：写对话记忆" },
+          { type: "code", text: "浏览器 InputBar\n  → lib/sse.ts（建立 SSE 连接）\n    → Nginx（TLS 终止 + 转发）\n      → stream.py（路由入口）\n        → stream_manager.py（编排）\n          ├── Supabase：保存用户消息\n          ├── context_builder.py：构建上下文\n          │    ├── Supabase：读祖先链 + 摘要 + 历史消息\n          │    └── memory_service.py：RAG 检索\n          │         ├── embedding_service.py：查询向量化（bge-m3）\n          │         └── Supabase：pgvector 相似度搜索\n          ├── llm_client.py → SmartRouter\n          │    → LiteLLM → Groq/Cerebras/SambaNova/Gemini\n          ├── Supabase：保存 assistant 消息\n          └── 后台任务：\n               ├── Supabase：写摘要\n               └── embedding_service → Supabase：写对话记忆" },
           { type: "p", text: "一条消息，12 个组件协作，全部在 2-5 秒内完成。用户看到的是流式逐字出现的 AI 回复。" },
         ],
       },
@@ -2048,7 +2048,7 @@ export const articles: Article[] = [
           { type: "p", text: "Deeppin uses over a dozen components working together to deliver the \"pin-and-explore\" deep thinking experience. This article introduces each component's responsibility, when it's invoked, and how it relates to other parts. We start with the big picture, then go layer by layer." },
 
           { type: "h1", text: "Architecture overview" },
-          { type: "diagram", text: "User Browser\n  |\n  |-- HTTPS --> Vercel (Next.js frontend)\n  |              |-- components/    UI rendering\n  |              |-- stores/        Zustand state\n  |              +-- lib/sse.ts     SSE client\n  |\n  +-- HTTPS --> Oracle Cloud (Docker Compose)\n                 |-- Nginx          Reverse proxy + TLS\n                 |-- FastAPI         Backend main process\n                 |    |-- routers/       9 route modules\n                 |    |-- services/      7 service modules\n                 |    +-- db/            Supabase connector\n                 +-- SearXNG         Search engine" },
+          { type: "code", text: "User Browser\n  |\n  |-- HTTPS --> Vercel (Next.js frontend)\n  |              |-- components/    UI rendering\n  |              |-- stores/        Zustand state\n  |              +-- lib/sse.ts     SSE client\n  |\n  +-- HTTPS --> Oracle Cloud (Docker Compose)\n                 |-- Nginx          Reverse proxy + TLS\n                 |-- FastAPI         Backend main process\n                 |    |-- routers/       9 route modules\n                 |    |-- services/      7 service modules\n                 |    +-- db/            Supabase connector\n                 +-- SearXNG         Search engine" },
           { type: "p", text: "Below, we walk through each component in the order data flows through them — from the outside in." },
 
           { type: "h1", text: "Part 1 — Infrastructure layer" },
@@ -2061,7 +2061,7 @@ export const articles: Article[] = [
 
           { type: "h2", text: "1.2 Docker Compose — Container orchestration" },
           { type: "p", text: "Three services (backend, searxng, nginx) are managed by Docker Compose. Startup order is guaranteed through a healthcheck chain:" },
-          { type: "diagram", text: "backend + searxng start in parallel\n        |\n        v\nbackend healthcheck passes\n(/health aggregates searxng + supabase + embedding + groq checks)\n        |\n        v\n  nginx starts, begins accepting traffic" },
+          { type: "code", text: "backend + searxng start in parallel\n        |\n        v\nbackend healthcheck passes\n(/health aggregates searxng + supabase + embedding + groq checks)\n        |\n        v\n  nginx starts, begins accepting traffic" },
           { type: "p", text: "The backend healthcheck runs every 15 seconds with a 45-second start_period (to give the embedding model time to load). Nginx sets depends_on: backend: condition: service_healthy, ensuring users never hit a half-initialized service." },
 
           { type: "h2", text: "1.3 Supabase — Database + Auth" },
@@ -2123,13 +2123,13 @@ export const articles: Article[] = [
 
           { type: "h2", text: "3.1 llm_client.py — SmartRouter" },
           { type: "p", text: "The unified entry point for every LLM call in the system. Houses the SmartRouter, which manages models and API keys across 4 providers (Groq, Cerebras, SambaNova, Gemini)." },
-          { type: "diagram", text: "Caller (stream_manager / search / merge)\n        |\n        v\n  SmartRouter._pick_slot(group)\n        |\n        |-- Score all slots by availability\n        |-- score = min(RPM_remaining%, TPM_remaining%, RPD_remaining%)\n        |-- Recently failed slots get extra penalty (30s half-life)\n        +-- All exhausted -> pick slot with soonest recovery\n        |\n        v\n  litellm.acompletion(model, messages, api_key)\n        |\n        |-- Success -> record_success()\n        +-- Failure -> record_failure() -> retry next slot\n                        +-- All slots in group failed -> fallback chain" },
+          { type: "code", text: "Caller (stream_manager / search / merge)\n        |\n        v\n  SmartRouter._pick_slot(group)\n        |\n        |-- Score all slots by availability\n        |-- score = min(RPM_remaining%, TPM_remaining%, RPD_remaining%)\n        |-- Recently failed slots get extra penalty (30s half-life)\n        +-- All exhausted -> pick slot with soonest recovery\n        |\n        v\n  litellm.acompletion(model, messages, api_key)\n        |\n        |-- Success -> record_success()\n        +-- Failure -> record_failure() -> retry next slot\n                        +-- All slots in group failed -> fallback chain" },
           { type: "p", text: "Models are grouped into 4 tiers: chat (main conversations), merge (merge output), summarizer (summaries/classification), vision (image understanding). Fallback chain: chat->summarizer, merge->chat->summarizer." },
           { type: "p", text: "When it works: every single LLM call goes through SmartRouter — main chat, summaries, merge, search intent classification, sub-thread title generation, relevance assessment." },
 
           { type: "h2", text: "3.2 stream_manager.py — SSE stream manager" },
           { type: "p", text: "The most complex service in the entire system. It orchestrates the complete flow for one conversation turn:" },
-          { type: "diagram", text: "User message arrives\n  |\n  |-- 1. yield ping (prevent connection timeout)\n  |-- 2. Save user message to DB\n  |-- 3. Fetch thread metadata (depth / session_id / is_first_round)\n  |-- 4. Build context (context_builder) + RAG injection (memory_service)\n  |-- 5. Detect search intent (classify_search_intent)\n  |     |-- Needs search -> yield search event, use search_service\n  |     +-- No search -> continue\n  |-- 6. Call LLM streaming (chat_stream)\n  |     |-- yield tokens to frontend in real time\n  |     +-- Strip META block in real time (summary + title)\n  |-- 7. Save assistant message to DB\n  |-- 8. yield done\n  +-- 9. Background tasks (_track lifecycle)\n        |-- Write summary from META (fallback: merge_summary)\n        |-- Write title on first main-thread round\n        +-- Write conversation_memory embedding every N rounds" },
+          { type: "code", text: "User message arrives\n  |\n  |-- 1. yield ping (prevent connection timeout)\n  |-- 2. Save user message to DB\n  |-- 3. Fetch thread metadata (depth / session_id / is_first_round)\n  |-- 4. Build context (context_builder) + RAG injection (memory_service)\n  |-- 5. Detect search intent (classify_search_intent)\n  |     |-- Needs search -> yield search event, use search_service\n  |     +-- No search -> continue\n  |-- 6. Call LLM streaming (chat_stream)\n  |     |-- yield tokens to frontend in real time\n  |     +-- Strip META block in real time (summary + title)\n  |-- 7. Save assistant message to DB\n  |-- 8. yield done\n  +-- 9. Background tasks (_track lifecycle)\n        |-- Write summary from META (fallback: merge_summary)\n        |-- Write title on first main-thread round\n        +-- Write conversation_memory embedding every N rounds" },
           { type: "p", text: "When it works: every message the user sends runs through this complete pipeline." },
 
           { type: "h2", text: "3.3 context_builder.py — Context construction" },
@@ -2155,13 +2155,13 @@ export const articles: Article[] = [
 
           { type: "h2", text: "3.7 attachment_processor.py — Attachment processing" },
           { type: "p", text: "The complete file upload pipeline:" },
-          { type: "diagram", text: "Uploaded bytes\n  |\n  |-- Text extraction (Kreuzberg: supports PDF/DOCX/PPTX/30+ formats)\n  |    +-- Fallback: direct UTF-8 decode (txt/md/csv/json etc.)\n  |-- Short text (<3000 chars) -> inline as message context, skip RAG\n  |-- Long text -> semantic chunking (cut when cosine similarity < 0.75)\n  |-- Batch embedding (embed_texts processes all chunks in one call)\n  +-- Store in attachment_chunks table" },
+          { type: "code", text: "Uploaded bytes\n  |\n  |-- Text extraction (Kreuzberg: supports PDF/DOCX/PPTX/30+ formats)\n  |    +-- Fallback: direct UTF-8 decode (txt/md/csv/json etc.)\n  |-- Short text (<3000 chars) -> inline as message context, skip RAG\n  |-- Long text -> semantic chunking (cut when cosine similarity < 0.75)\n  |-- Batch embedding (embed_texts processes all chunks in one call)\n  +-- Store in attachment_chunks table" },
           { type: "p", text: "When it works: when a user uploads a file. Raw bytes are released after processing — nothing is written to disk." },
 
           { type: "h1", text: "Part 4 — Frontend layer" },
 
           { type: "h2", text: "4.1 Component architecture" },
-          { type: "diagram", text: "app/\n  |-- page.tsx              Home (input + new chat)\n  |-- chat/[sessionId]/     Main chat page\n  +-- login/                Login page\n\ncomponents/\n  |-- MainThread/\n  |    |-- MessageList.tsx    Message list (scroll, stream append)\n  |    |-- MessageBubble.tsx  Single message (supports text selection + pin)\n  |    +-- InputBar.tsx       Bottom input (follows active thread)\n  |-- SubThread/\n  |    |-- SideColumn.tsx     Side panel container (left/right)\n  |    |-- ThreadCard.tsx     Individual sub-thread card\n  |    +-- PinRoll.tsx        Pin scroll list\n  |-- Layout/\n  |    |-- ThreadNav.tsx      Thread navigation (breadcrumbs)\n  |    +-- ThreadTree.tsx     Thread tree view\n  |-- PinMenu.tsx             Floating toolbar after text selection\n  |-- PinStartDialog.tsx      Pin confirmation dialog\n  |-- MergeOutput.tsx         Merge output panel\n  |-- MergeTreeCanvas.tsx     Thread tree visualization for merge\n  |-- SessionDrawer.tsx       History session drawer\n  |-- MarkdownContent.tsx     Markdown renderer\n  |-- ThemeToggle.tsx         Theme toggle\n  +-- Mobile/\n       +-- MobileChatLayout.tsx  Mobile layout" },
+          { type: "code", text: "app/\n  |-- page.tsx              Home (input + new chat)\n  |-- chat/[sessionId]/     Main chat page\n  +-- login/                Login page\n\ncomponents/\n  |-- MainThread/\n  |    |-- MessageList.tsx    Message list (scroll, stream append)\n  |    |-- MessageBubble.tsx  Single message (supports text selection + pin)\n  |    +-- InputBar.tsx       Bottom input (follows active thread)\n  |-- SubThread/\n  |    |-- SideColumn.tsx     Side panel container (left/right)\n  |    |-- ThreadCard.tsx     Individual sub-thread card\n  |    +-- PinRoll.tsx        Pin scroll list\n  |-- Layout/\n  |    |-- ThreadNav.tsx      Thread navigation (breadcrumbs)\n  |    +-- ThreadTree.tsx     Thread tree view\n  |-- PinMenu.tsx             Floating toolbar after text selection\n  |-- PinStartDialog.tsx      Pin confirmation dialog\n  |-- MergeOutput.tsx         Merge output panel\n  |-- MergeTreeCanvas.tsx     Thread tree visualization for merge\n  |-- SessionDrawer.tsx       History session drawer\n  |-- MarkdownContent.tsx     Markdown renderer\n  |-- ThemeToggle.tsx         Theme toggle\n  +-- Mobile/\n       +-- MobileChatLayout.tsx  Mobile layout" },
 
           { type: "h2", text: "4.2 State management (Zustand)" },
           { type: "p", text: "Three stores, each managing one dimension:" },
@@ -2181,7 +2181,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "Part 5 — Data storage layer" },
           { type: "p", text: "Six core tables in Supabase PostgreSQL:" },
-          { type: "diagram", text: "sessions\n  | 1:N\n  v\nthreads (parent_thread_id self-reference -> infinite nesting tree)\n  | 1:N\n  v\nmessages\n\nthread_summaries (1:1 with threads)\n\nattachment_chunks (session-level file vector chunks)\n\nconversation_memories (session-level conversation memory vectors)" },
+          { type: "code", text: "sessions\n  | 1:N\n  v\nthreads (parent_thread_id self-reference -> infinite nesting tree)\n  | 1:N\n  v\nmessages\n\nthread_summaries (1:1 with threads)\n\nattachment_chunks (session-level file vector chunks)\n\nconversation_memories (session-level conversation memory vectors)" },
           { type: "ul", items: [
             "sessions — conversation sessions, linked to user_id",
             "threads — thread tree; parent_thread_id=null means main thread, otherwise sub-thread. Stores anchor text, position offsets, depth",
@@ -2217,7 +2217,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "Part 8 — Full request call chain" },
           { type: "p", text: "When a user sends a message in a sub-thread, every component involved:" },
-          { type: "diagram", text: "Browser InputBar\n  -> lib/sse.ts (establish SSE connection)\n    -> Nginx (TLS termination + forwarding)\n      -> stream.py (route entry)\n        -> stream_manager.py (orchestration)\n          |-- Supabase: save user message\n          |-- context_builder.py: build context\n          |    |-- Supabase: read ancestor chain + summaries + history\n          |    +-- memory_service.py: RAG retrieval\n          |         |-- embedding_service.py: vectorize query (bge-m3)\n          |         +-- Supabase: pgvector similarity search\n          |-- llm_client.py -> SmartRouter\n          |    -> LiteLLM -> Groq/Cerebras/SambaNova/Gemini\n          |-- Supabase: save assistant message\n          +-- Background tasks:\n               |-- Supabase: write summary\n               +-- embedding_service -> Supabase: write conversation memory" },
+          { type: "code", text: "Browser InputBar\n  -> lib/sse.ts (establish SSE connection)\n    -> Nginx (TLS termination + forwarding)\n      -> stream.py (route entry)\n        -> stream_manager.py (orchestration)\n          |-- Supabase: save user message\n          |-- context_builder.py: build context\n          |    |-- Supabase: read ancestor chain + summaries + history\n          |    +-- memory_service.py: RAG retrieval\n          |         |-- embedding_service.py: vectorize query (bge-m3)\n          |         +-- Supabase: pgvector similarity search\n          |-- llm_client.py -> SmartRouter\n          |    -> LiteLLM -> Groq/Cerebras/SambaNova/Gemini\n          |-- Supabase: save assistant message\n          +-- Background tasks:\n               |-- Supabase: write summary\n               +-- embedding_service -> Supabase: write conversation memory" },
           { type: "p", text: "One message, 12 components working together, all completing within 2–5 seconds. What the user sees is an AI reply streaming in character by character." },
         ],
       },
