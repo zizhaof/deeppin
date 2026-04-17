@@ -73,7 +73,7 @@ jobs:
           host: ${{ secrets.ORACLE_HOST }}
           username: ubuntu
           key: ${{ secrets.ORACLE_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 20m   # 冷 build（torch/cuda 加 docker pull）可能 12-15min / cold builds can take 12-15min
           script: |
             set -e
             cd /home/ubuntu/deeppin
