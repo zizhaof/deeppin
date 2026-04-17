@@ -1100,10 +1100,11 @@ export const articles: Article[] = [
           { type: "p", text: "This is the most common mistake. Nginx buffers proxy responses by default, accumulating chunks before forwarding. For SSE, this means tokens batch up and arrive all at once — destroying the streaming effect." },
           { type: "code", text: `location / {\n    proxy_pass http://localhost:8000;\n    proxy_buffering off;     # critical\n    proxy_cache off;         # critical\n    proxy_read_timeout 300s; # LLM can be slow\n    proxy_http_version 1.1;\n    proxy_set_header Connection "";\n}` },
 
-          { type: "h1", text: "Part 4 — Per-thread stream state in Zustand" },
-          { type: "p", text: "Deeppin supports concurrent streaming across multiple threads (main thread and several pins simultaneously). Each thread has isolated stream state keyed by threadId in Zustand, so concurrent streams never interfere." },
+          { type: "h1", text: "Part 5 — Per-thread stream state in Zustand" },
+          { type: "p", text: "Deeppin supports concurrent streaming across multiple threads (main thread and several pins simultaneously). Each thread has isolated stream state keyed by threadId in Zustand, so concurrent streams never interfere:" },
+          { type: "code", text: "// useStreamStore.ts\ninterface StreamStore {\n  streams: Record<string, {\n    isStreaming: boolean;\n    content: string;\n    error: string | null;\n  }>;\n  appendToken: (threadId: string, token: string) => void;\n  setStreaming: (threadId: string, value: boolean) => void;\n}\n\n// Isolated by threadId — no interference\nappendToken: (threadId, token) =>\n  set(state => ({\n    streams: {\n      ...state.streams,\n      [threadId]: {\n        ...state.streams[threadId],\n        content: (state.streams[threadId]?.content ?? \"\") + token,\n      },\n    },\n  }))," },
 
-          { type: "h1", text: "Part 5 — Streaming Markdown rendering" },
+          { type: "h1", text: "Part 6 — Streaming Markdown rendering" },
           { type: "p", text: "Markdown markers like **bold** appear malformed mid-stream (one ** without its closing pair). Solution: show raw text during streaming, offer a toggle to rendered Markdown after completion. Users can switch at any time." },
         ],
       },
@@ -1187,6 +1188,7 @@ export const articles: Article[] = [
           ]},
 
           { type: "h1", text: "Part 3 — Embedding and storage" },
+          { type: "code", text: "vecs = await embed_texts(chunks)  # batch — single call\n\nrows = [\n    {\n        \"session_id\": session_id,\n        \"filename\": label,\n        \"chunk_index\": i,\n        \"content\": chunk,\n        \"embedding\": format_vector(vec),\n    }\n    for i, (chunk, vec) in enumerate(zip(chunks, vecs))\n]\nawait _db(lambda: sb.table(\"attachment_chunks\").insert(rows).execute())" },
           { type: "p", text: "Batch embedding processes all chunks in a single call — several times faster than sequential calls. bge-m3 supports batch processing natively." },
 
           { type: "h1", text: "Part 4 — Context handling during conversation" },
@@ -1196,8 +1198,14 @@ export const articles: Article[] = [
           { type: "h2", text: "Step 2: on-demand RAG retrieval" },
           { type: "p", text: `On each subsequent turn, the current question retrieves the most relevant chunks. "What does paragraph three say?" retrieves that chunk. "What's the core argument?" retrieves the chunk containing it.` },
 
-          { type: "h1", text: "Part 5 — The Lost in the Middle problem" },
+          { type: "h1", text: "Part 5 — prefer_filename: the first question after file upload" },
+          { type: "p", text: "There is a special case right after a file upload: chunks from older files may rank higher than the newly uploaded file, causing the first answer to reference the wrong document." },
+          { type: "p", text: "stream_manager passes a prefer_filename parameter when processing the first message after a file upload:" },
+          { type: "code", text: "# stream_manager.py — detect freshly uploaded file\nprefer_filename = None\nif attachment_filename:\n    prefer_filename = attachment_filename\n\ncontext = await build_context(\n    thread_id,\n    query_text=user_content,\n    prefer_filename=prefer_filename,  # lock to the new file\n)" },
+
+          { type: "h1", text: "Part 6 — The Lost in the Middle problem" },
           { type: "p", text: "Research shows LLM attention to content in the middle of long documents is significantly lower than at the start or end (Liu et al. 2023). Chunking + on-demand retrieval sidesteps this entirely: only 3–4 relevant chunks are injected, and they appear near the top of the context in the LLM's high-attention zone." },
+          { type: "note", text: "Deeppin's current injection order: ancestor summaries → anchor text → RAG file chunks → RAG conversation memory → current conversation. RAG chunks sit near the top, avoiding Lost in the Middle." },
         ],
       },
     },
