@@ -207,20 +207,21 @@ class TestSession:
 
 class TestProviders:
     """
-    验证每个 provider + key 组合都可用 — 无需认证。
-    Verify every provider + key combination is functional — no auth required.
+    验证每个 provider 至少有一个 key 可用 — 无需认证。
+    Verify every provider has at least one functioning key — no auth required.
+
+    单 key 偶发 429/limit 不视为失败（只要同 provider 的其他 key 通过）；
+    整个 provider 全部 key 失败才算硬失败。每个 slot 细粒度检查由 daily-provider-check 负责。
+    A single-key 429/transient hiccup is not a failure as long as another key for the same
+    provider succeeds. Only when every key of a provider fails do we hard-fail.
+    Per-slot drift detection belongs to the daily-provider-check workflow.
     """
 
-    # 免费额度特别紧、会周期性 RPD 爆的 provider；失败时仅警告，不挂 CI
-    # Providers with tight free quotas that exhaust periodically; failures warn only, no CI fail.
-    # 持续性故障由 daily-provider-check workflow 捕获
-    # Persistent outages are caught by the daily-provider-check workflow.
+    # 免费额度特别紧、会周期性 RPD 爆的 provider；即便全部 key 失败也只警告，不挂 CI
+    # Providers with tight free quotas that exhaust periodically; warn-only even if all keys fail.
     FLAKY_PROVIDERS = {"gemini"}
 
     def test_all_providers_reachable(self):
-        """所有已配置的 provider/key 都能成功调用 LLM（FLAKY_PROVIDERS 除外）。
-        All configured provider/key pairs can successfully call the LLM
-        (except FLAKY_PROVIDERS, which only warn)."""
         r = httpx.get(f"{BASE_URL}/health/providers", timeout=60)
         assert r.status_code in (200, 503), f"Unexpected status: {r.status_code}"
         data = r.json()
@@ -232,23 +233,30 @@ class TestProviders:
             status = "OK" if result["ok"] else f"FAIL: {result.get('error', 'unknown')}"
             print(f"  {result['provider']}/{result['model']} [{result['key']}] → {status}")
 
-        flaky_failures = [r for r in data["results"]
-                          if not r["ok"] and r["provider"] in self.FLAKY_PROVIDERS]
-        hard_failures = [r for r in data["results"]
-                         if not r["ok"] and r["provider"] not in self.FLAKY_PROVIDERS]
+        # 按 provider 聚合：每个 provider 至少一个 key ok 即算通过
+        # Aggregate by provider: provider passes if at least one of its keys is ok
+        by_provider: dict[str, list[dict]] = {}
+        for r in data["results"]:
+            by_provider.setdefault(r["provider"], []).append(r)
 
-        if flaky_failures:
-            print(
-                f"\nWARNING: {len(flaky_failures)} flaky-provider failure(s) tolerated "
-                f"(daily cron will catch persistent outage): "
-                + ", ".join(f"{r['provider']}/{r['model']}" for r in flaky_failures)
-            )
+        dead_providers = []   # 硬失败 / hard fail
+        flaky_dead = []       # 仅警告 / warn-only
+        for provider, results in by_provider.items():
+            if any(r["ok"] for r in results):
+                continue
+            (flaky_dead if provider in self.FLAKY_PROVIDERS else dead_providers).append(provider)
 
-        assert not hard_failures, (
-            f"{len(hard_failures)}/{data['total']} provider/key pairs failed: "
-            + ", ".join(
-                f"{r['provider']}/{r['model']}[{r['key']}]: {r.get('error', '?')}"
-                for r in hard_failures
+        if flaky_dead:
+            print(f"\nWARNING: flaky providers with all keys failing (tolerated): {flaky_dead}")
+
+        assert not dead_providers, (
+            f"Providers with ALL keys failing: {dead_providers}. Details: "
+            + "; ".join(
+                f"{p}: " + ", ".join(
+                    f"{r['model']}[{r['key']}]={r.get('error', '?')[:80]}"
+                    for r in by_provider[p]
+                )
+                for p in dead_providers
             )
         )
 
