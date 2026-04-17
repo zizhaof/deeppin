@@ -407,6 +407,15 @@ server {
 - 工作分支（`feat/*` / `chat-<id>`）= 不自动部署。
 - **Staging** = 手动触发（GitHub UI / `gh` CLI / 手机 bot `/deploy`），部到 `staging-deeppin.duckdns.org` 验证，通过再合 main。
 
+**何时必须走 branch + staging（不能直接推 main）**：
+- 改后端逻辑 / 新 endpoint / 改 context_builder 等任何 `backend/**` 业务代码
+- 改 Docker / docker-compose / Dockerfile / nginx / CI workflow / scripts/**
+- 改 Supabase schema / migration
+
+**可以直接推 main 的只有**：改注释、改 docstring、改 CLAUDE.md / README / 纯文档。
+
+规则的理由：单测跑在 GitHub runner 上，**不测 nginx / 不测 docker-compose / 不测 CI 本身**，一旦这类东西挂在 prod，现场就是 502 全站挂 + 要 ssh 上 Oracle 手动救。Staging 是唯一能真正验证这些的环境。
+
 ### 三个 workflow
 
 | workflow | 触发 | 动作 |
