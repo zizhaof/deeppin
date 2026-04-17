@@ -427,6 +427,27 @@ Oracle 同一台：
 **共享**：Supabase（同一项目 + 同一组 API keys）、Let's Encrypt 证书目录、主 nginx 容器  
 **独立**：代码目录、compose project、宿主机端口
 
+### 前后端 preview 不对称
+
+| | 前端 (Vercel) | 后端 (Oracle) |
+|---|---|---|
+| 每分支独立 URL | ✅ `deeppin-git-<branch>-zizhaof.vercel.app` 自动起 | ❌ 只有一个 staging slot |
+| 并发分支预览 | ✅ 任意多个共存 | ❌ 后部署的覆盖前一个 |
+| 触发方式 | push 即起 | 手动 dispatch |
+
+原因：Vercel 是 serverless+CDN，preview = 起一个 lambda + 加一条路由，几乎零开销。后端是 Docker 容器（FastAPI + bge-m3 4G 模型），每个 preview 要独立端口/nginx server block/duckdns 子域，Oracle 24G 内存撑不了几个并发 + 自动化复杂度高。
+
+**实务影响**：同一时间只能在 staging 验一个分支。多人协作时要先约好谁占着 staging；单人开发不是问题。
+
+### 已知 CI 缺口
+
+- **`deploy-staging.yml` 没跑 integration test**：只 unit-test + deploy 两段，没有像 prod 那样部完真打一遍 `tests/integration/`。意味着 staging 的"绿"只代表服务起得来 + 单测过，不代表真实端到端没回归。补的话照搬 `deploy-backend.yml` 的 integration-test job，把 `TEST_BASE_URL` 换成 `https://staging-deeppin.duckdns.org`。
+- **改 `.github/workflows/**` 不会触发 `deploy-backend.yml`**：paths filter 没含 workflow 文件本身。修 deploy 配置后必须再随便改一个 `backend/**` 文件才会触发同步。或把 `.github/workflows/deploy-backend.yml` 加进 paths。
+
+### Docker compose env 重载坑
+
+`docker compose restart <svc>` **不重读** `env_file`。env vars 在容器 *create* 时被烘进去，restart 只是 SIGTERM/SIGKILL 重跑 entrypoint，沿用旧 env。改 `.env` 后要让新值生效得用 `docker compose up -d --force-recreate <svc>`。
+
 手动拉起 staging（workflow 内部用这条命令）：
 ```bash
 docker compose -p deeppin-staging --env-file compose.staging.env \
