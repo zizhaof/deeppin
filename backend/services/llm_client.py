@@ -5,7 +5,7 @@ SmartRouter — Multi-provider intelligent routing with usage tracking,
 proactive selection, and soonest-recovery fallback.
 
 Provider 支持 / Provider support:
-  Groq, Cerebras, SambaNova, Gemini — 全部免费 tier 叠加
+  Groq, Cerebras, SambaNova, Gemini, NVIDIA NIM, OpenRouter — 全部免费 tier 叠加
   All free tiers stacked together.
 
 模型分组 / Model groups:
@@ -58,6 +58,8 @@ GROQ_API_KEYS: list[str] = _load_groq_keys()
 CEREBRAS_API_KEYS: list[str] = _load_keys("CEREBRAS_API_KEYS")
 SAMBANOVA_API_KEYS: list[str] = _load_keys("SAMBANOVA_API_KEYS")
 GEMINI_API_KEYS: list[str] = _load_keys("GEMINI_API_KEYS")
+NVIDIA_NIM_API_KEYS: list[str] = _load_keys("NVIDIA_NIM_API_KEYS")
+OPENROUTER_API_KEYS: list[str] = _load_keys("OPENROUTER_API_KEYS")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -67,7 +69,7 @@ GEMINI_API_KEYS: list[str] = _load_keys("GEMINI_API_KEYS")
 @dataclass
 class ModelSpec:
     """一个模型的规格定义 / Specification for a single model."""
-    provider: str        # "groq", "cerebras", "sambanova", "gemini"
+    provider: str        # "groq", "cerebras", "sambanova", "gemini", "nvidia_nim", "openrouter"
     model_id: str        # provider 内模型名
     rpm: int = 30        # 每分钟请求数 / requests per minute
     tpm: int = 6000      # 每分钟 token 数 / tokens per minute
@@ -77,13 +79,13 @@ class ModelSpec:
 
 # Groq 模型（免费 tier：30 RPM, 6K TPM, 14.4K RPD）
 GROQ_MODELS = [
-    ModelSpec("groq", "llama-3.3-70b-versatile",                    rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["chat", "merge"]),
-    ModelSpec("groq", "meta-llama/llama-4-scout-17b-16e-instruct",  rpm=30, tpm=15000, rpd=14400, tpd=500_000, groups=["chat", "merge", "vision"]),
-    ModelSpec("groq", "qwen/qwen3-32b",                             rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["chat"]),
-    ModelSpec("groq", "moonshotai/kimi-k2-instruct-0905",           rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["chat", "merge"]),
-    ModelSpec("groq", "openai/gpt-oss-120b",                        rpm=30, tpm=6000,  rpd=1000,  tpd=500_000, groups=["chat"]),
-    ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["summarizer"]),
-    ModelSpec("groq", "openai/gpt-oss-20b",                         rpm=30, tpm=6000,  rpd=1000,  tpd=500_000, groups=["summarizer"]),
+    ModelSpec("groq", "llama-3.3-70b-versatile",                    rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["chat", "merge"]),
+    ModelSpec("groq", "meta-llama/llama-4-scout-17b-16e-instruct",  rpm=30, tpm=15000,  rpd=14400, tpd=500_000, groups=["chat", "merge", "vision"]),
+    ModelSpec("groq", "qwen/qwen3-32b",                             rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["chat"]),
+    ModelSpec("groq", "moonshotai/kimi-k2-instruct-0905",           rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["chat", "merge"]),
+    ModelSpec("groq", "openai/gpt-oss-120b",                        rpm=30, tpm=6000,   rpd=1000,  tpd=500_000, groups=["chat"]),
+    ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["summarizer"]),
+    ModelSpec("groq", "openai/gpt-oss-20b",                         rpm=30, tpm=6000,   rpd=1000,  tpd=500_000, groups=["summarizer"]),
 ]
 
 # Cerebras 模型（免费 tier：30 RPM, ~1M TPD）
@@ -105,7 +107,26 @@ GEMINI_MODELS = [
     ModelSpec("gemini", "gemini-2.5-flash-lite",  rpm=15, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "summarizer"]),
 ]
 
-ALL_MODELS = GROQ_MODELS + CEREBRAS_MODELS + SAMBANOVA_MODELS + GEMINI_MODELS
+# NVIDIA NIM 模型（免费 tier：40 RPM，TPM 未公开，保守估计 10K）
+# 2026-04 实测可用模型
+NVIDIA_NIM_MODELS = [
+    ModelSpec("nvidia_nim", "meta/llama-3.3-70b-instruct",                rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
+    ModelSpec("nvidia_nim", "meta/llama-4-maverick-17b-128e-instruct",    rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
+    ModelSpec("nvidia_nim", "nvidia/llama-3.3-nemotron-super-49b-v1",     rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
+    ModelSpec("nvidia_nim", "google/gemma-3-27b-it",                      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
+    ModelSpec("nvidia_nim", "meta/llama-3.1-8b-instruct",                 rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["summarizer"]),
+]
+
+# OpenRouter 免费模型（20 RPM, 200 RPD，买 $10 credit 可升到 1000 RPD）
+# 模型 ID 带 :free 后缀，上游 provider 可能临时限流
+OPENROUTER_MODELS = [
+    ModelSpec("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",       rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat", "merge"]),
+    ModelSpec("openrouter", "openai/gpt-oss-120b:free",                     rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat", "merge"]),
+    ModelSpec("openrouter", "meta-llama/llama-3.3-70b-instruct:free",       rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
+    ModelSpec("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free",    rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
+]
+
+ALL_MODELS = GROQ_MODELS + CEREBRAS_MODELS + SAMBANOVA_MODELS + GEMINI_MODELS + NVIDIA_NIM_MODELS + OPENROUTER_MODELS
 
 # 兼容旧代码 / Backward compatibility
 CHAT_MODELS = [m.model_id for m in ALL_MODELS if "chat" in m.groups]
@@ -388,6 +409,8 @@ def _build_router() -> SmartRouter:
         "cerebras": CEREBRAS_API_KEYS,
         "sambanova": SAMBANOVA_API_KEYS,
         "gemini": GEMINI_API_KEYS,
+        "nvidia_nim": NVIDIA_NIM_API_KEYS,
+        "openrouter": OPENROUTER_API_KEYS,
     }
     return SmartRouter(ALL_MODELS, keys_by_provider)
 

@@ -64,6 +64,8 @@ jobs:
             update_key CEREBRAS_API_KEYS '${{ secrets.CEREBRAS_API_KEYS }}'
             update_key SAMBANOVA_API_KEYS '${{ secrets.SAMBANOVA_API_KEYS }}'
             update_key GEMINI_API_KEYS '${{ secrets.GEMINI_API_KEYS }}'
+            update_key NVIDIA_NIM_API_KEYS '${{ secrets.NVIDIA_NIM_API_KEYS }}'
+            update_key OPENROUTER_API_KEYS '${{ secrets.OPENROUTER_API_KEYS }}'
 
       - name: Deploy to Oracle Cloud
         uses: appleboy/ssh-action@v1.0.3

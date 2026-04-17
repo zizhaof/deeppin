@@ -55,10 +55,10 @@ async def _check_embedding() -> dict:
         return {"ok": False, "error": str(e)}
 
 
-async def _check_groq() -> dict:
+async def _check_llm() -> dict:
     """
-    用 summarizer 梯队发一条最小请求，验证 Groq API key 有效且可达。
-    Send a minimal request via the summarizer tier to verify Groq API keys are valid and reachable.
+    用 summarizer 梯队发一条最小请求，验证 LLM 调用链路可用。
+    Send a minimal request via the summarizer tier to verify the LLM pipeline works.
     使用 summarizer 而非 chat，避免消耗高 TPM 配额。
     Uses summarizer rather than chat to avoid burning high-TPM quota.
     """
@@ -129,14 +129,14 @@ async def health():
     任何依赖异常 → HTTP 503，status: "degraded"
     （Docker healthcheck 根据 HTTP 状态码判断 healthy/unhealthy）
     """
-    searxng_ok, supabase_ok, embedding_info, groq_info = await asyncio.gather(
+    searxng_ok, supabase_ok, embedding_info, llm_info = await asyncio.gather(
         _check_searxng(),
         _check_supabase(),
         _check_embedding(),
-        _check_groq(),
+        _check_llm(),
     )
 
-    all_ok = searxng_ok and supabase_ok and embedding_info["ok"] and groq_info["ok"]
+    all_ok = searxng_ok and supabase_ok and embedding_info["ok"] and llm_info["ok"]
     body = {
         "status": "ok" if all_ok else "degraded",
         "components": {
@@ -144,7 +144,7 @@ async def health():
             "searxng": searxng_ok,
             "supabase": supabase_ok,
             "embedding": embedding_info,
-            "groq": groq_info,
+            "llm": llm_info,
         },
     }
     # 503 让 Docker 将容器标记为 unhealthy，CI/CD 能感知到
