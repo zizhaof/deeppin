@@ -88,7 +88,7 @@ def _make_db_mock(*responses):
     results = list(responses)
     idx = [0]
 
-    async def fake_db(fn):
+    async def fake_db(fn, **_kw):
         r = results[idx[0]] if idx[0] < len(results) else MagicMock(data=None)
         idx[0] += 1
         return r

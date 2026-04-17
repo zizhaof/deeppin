@@ -80,8 +80,17 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
     """
     if not texts:
         return []
+    from services.metrics import EMBEDDING_CALLS, EMBEDDING_DURATION, EMBEDDING_CHARS
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _encode_sync, texts)
+    with EMBEDDING_DURATION.time():
+        try:
+            result = await loop.run_in_executor(None, _encode_sync, texts)
+        except Exception:
+            EMBEDDING_CALLS.labels("error").inc()
+            raise
+    EMBEDDING_CALLS.labels("ok").inc()
+    EMBEDDING_CHARS.inc(sum(len(t) for t in texts))
+    return result
 
 
 async def embed_text(text: str) -> list[float]:

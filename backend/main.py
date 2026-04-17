@@ -110,3 +110,18 @@ app.include_router(merge.router, prefix="/api")
 app.include_router(relevance.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(health.router)  # /health — 聚合健康检查，无 /api 前缀
+
+# ── Prometheus 指标 / Prometheus metrics ──────────────────────────────
+# API 层由 instrumentator 自动埋点（method × handler × status × latency）。
+# LLM slot 窗口状态通过自定义 collector 在 scrape 时读 SmartRouter。
+# API layer auto-instrumented; LLM window state exposed via a custom collector.
+from prometheus_fastapi_instrumentator import Instrumentator
+from services.metrics import register_llm_collector
+
+Instrumentator(
+    should_group_status_codes=False,        # 保留精确状态码（200/201/404/500）
+    should_ignore_untemplated=True,         # 未匹配路由不记，防 cardinality 爆炸
+    excluded_handlers=["/metrics", "/health"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+register_llm_collector()

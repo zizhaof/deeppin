@@ -153,7 +153,7 @@ class TestRetrieveRagContext:
         assert _FILE_REF_PATTERN.search(query)
 
         db_call_count = [0]
-        async def fake_db(fn):
+        async def fake_db(fn, **_kw):
             """
             截获 _db 调用，计数并返回空数据。
             Count _db calls and return empty data.

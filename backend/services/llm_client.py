@@ -367,6 +367,20 @@ class SmartRouter:
                     response = await litellm.acompletion(**kwargs)
                     slot.usage.record_success()
 
+                    # Prometheus: 成功记一笔 call + tokens
+                    # Prometheus: record one successful call + estimated tokens
+                    try:
+                        from services.metrics import record_llm_call
+                        record_llm_call(
+                            provider=slot.spec.provider,
+                            model=slot.spec.model_id,
+                            key_prefix=(slot.api_key or "")[:8],
+                            group=try_group,
+                            tokens=est_tokens,
+                        )
+                    except Exception:
+                        pass
+
                     if try_group != group:
                         _log.info("Fallback %s→%s, slot=%s", group, try_group, slot.litellm_model)
 
@@ -381,6 +395,15 @@ class SmartRouter:
 
                 except Exception as exc:
                     slot.usage.record_failure()
+                    try:
+                        from services.metrics import record_llm_failure
+                        record_llm_failure(
+                            provider=slot.spec.provider,
+                            model=slot.spec.model_id,
+                            key_prefix=(slot.api_key or "")[:8],
+                        )
+                    except Exception:
+                        pass
                     last_error = exc
                     status = getattr(exc, "status_code", None)
                     _log.warning(

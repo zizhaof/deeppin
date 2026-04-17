@@ -7,12 +7,16 @@ Supabase client singleton.
 Uses double-checked locking for thread safety; only one client instance per process.
 """
 
+import asyncio
 import os
 import threading
 from supabase import create_client, Client
 
 _client: Client | None = None
 _lock = threading.Lock()
+
+# httpx/httpcore 连接断开错误特征字符串 / Connection-reset error tags.
+_CONN_ERR_TAGS = ("Server disconnected", "RemoteProtocolError", "ConnectionReset", "ConnectError")
 
 
 def get_supabase() -> Client:
@@ -40,3 +44,34 @@ def reset_supabase() -> None:
     global _client
     with _lock:
         _client = None
+
+
+async def run_db(fn, *, table: str = "unknown"):
+    """
+    统一 Supabase 调用封装：线程池执行 + 连接断开重试 + Prometheus 指标。
+    Canonical Supabase call wrapper: thread-pool execution + connection retry + Prometheus metrics.
+
+    table 作为 Prometheus label 拆分每张表的调用量和延迟。
+    `table` is used as a Prometheus label to break down calls & latency per table.
+    """
+    from services.metrics import SUPABASE_CALLS, SUPABASE_DURATION
+    loop = asyncio.get_running_loop()
+    with SUPABASE_DURATION.labels(table).time():
+        try:
+            result = await loop.run_in_executor(None, fn)
+            SUPABASE_CALLS.labels(table, "ok").inc()
+            return result
+        except Exception as e:
+            err_str = str(e)
+            err_type = type(e).__name__
+            if any(tag in err_str or tag in err_type for tag in _CONN_ERR_TAGS):
+                reset_supabase()
+                try:
+                    result = await loop.run_in_executor(None, fn)
+                    SUPABASE_CALLS.labels(table, "ok").inc()
+                    return result
+                except Exception:
+                    SUPABASE_CALLS.labels(table, "error").inc()
+                    raise
+            SUPABASE_CALLS.labels(table, "error").inc()
+            raise

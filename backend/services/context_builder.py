@@ -33,12 +33,8 @@ from __future__ import annotations
 
 import asyncio
 
-from db.supabase import get_supabase, reset_supabase
+from db.supabase import get_supabase, run_db as _db
 from services.llm_client import summarize
-
-# httpx/httpcore 连接断开错误的特征字符串，用于判断是否应重建连接
-# Fingerprints of httpx/httpcore disconnection errors used to decide whether to reset the client
-_CONN_ERR_TAGS = ("Server disconnected", "RemoteProtocolError", "ConnectionReset", "ConnectError")
 
 # 各嵌套深度对应的摘要 token 预算（越深越小）
 # Summary token budgets per nesting depth (decreases with depth)
@@ -140,23 +136,8 @@ def _trim_context(messages: list[dict]) -> list[dict]:
     return result
 
 
-async def _db(fn):
-    """
-    将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
-    连接断开时自动重置单例并重试一次（修复长时间空闲后的 Server disconnected 错误）。
-    Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
-    On connection errors, reset the singleton and retry once (fixes 'Server disconnected' after idle).
-    """
-    loop = asyncio.get_running_loop()
-    try:
-        return await loop.run_in_executor(None, fn)
-    except Exception as e:
-        err_str = str(e)
-        err_type = type(e).__name__
-        if any(tag in err_str or tag in err_type for tag in _CONN_ERR_TAGS):
-            reset_supabase()
-            return await loop.run_in_executor(None, fn)
-        raise
+# _db 从 db.supabase.run_db 导入（顶部），保留原名以兼容测试 patch。
+# _db is imported from db.supabase.run_db at the top; name preserved for test compatibility.
 
 
 async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
@@ -174,7 +155,8 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
         lambda: get_supabase().table("thread_summaries")
         .select("summary, token_budget")
         .eq("thread_id", thread_id)
-        .execute()
+        .execute(),
+        table="thread_summaries",
     )
     if cached.data:
         row = cached.data[0]
@@ -189,7 +171,8 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
         .eq("thread_id", thread_id)
         .order("created_at", desc=True)
         .limit(80)
-        .execute()
+        .execute(),
+        table="messages",
     )
     messages = list(reversed(msgs_res.data or []))
     if not messages:
@@ -202,7 +185,8 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
             "thread_id": thread_id,
             "summary": summary_text,
             "token_budget": token_budget,
-        }).execute()
+        }).execute(),
+        table="thread_summaries",
     )
 
     return summary_text
@@ -224,7 +208,8 @@ async def build_context(
     prefer_filename: Prefer RAG chunks from this file (passed when the user just uploaded it).
     """
     thread_result = await _db(
-        lambda: get_supabase().table("threads").select("*").eq("id", thread_id).maybe_single().execute()
+        lambda: get_supabase().table("threads").select("*").eq("id", thread_id).maybe_single().execute(),
+        table="threads",
     )
     thread = thread_result.data if thread_result else None
     if not thread:
@@ -257,13 +242,15 @@ async def build_context(
                 .eq("thread_id", thread_id)
                 .order("created_at", desc=True)
                 .limit(_THREAD_MSG_LIMIT)
-                .execute()
+                .execute(),
+                table="messages",
             ),
             _db(
                 lambda: get_supabase().table("messages")
                 .select("id", count="exact")
                 .eq("thread_id", thread_id)
-                .execute()
+                .execute(),
+                table="messages",
             ),
         )
         messages = list(reversed(msgs_res.data or []))
@@ -290,7 +277,8 @@ async def build_context(
         lambda: get_supabase().table("threads")
         .select("id, parent_thread_id, depth, anchor_text, session_id, title")
         .eq("session_id", session_id)
-        .execute()
+        .execute(),
+        table="threads",
     )
     all_threads: dict[str, dict] = {
         t["id"]: t for t in (all_threads_res.data or [])
@@ -348,7 +336,8 @@ async def build_context(
         .eq("thread_id", thread_id)
         .order("created_at", desc=True)
         .limit(_THREAD_MSG_LIMIT)
-        .execute()
+        .execute(),
+        table="messages",
     )
     cur_messages = [
         {"role": m["role"], "content": m["content"]}

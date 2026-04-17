@@ -1,0 +1,22 @@
+# Prometheus 抓取配置 / Prometheus scrape config
+# 本地开发：backend 跑在宿主机 uvicorn :8000，Prometheus 容器用 host.docker.internal 访问。
+# Local dev: backend runs on host (uvicorn :8000); Prometheus uses host.docker.internal.
+# 生产：backend 在同一 compose network 内，直接用服务名 backend:8000。
+# Production: backend is on the same compose network; use service name backend:8000.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: deeppin-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:8000   # 本地开发 / local dev
+        labels:
+          env: local
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

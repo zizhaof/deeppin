@@ -273,7 +273,7 @@ class TestBuildContext:
         messages = [{"role": "user", "content": f"消息{i}"} for i in range(5)]
 
         db_calls = [0]
-        async def fake_db(fn):
+        async def fake_db(fn, **_kw):
             """
             模拟 _db：
               call 1 → 线程查询

@@ -55,3 +55,4 @@ DO $$ BEGIN
     ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+

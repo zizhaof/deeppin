@@ -1,0 +1,585 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false,
+      "id": 100,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Total Requests (1h)",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1},
+      "id": 1,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(http_requests_total[1h]))",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": null}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Request Rate (rps)",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 1},
+      "id": 2,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[5m]))",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "P95 Latency",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 1},
+      "id": 3,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 3}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error Rate (5xx)",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 1},
+      "id": 4,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 0.001)",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.01},
+              {"color": "red", "value": 0.05}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "HTTP",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+      "collapsed": false,
+      "id": 101,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests/s by Handler",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "id": 10,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (handler) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{handler}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "stacking": {"mode": "normal"}
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "P95 Latency by Handler",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "id": 11,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{handler}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Status Codes",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "id": 12,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": {"mode": "normal"}
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "In-Flight Requests",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "id": 13,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "http_requests_inprogress",
+          "legendFormat": "{{handler}} [{{method}}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["max"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "row",
+      "title": "LLM Slots",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+      "collapsed": false,
+      "id": 102,
+      "panels": []
+    },
+    {
+      "type": "bargauge",
+      "title": "RPD Usage (per slot)",
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 23},
+      "id": 20,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "deeppin_llm_rpd_used / clamp_min(deeppin_llm_rpd_limit, 1)",
+          "legendFormat": "{{provider}} / {{model}} / {{key_prefix}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.7},
+              {"color": "red", "value": 0.9}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "RPM Usage (per slot)",
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 23},
+      "id": 21,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "deeppin_llm_rpm_used / clamp_min(deeppin_llm_rpm_limit, 1)",
+          "legendFormat": "{{provider}} / {{model}} / {{key_prefix}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.7},
+              {"color": "red", "value": 0.9}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Calls/s by Provider",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 33},
+      "id": 22,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (provider) (rate(deeppin_llm_calls_total[5m]))",
+          "legendFormat": "{{provider}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": {"mode": "normal"}
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Tokens/s by Group",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 33},
+      "id": 23,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (group) (rate(deeppin_llm_tokens_total[5m]))",
+          "legendFormat": "{{group}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": {"mode": "normal"}
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Failures/s by Reason",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 41},
+      "id": 24,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (provider, reason) (rate(deeppin_llm_failures_total[5m]))",
+          "legendFormat": "{{provider}} / {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "row",
+      "title": "Components",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 49},
+      "collapsed": false,
+      "id": 103,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Supabase Calls/s by Table",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 50},
+      "id": 30,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (table) (rate(deeppin_supabase_calls_total[5m]))",
+          "legendFormat": "{{table}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": {"mode": "normal"}
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Supabase P95 Latency by Table",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 50},
+      "id": 31,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, table) (rate(deeppin_supabase_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{table}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Embedding Duration P95 & Calls/s",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 58},
+      "id": 32,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(deeppin_embedding_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 latency",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (status) (rate(deeppin_embedding_calls_total[5m]))",
+          "legendFormat": "{{status}} calls/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "SearXNG Calls/s by Status",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 58},
+      "id": 33,
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(deeppin_searxng_calls_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 20,
+            "stacking": {"mode": "normal"}
+          }
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]},
+        "tooltip": {"mode": "multi"}
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["deeppin"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Deeppin Overview",
+  "uid": "deeppin-overview",
+  "version": 1,
+  "weekStart": ""
+}

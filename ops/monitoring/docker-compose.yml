@@ -1,0 +1,52 @@
+# 本地监控栈 / Local monitoring stack
+# 启动 / Start:
+#   cd ops/monitoring && docker compose up -d
+#
+# 访问 / Access:
+#   Prometheus: http://localhost:9090
+#   Grafana:    http://localhost:3002    (admin / admin，首次登录强制改密)
+#
+# 本地 backend 需要跑在 :8000（uvicorn main:app --reload --port 8000）
+# Requires backend running locally on :8000.
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: deeppin-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --storage.tsdb.retention.size=10GB
+      - --web.enable-lifecycle        # 支持 POST /-/reload 热加载配置
+    extra_hosts:
+      # Linux 下 host.docker.internal 需要显式声明；Mac/Windows Docker Desktop 自动支持
+      # host.docker.internal on Linux requires this; Mac/Windows Docker Desktop auto-provides it.
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: deeppin-grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"       # 避开前端 Next.js 的 3000/3001 / avoid clash with Next.js dev servers
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:

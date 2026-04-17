@@ -35,7 +35,7 @@ import logging
 import re
 from typing import AsyncGenerator
 
-from db.supabase import get_supabase, reset_supabase
+from db.supabase import get_supabase, reset_supabase, run_db as _db
 from services.llm_client import chat_stream, merge_summary, META_SENTINEL, classify_search_intent
 from services.context_builder import build_context, _budget_for_depth
 from services.search_service import search as searxng_search, inject_search_results
@@ -83,27 +83,8 @@ _SENTINEL_RE = re.compile(r"<<<META>>+")
 # Write conversation embedding every N rounds (local model has no extra cost; 1 = every round)
 EMBED_EVERY_N_ROUNDS = 1
 
-# httpx/httpcore 连接断开错误特征字符串（与 context_builder 保持一致）
-_CONN_ERR_TAGS = ("Server disconnected", "RemoteProtocolError", "ConnectionReset", "ConnectError")
-
-
-async def _db(fn):
-    """
-    将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
-    连接断开时自动重置单例并重试一次。
-    Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
-    On connection errors, reset the singleton and retry once.
-    """
-    loop = asyncio.get_running_loop()
-    try:
-        return await loop.run_in_executor(None, fn)
-    except Exception as e:
-        err_str = str(e)
-        err_type = type(e).__name__
-        if any(tag in err_str or tag in err_type for tag in _CONN_ERR_TAGS):
-            reset_supabase()
-            return await loop.run_in_executor(None, fn)
-        raise
+# _db 已从 db.supabase.run_db 导入（见顶部 import），保留原名以兼容测试 patch。
+# _db is imported from db.supabase.run_db at the top (aliased to preserve test patch compatibility).
 
 
 # ── 解析 META JSON / Parse META JSON ─────────────────────────────────
@@ -160,7 +141,8 @@ async def _save_summary(thread_id: str, summary: str, budget: int) -> None:
                 "thread_id": thread_id,
                 "summary": summary,
                 "token_budget": budget,
-            }).execute()
+            }).execute(),
+            table="thread_summaries",
         )
     except Exception:
         logger.exception("摘要写入失败（thread=%s）/ Summary write failed (thread=%s)", thread_id, thread_id)
@@ -186,7 +168,8 @@ async def _fallback_update_summary(
             lambda: get_supabase().table("thread_summaries")
             .select("summary")
             .eq("thread_id", thread_id)
-            .execute()
+            .execute(),
+            table="thread_summaries",
         )
         existing = cached.data[0].get("summary", "") if cached.data else ""
         new_exchange = f"用户：{user_content}\nAI：{assistant_content}"
@@ -200,7 +183,8 @@ async def _fallback_update_summary(
                 "thread_id": thread_id,
                 "summary": new_summary,
                 "token_budget": budget,
-            }).execute()
+            }).execute(),
+            table="thread_summaries",
         )
     except Exception:
         logger.exception("降级摘要更新失败（thread=%s）/ Fallback summary update failed (thread=%s)", thread_id, thread_id)
@@ -218,11 +202,13 @@ async def _save_title(
     """
     try:
         await _db(
-            lambda: get_supabase().table("threads").update({"title": title}).eq("id", thread_id).execute()
+            lambda: get_supabase().table("threads").update({"title": title}).eq("id", thread_id).execute(),
+            table="threads",
         )
         if session_id:
             await _db(
-                lambda: get_supabase().table("sessions").update({"title": title}).eq("id", session_id).execute()
+                lambda: get_supabase().table("sessions").update({"title": title}).eq("id", session_id).execute(),
+                table="sessions",
             )
     except Exception:
         logger.exception("标题写入失败（thread=%s）/ Title write failed (thread=%s)", thread_id, thread_id)
@@ -252,7 +238,7 @@ async def stream_and_save(
             "thread_id": thread_id,
             "role": "user",
             "content": user_content,
-        }).execute())
+        }).execute(), table="messages")
     except Exception as exc:
         yield _sse("error", {"message": f"保存消息失败 / Failed to save message: {exc}"})
         return
@@ -269,7 +255,7 @@ async def stream_and_save(
                 .eq("id", thread_id)
                 .single()
                 .execute()
-            ))
+            ), table="threads")
             thread_data = thread_res.data or {}
         except Exception as exc:
             yield _sse("error", {"message": f"查询线程失败 / Failed to query thread: {exc}"})
@@ -399,7 +385,7 @@ async def stream_and_save(
             "role": "assistant",
             "content": full_content,
             "model": stream.model_used,
-        }).execute())
+        }).execute(), table="messages")
         message_id = result.data[0]["id"] if result.data else None
         yield _sse("done", {"message_id": message_id, "model": stream.model_used})
     except Exception as exc:
@@ -436,7 +422,7 @@ async def stream_and_save(
                     .eq("thread_id", _tid)
                     .eq("role", "assistant")
                     .execute()
-                ))
+                ), table="messages")
                 assistant_count = count_res.count or 0
                 if assistant_count % EMBED_EVERY_N_ROUNDS == 0:
                     from services.memory_service import store_conversation_memory

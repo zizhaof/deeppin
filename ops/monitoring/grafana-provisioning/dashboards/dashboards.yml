@@ -1,0 +1,14 @@
+# Grafana dashboard provisioning：自动加载本目录下的 JSON
+# Auto-load dashboard JSONs from this directory.
+apiVersion: 1
+
+providers:
+  - name: deeppin
+    orgId: 1
+    folder: Deeppin
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

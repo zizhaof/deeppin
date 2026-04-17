@@ -55,35 +55,40 @@ async def search(query: str, max_results: int = 5) -> list[dict]:
     失败或超时返回空列表，由调用方决定是否降级。
     Returns an empty list on failure or timeout; the caller decides how to degrade.
     """
-    try:
-        client = _get_http()
-        resp = await client.get(
-            f"{SEARXNG_URL}/search",
-            params={
-                "q": query,
-                "format": "json",
-                "language": "auto",
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    from services.metrics import SEARXNG_CALLS, SEARXNG_DURATION
+    with SEARXNG_DURATION.time():
+        try:
+            client = _get_http()
+            resp = await client.get(
+                f"{SEARXNG_URL}/search",
+                params={
+                    "q": query,
+                    "format": "json",
+                    "language": "auto",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-        results = []
-        for item in (data.get("results") or [])[:max_results]:
-            title = (item.get("title") or "").strip()
-            url = (item.get("url") or "").strip()
-            content = (item.get("content") or "").strip()
-            if url:
-                results.append({"title": title, "url": url, "content": content})
+            results = []
+            for item in (data.get("results") or [])[:max_results]:
+                title = (item.get("title") or "").strip()
+                url = (item.get("url") or "").strip()
+                content = (item.get("content") or "").strip()
+                if url:
+                    results.append({"title": title, "url": url, "content": content})
 
-        return results
+            SEARXNG_CALLS.labels("ok").inc()
+            return results
 
-    except httpx.TimeoutException:
-        logger.warning("SearXNG 搜索超时 (url=%s, query=%r) / timed out", SEARXNG_URL, query)
-        return []
-    except Exception:
-        logger.exception("SearXNG 搜索失败 (url=%s, query=%r) / failed", SEARXNG_URL, query)
-        return []
+        except httpx.TimeoutException:
+            SEARXNG_CALLS.labels("timeout").inc()
+            logger.warning("SearXNG 搜索超时 (url=%s, query=%r) / timed out", SEARXNG_URL, query)
+            return []
+        except Exception:
+            SEARXNG_CALLS.labels("error").inc()
+            logger.exception("SearXNG 搜索失败 (url=%s, query=%r) / failed", SEARXNG_URL, query)
+            return []
 
 
 def inject_search_results(context: list[dict], results: list[dict]) -> list[dict]:

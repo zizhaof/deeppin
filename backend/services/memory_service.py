@@ -33,13 +33,7 @@ logger = logging.getLogger(__name__)
 LONG_TEXT_THRESHOLD = 800
 
 
-async def _db(fn):
-    """
-    将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
-    Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
-    """
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, fn)
+from db.supabase import run_db as _db  # 统一封装，带 metrics + 重试 / canonical wrapper with metrics + retry
 
 
 # ── 长文本分块 / Long-text chunking ──────────────────────────────────
@@ -87,7 +81,7 @@ async def store_long_text_chunks(
             }
             for i, (chunk, vec) in enumerate(zip(chunks, vecs))
         ]
-        await _db(lambda: sb.table("attachment_chunks").insert(rows).execute())
+        await _db(lambda: sb.table("attachment_chunks").insert(rows).execute(), table="attachment_chunks")
         logger.info("长文本分块完成：%d 块（session=%s）/ Long text chunked: %d chunks (session=%s)",
                     len(rows), session_id, len(rows), session_id)
         return len(rows)
@@ -126,7 +120,8 @@ async def store_conversation_memory(
                 "thread_id": thread_id,
                 "content": content,
                 "embedding": format_vector(vec),
-            }).execute()
+            }).execute(),
+            table="conversation_memories",
         )
     except Exception:
         logger.exception("对话记忆写入失败（session=%s, thread=%s）/ Conversation memory write failed (session=%s, thread=%s)",
@@ -197,14 +192,14 @@ async def retrieve_rag_context(
                 "p_session_id": session_id,
                 "p_top_k": attachment_top_k,
                 "p_threshold": attachment_threshold,
-            }).execute()),
+            }).execute(), table="search_attachment_chunks"),
             _db(lambda: sb.rpc("search_conversation_memories", {
                 "query_embedding": vec_str,
                 "p_session_id": session_id,
                 "p_top_k": memory_top_k,
                 "p_threshold": 0.45,
                 **({"p_exclude_thread_id": exclude_thread_id} if exclude_thread_id else {}),
-            }).execute()),
+            }).execute(), table="search_conversation_memories"),
         )
 
         chunks = chunk_res.data or []
@@ -217,7 +212,7 @@ async def retrieve_rag_context(
                 "p_session_id": session_id,
                 "p_top_k": attachment_top_k,
                 "p_threshold": 0.0,
-            }).execute())
+            }).execute(), table="search_attachment_chunks")
             chunks = fallback_res.data or []
 
         # 文件偏好过滤：刚上传/发送文件后，只返回该文件的块；找不到块说明是内联文件，清空 attachment RAG
@@ -238,7 +233,7 @@ async def retrieve_rag_context(
                     "p_session_id": session_id,
                     "p_top_k": attachment_top_k * 4,
                     "p_threshold": 0.0,
-                }).execute())
+                }).execute(), table="search_attachment_chunks")
                 preferred = [c for c in (wider_res.data or []) if c.get("filename") == prefer_filename]
                 if preferred:
                     # 扩大后找到了，只用这些
