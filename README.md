@@ -41,7 +41,10 @@ Main summary        300 tokens
 
 ## Web App — Current Status
 
-**MVP complete (Days 1–4):**
+**MVP complete and deployed to production:**
+
+- Frontend: https://deeppin.vercel.app
+- Backend: https://deeppin.duckdns.org
 
 | Feature | Status |
 |---------|--------|
@@ -51,18 +54,20 @@ Main summary        300 tokens
 | Breadcrumb navigation | ✅ |
 | Three-column desktop layout | ✅ |
 | Anchor highlight + guide lines | ✅ |
-| Sub-thread suggestion questions | ✅ |
+| Sub-thread suggestion questions (3 templates + 3 LLM) | ✅ |
 | Merge output (3 formats) | ✅ |
 | Web search (SearXNG + AI) | ✅ |
 | File attachments + RAG | ✅ |
+| Image recognition (vision model → text → same pipeline) | ✅ |
 | Markdown rendering | ✅ |
 | Supabase persistence | ✅ |
+| Google OAuth + Supabase Auth + JWT (RLS on all tables) | ✅ |
+| Vercel + Oracle Cloud deployment + GitHub Actions CI/CD | ✅ |
+| Daily provider check + zero-quota key/catalog validation | ✅ |
 
 **Not yet done:**
-- User auth (currently anonymous sessions)
 - Chrome extension
 - Mobile layout
-- Production deployment (Vercel + Oracle)
 
 ## Tech Stack
 
@@ -70,10 +75,13 @@ Main summary        300 tokens
 |-------|-----------|
 | Frontend | Next.js 14 (App Router) + Tailwind CSS + Zustand |
 | Backend | FastAPI + Python 3.11 + asyncio |
-| Database | Supabase (PostgreSQL) |
-| AI | LiteLLM Router + Groq (usage-based routing, multi-key) |
-| Search | SearXNG (self-hosted) |
-| Deployment | Vercel (frontend) + Oracle Cloud Free Tier (backend) |
+| Database | Supabase (PostgreSQL) with RLS on all tables |
+| Auth | Supabase Auth (Google OAuth) + FastAPI JWT middleware |
+| AI | LiteLLM Router across 6 free-tier providers (Groq / Cerebras / SambaNova / Gemini / NVIDIA NIM / OpenRouter) with usage-based routing + 429 fallback |
+| Embedding | BAAI/bge-m3 (1024-dim, local inference via sentence-transformers) |
+| Search | SearXNG (self-hosted on Oracle) |
+| Deployment | Vercel (frontend) + Oracle Cloud Free Tier (backend, Nginx + Docker Compose) |
+| CI/CD | GitHub Actions — SSH deploy on push to `main` with `backend/**` changes |
 
 ## Local Development
 
@@ -88,20 +96,31 @@ cd frontend
 npm install
 npm run dev
 
-# Run backend tests
+# Backend unit tests (skip integration/ — those hit real deployed API)
 cd backend
-pytest tests/ -q
+pytest tests/ -q --ignore=tests/integration
 ```
 
 ### Environment Variables
 
 **`backend/.env`**
 ```
-GROQ_API_KEYS=["gsk_key1","gsk_key2"]   # JSON array, multi-account
-SUPABASE_URL=xxx
-SUPABASE_SERVICE_KEY=xxx
+# LLM provider keys (JSON arrays — multiple keys per provider stack quota)
+GROQ_API_KEYS=["gsk_...","gsk_..."]
+CEREBRAS_API_KEYS=["csk_..."]
+SAMBANOVA_API_KEYS=["..."]
+GEMINI_API_KEYS=["..."]
+NVIDIA_NIM_API_KEYS=["nvapi-..."]
+OPENROUTER_API_KEYS=["sk-or-v1-..."]
+
+# Supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...   # admin-level, JWT verification
+SUPABASE_ANON_KEY=...            # user-scoped, RLS queries
+
+# CORS + search
 ALLOWED_ORIGINS=["http://localhost:3000"]
-SEARXNG_URL=http://localhost:8888        # optional, enables web search
+SEARXNG_URL=http://localhost:8888
 ```
 
 **`frontend/.env.local`**
@@ -115,8 +134,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 - [x] Product design & architecture
 - [x] Web Chat App — MVP core features
-- [ ] User authentication
-- [ ] Production deployment (Vercel + Oracle)
+- [x] User authentication (Google OAuth)
+- [x] Production deployment (Vercel + Oracle)
 - [ ] Chrome Extension
 - [ ] Mobile App (React Native)
 

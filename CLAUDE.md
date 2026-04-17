@@ -74,18 +74,23 @@ Context 向下传递时自动 compact，越深越压缩：
 
 ```
 前端：  Next.js 14 (App Router) + Tailwind CSS + Framer Motion + Zustand
-        部署：Vercel（免费）
+        部署：Vercel → https://deeppin.vercel.app
 
 后端：  FastAPI + Python 3.11 + asyncio
         部署：Oracle Cloud Free Tier（4核24G ARM，永久免费）
-        反向代理：Nginx
+        反向代理：Nginx → https://deeppin.duckdns.org
+        日志：/app/logs/app.log（容器内，TimedRotatingFileHandler 30 天）
 
 数据库：Supabase（PostgreSQL + Auth）
-        免费 tier，500MB
+        Google OAuth + 四张表全部 RLS + 后端 JWT 依赖
 
-AI：    Groq（全部免费）+ LiteLLM Router 动态路由
-        chat 梯队：6 个模型 × N 个 key，usage-based 路由，429 自动 fallback
-        summarizer 梯队：3 个轻量模型，负责摘要/分类/格式化
+AI：    LiteLLM Router 统一调度 6 个 provider（全部免费 tier 叠加）
+        Groq / Cerebras / SambaNova / Gemini / NVIDIA NIM / OpenRouter
+        分组：chat / merge / summarizer / vision / whisper
+        usage-based routing + 429 自动 fallback，chat 耗尽降级 summarizer
+
+搜索：  SearXNG（自托管在 Oracle，docker-compose 服务）
+嵌入：  BAAI/bge-m3（1024 维，本地推理，sentence-transformers）
 
 语言：  TypeScript（前端）+ Python（后端）
 ```
@@ -288,49 +293,38 @@ async def build_context(thread_id: str) -> list[dict]:
 
 ## LiteLLM 配置
 
-### Provider 策略：Groq 单 Provider，多 Key × 多模型叠加
+### Provider 策略：6 个免费 tier 叠加
 
-全部使用 Groq，通过多账号 × 多模型叠加额度，LiteLLM Router 统一调度，零成本。
+LiteLLM Router 把 `provider × key × model` 展开成扁平 model_list，usage-based 路由挑剩余额度最多的 slot，失败自动换下一个。真实配置见 `backend/services/llm_client.py` 的 `ModelSpec` 列表。
 
 #### 模型分组
 
-| model_name | 职责 | fallback |
-|-----------|------|----------|
-| chat | 主对话、深度推理、多轮对话 | 全部耗尽后降级到 summarizer |
-| summarizer | compact 摘要、分类、格式化 | 极端兜底接主对话 |
-| vision | 图片理解（llama-4-scout）| 无 fallback |
+| group | 用途 | fallback |
+|-------|------|---------|
+| chat | 主对话、深度推理、子线程追问 | 全部耗尽后降级 summarizer |
+| merge | 合并输出（长上下文） | 无（走 chat 的 slot 子集）|
+| summarizer | compact 摘要、分类、建议问题、路由判断 | 极端兜底接 chat |
+| vision | 图片理解（截图 / 照片 / 图表）| 无 fallback |
 | whisper | 语音转文字，走 Groq 原生 API | 无 fallback |
-| guard | 内容安全审核（可选接入）| 无 fallback |
 
-#### chat 梯队（RPD 1K/模型，usage-based 路由）
+#### Provider 一览（概览，完整参数见代码）
 
-| 模型 | TPM | RPM |
-|------|-----|-----|
-| openai/gpt-oss-120b | 8K | 30 |
-| moonshotai/kimi-k2-instruct | 10K | 60 |
-| moonshotai/kimi-k2-instruct-0905 | 10K | 60 |
-| llama-3.3-70b-versatile | 12K | 30 |
-| qwen/qwen3-32b | 6K | 60 |
-| meta-llama/llama-4-scout-17b-16e-instruct | 30K | 30 |
+| Provider | 代表模型 | 备注 |
+|----------|---------|------|
+| Groq | llama-3.3-70b-versatile / llama-4-scout / gpt-oss-120b / qwen3-32b / llama-3.1-8b-instant | llama-4-scout 进 vision |
+| Cerebras | qwen-3-235b / llama3.1-8b | 大上下文 + 高 TPM |
+| SambaNova | Llama-3.3-70B / Llama-4-Maverick-17B | RPD 1K |
+| Gemini | gemini-2.5-flash / flash-lite | 原生多模态，flash 进 vision |
+| NVIDIA NIM | llama-3.3-70b / llama-4-maverick / gemma-3-27b / nemotron-super-49b | gemma-3-27b 进 vision |
+| OpenRouter | `:free` 系列（gpt-oss-120b / llama-3.3-70b / nemotron-super-120b / hermes-3-405b）| `:free` 有上游全局节流，见「已知问题」|
 
-#### summarizer 梯队（轻量任务）
+#### 健康检查端点
 
-| 模型 | RPD | TPM |
-|------|-----|-----|
-| llama-3.1-8b-instant | 14.4K | 6K |
-| openai/gpt-oss-20b | 1K | 8K |
-| allam-2-7b | 7K | 6K |
-
-```python
-# backend/services/llm_client.py 核心逻辑
-
-router = Router(
-    model_list=build_model_list(),          # 所有 key × 所有模型展开
-    routing_strategy="usage-based-routing", # 优先选剩余额度最多的
-    fallbacks=[{"chat": ["summarizer"]}],   # chat 全部耗尽才触发
-    allowed_fails=len(GROQ_API_KEYS) * len(CHAT_MODELS),
-)
-```
+| 端点 | 作用 | 成本 |
+|------|------|------|
+| `GET /health` | 聚合检查：backend / searxng / supabase / embedding | 0 |
+| `GET /health/providers/keys` | 每个 (provider, key) 的 `/v1/models` 校验 + 配置的 model_id 是否还在清单上 | 0 quota |
+| `GET /health/providers/full` | 每个 slot 真跑一次推理（daily check 用） | 消耗 quota |
 
 ---
 
@@ -476,57 +470,26 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 ## MVP 功能范围
 
-**已完成（Days 1–4）：**
+**已完成：**
 - [x] 主线 AI 对话（SSE 流式）
 - [x] 选中文字 → 插针 → 子线程
 - [x] 三栏布局（桌面端）+ 锚点高亮 + 引导线
 - [x] 无限嵌套 + compact context（depth-based token 预算）
 - [x] 面包屑导航 + 前进/后退
-- [x] 子线程建议追问（占位符 + LLM 真实结果）
+- [x] 子线程建议追问（3 模板 + 3 LLM，归一化去重）
 - [x] 合并输出（free / bullets / structured，Markdown 预览 + 下载）
 - [x] 联网搜索（SearXNG + AI，自动检测实时查询）
-- [x] 文件附件上传 + 向量嵌入 + RAG 检索
+- [x] 文件附件上传 + 向量嵌入 + RAG 检索（≤3K 字内联，>3K 字分块入库）
+- [x] 图片识别（字节嗅探 PNG/JPEG/GIF/WEBP/BMP → vision 模型 → 文本 → 同附件分流）
 - [x] Markdown 渲染（AI 消息）
 - [x] Supabase 持久化（session / thread / message / summary）
+- [x] 用户账号系统（Google OAuth + Supabase Auth + JWT，四张表全 RLS）
+- [x] 生产部署（Vercel + Oracle Cloud + GitHub Actions CI/CD）
+- [x] 每日 provider 巡检（daily-provider-check workflow）+ 零 quota key/catalog 校验（/health/providers/keys）
 
 **待完成：**
-- [ ] 用户账号系统（目前匿名 session）
-- [ ] 部署到 Vercel + Oracle Cloud
-- [ ] GitHub Actions CI/CD
 - [ ] Chrome 插件（Phase 2）
 - [ ] 移动端适配（Phase 2）
-
----
-
-## 开发节奏（1 周，AI 辅助）
-
-```
-Day 1：搭架子 ✅
-  后端：FastAPI 骨架 + Supabase schema + /stream 端点跑通
-  前端：Next.js 项目 + 三栏布局骨架 + SSE 接入
-  目标：主线对话能跑起来
-
-Day 2：插针 ✅
-  后端：创建 thread API + context_builder 基础版
-  前端：MessageBubble 选中逻辑 + PinMenu + 锚点高亮
-  目标：能插针，子线程能问答
-
-Day 3：Compact + 嵌套 ✅
-  后端：compact 摘要逻辑 + 无限嵌套 context 构建
-  前端：BreadcrumbNav + 子线程里继续插针
-  目标：多层嵌套能正确继承 context
-
-Day 4：合并输出 + 持久化 ✅
-  后端：/merge 端点 + Supabase 存读
-  前端：MergeOutput 面板 + 格式选择 + Markdown 导出
-  目标：完整功能闭环
-
-Day 5：部署 + 联调
-  Oracle 配 Nginx + Docker Compose
-  GitHub Actions CI/CD
-  前后端联调，修 bug
-  目标：公网可访问
-```
 
 ---
 
@@ -545,33 +508,99 @@ Day 5：部署 + 联调
 - 组件用函数式，不用 class
 - 状态管理：Zustand（多线程并发场景）
 - API 调用统一封装，带错误处理和 retry
-- 注释用中文
-- 提交信息：`feat:` / `fix:` / `refactor:` 前缀
+- 提交信息：`feat:` / `fix:` / `refactor:` / `test:` / `docs:` 前缀
+
+---
 
 ## 测试规范
 
 **每次新增功能必须同步写单元测试，写完立即运行。**
 
 ```bash
-# 运行全部后端测试（每次功能提交前必跑）
-cd backend && pytest tests/ -q
+# 后端单元测试（改完 backend/** 必跑，不要跑 integration 目录会打真实网络）
+cd backend && pytest tests/ -q --ignore=tests/integration
+
+# 单文件跑
+cd backend && pytest tests/test_attachment_processor.py -q
+
+# 集成测试（打真实部署，需要 Supabase 凭证，平时不跑）
+cd backend && TEST_BASE_URL=https://deeppin.duckdns.org \
+  SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=... \
+  pytest tests/integration/ -v
 ```
 
-测试文件位置：`backend/tests/test_*.py`
+**已知噪音，不用当真：**
+- `test_embedding_service` 在全量跑时偶发 RuntimeError，单独跑必过 — 是 sentence-transformers 模型初始化的 test-ordering 问题，跟业务代码无关。
+- `DeprecationWarning: asyncio.get_event_loop_policy` 是 pytest-asyncio 的已知噪音。
 
-当前覆盖：
-| 模块 | 测试文件 |
-|------|---------|
-| services/llm_client.py | test_llm_client.py（含 merge_threads） |
-| services/context_builder.py | test_context_builder.py |
-| services/stream_manager.py | test_stream_manager.py |
-| services/attachment_processor.py | test_attachment_processor.py |
-| services/memory_service.py | test_memory_service.py |
-| services/search_service.py | test_search_service.py |
-| routers/merge.py | test_merge_router.py |
-| routers/sessions.py (bulk messages) | test_session_messages.py |
+测试文件位置：`backend/tests/test_*.py`。写测试原则：
+- mock 外部依赖（Supabase、LLM API），只测本模块逻辑。
+- patch 路径必须是**被测模块内的名称**，不是定义所在模块。
+- `asyncio.gather` 并发复用一个 Supabase 客户端会出 httpx 竞态，别这么写。
 
-写测试的原则：
-- mock 外部依赖（Supabase、LLM API），只测本模块逻辑
-- patch 路径必须是被测模块内的名称（不是定义所在模块）
-- `asyncio.gather` 并发调用共享的 Supabase 客户端会产生 httpx 竞争，测试和生产代码中均需注意
+---
+
+## 协作约定 / Claude 工作方式
+
+> 以下是跟当前开发者（Zizhao）反复确认过的工作方式。遇到不确定，先按这里走。
+
+### 🟢 自动执行（不问）
+只读 / 诊断类命令**直接跑，不要问**：
+- `git status` / `git log` / `git diff`
+- `gh run list` / `gh run view` / `gh pr view`
+- `ls` / `cat` / `curl GET` / `tail` 生产日志
+- `pytest`（本地单元测试是只读的）
+- `ssh oracle "docker logs ..."` / `ssh oracle "tail -f /app/logs/app.log"` 等日志观测
+
+### 🟡 需要先确认
+可能改共享状态或不可逆的操作：
+- `git push` / `git commit` / `git reset --hard` / 删分支
+- 部署、重启生产服务
+- 改 Supabase schema、跑 migration
+- 删文件、改 env 变量
+- 写 GitHub PR/Issue 评论、发邮件
+
+### 🔴 绝对不做
+- `--no-verify` 跳过 hook
+- `force-push` 到 main
+- 在没授权的前提下改 Supabase 生产数据
+
+### 改完代码后的收尾清单
+每次完成一个任务（feat / fix / refactor），按顺序过：
+1. **跑测试**：`cd backend && pytest tests/ -q --ignore=tests/integration`
+2. **更新文档**：如果改动影响了架构、API、部署流程、模型/provider 清单、MVP 范围，或者引入了新的开发约定 —— **回头 update 这份 `CLAUDE.md` 和必要时 `README.md`**。过期的文档比没有还糟。
+3. **commit 信息**：`<type>: <中文简述>`，必要时带多行 body 解释为什么。
+4. **push 前 confirm**：除非用户明说「push」，不要自己 push。
+
+---
+
+## 运维 / 生产访问
+
+### SSH 到 Oracle
+```bash
+ssh oracle                                          # alias 已配好，直接进
+ssh oracle "docker ps"                              # 查容器状态
+ssh oracle "docker logs deeppin-backend-1 --tail 200 -f"   # 流式看后端日志
+ssh oracle "tail -f /home/ubuntu/deeppin/backend/logs/app.log"  # 持久化日志文件
+```
+
+### 生产端点
+| 用途 | URL |
+|------|-----|
+| 前端 | https://deeppin.vercel.app |
+| 后端 | https://deeppin.duckdns.org |
+| 健康检查 | https://deeppin.duckdns.org/health |
+| Key/catalog 校验 | https://deeppin.duckdns.org/health/providers/keys |
+
+### CI/CD
+- 改 `backend/**` push 到 main → GitHub Actions `deploy-backend.yml` 自动部署（`gh run watch` 看实时状态）
+- 改前端 push 到 main → Vercel 自动检测并部署
+- 每日 10:00 UTC → `daily-provider-check` 跑全 provider 真实推理巡检
+
+---
+
+## 已知问题 / Known flakiness
+
+- **OpenRouter `:free` 模型**：上游对免费额度有**全局**节流（不是我们 key 的 RPD 耗尽），daily check 里偶发 `429 temporarily rate-limited` 是正常现象，不用恐慌。真缺 quota 会是 401/403。
+- **Gemini RPD 1K**：每 key 每天 1000 次，白天高峰跑 CI 可能撞上限。CI 用 `/health/providers/keys` 零 quota 校验规避了这个问题。
+- **Supabase + asyncio.gather 竞态**：共享 Supabase 客户端在并发请求下会触发 httpx 连接池竞争，要么串行，要么每个任务单独拿 client。
