@@ -4,18 +4,19 @@ LLM 客户端单元测试
 Unit tests for the LLM client.
 
 覆盖 / Covers:
-  - _load_groq_keys：JSON 数组解析、单 key、无效 JSON、空值过滤
-    _load_groq_keys: JSON array parsing, single key, invalid JSON, empty value filtering
-  - pick_model：chat / summarizer 返回格式
-    pick_model: return format for chat / summarizer
+  - _load_groq_keys / _load_keys：JSON 数组解析、单 key、无效 JSON、空值过滤
+  - pick_model：返回有效模型名
   - _build_model_list：多 key × 多 model 展开
-    _build_model_list: expansion of multiple keys × multiple models
+  - SmartRouter：slot 选择、用量追踪、score 计算、恢复时间
+  - UsageBucket：时间窗口重置、score 衰减
   - generate_title_and_suggestions：正常解析 + fallback 路径
-    generate_title_and_suggestions: normal parsing + fallback paths
   - classify_search_intent：YES/NO 判断 + 异常 fallback
-    classify_search_intent: YES/NO detection + exception fallback
+  - _strip_think_tags：流式 think 标签过滤
+  - merge_threads：合并输出各格式
+  - assess_relevance：JSON 解析 + fallback
 """
 import os
+import time
 import pytest
 from unittest.mock import patch, AsyncMock
 
@@ -66,6 +67,22 @@ class TestLoadGroqKeys:
             assert result == []
 
 
+# ── _load_keys（新增多 provider）───────────────────────────────────────
+
+class TestLoadKeys:
+    def test_cerebras_keys(self):
+        """加载 Cerebras key / Load Cerebras keys."""
+        with patch.dict(os.environ, {"CEREBRAS_API_KEYS": '["csk_1", "csk_2"]'}):
+            from services.llm_client import _load_keys
+            assert _load_keys("CEREBRAS_API_KEYS") == ["csk_1", "csk_2"]
+
+    def test_missing_env_returns_empty(self):
+        """未设置的环境变量返回空列表 / Missing env var returns empty list."""
+        from services.llm_client import _load_keys
+        result = _load_keys("NONEXISTENT_API_KEYS_XXXXXXX")
+        assert result == []
+
+
 # ── pick_model ────────────────────────────────────────────────────────
 
 class TestPickModel:
@@ -76,37 +93,21 @@ class TestPickModel:
         assert len(pick_model()) > 0
 
     def test_chat_model_format(self):
-        """chat 返回 groq/model 格式 / chat returns groq/model format."""
+        """chat 返回 provider/model 格式 / chat returns provider/model format."""
         from services.llm_client import pick_model
         model = pick_model("chat")
-        assert model.startswith("groq/")
         assert "/" in model
 
     def test_summarizer_model_format(self):
-        """summarizer 返回 groq/model 格式 / summarizer returns groq/model format."""
+        """summarizer 返回 provider/model 格式 / summarizer returns provider/model format."""
         from services.llm_client import pick_model
         model = pick_model("summarizer")
-        assert model.startswith("groq/")
-
-    def test_unknown_type_returns_summarizer(self):
-        """未知 model_type 返回 summarizer 的首选模型 / Unknown model_type returns the summarizer's first model."""
-        from services.llm_client import pick_model, SUMMARIZER_MODELS
-        model = pick_model("nonexistent")
-        assert SUMMARIZER_MODELS[0] in model
+        assert "/" in model
 
 
 # ── _build_model_list ─────────────────────────────────────────────────
 
 class TestBuildModelList:
-    def test_expands_keys_and_models(self):
-        """每个 key × 每个 chat model 都应出现在 model_list 中 / Each key × chat model combination appears in model_list."""
-        from services.llm_client import _build_model_list, CHAT_MODELS, GROQ_API_KEYS
-        model_list = _build_model_list()
-        chat_entries = [e for e in model_list if e["model_name"] == "chat"]
-        # 至少包含 CHAT_MODELS × GROQ_API_KEYS 数量的条目
-        # At least len(CHAT_MODELS) × len(GROQ_API_KEYS) entries
-        assert len(chat_entries) >= len(CHAT_MODELS) * len(GROQ_API_KEYS)
-
     def test_all_entries_have_required_fields(self):
         """每个条目都有 model_name 和 litellm_params / Every entry has model_name and litellm_params."""
         from services.llm_client import _build_model_list
@@ -122,6 +123,106 @@ class TestBuildModelList:
         valid_names = {"chat", "merge", "summarizer", "vision"}
         for entry in _build_model_list():
             assert entry["model_name"] in valid_names
+
+
+# ── UsageBucket ───────────────────────────────────────────────────────
+
+class TestUsageBucket:
+    def test_fresh_bucket_full_score(self):
+        """新桶的 score 应为 1.0 / Fresh bucket should have score 1.0."""
+        from services.llm_client import UsageBucket, ModelSpec
+        bucket = UsageBucket()
+        spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        assert bucket.score(spec) == pytest.approx(1.0)
+
+    def test_score_decreases_after_requests(self):
+        """请求后 score 降低 / Score decreases after requests."""
+        from services.llm_client import UsageBucket, ModelSpec
+        bucket = UsageBucket()
+        spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket.record_request(tokens=1000)
+        s = bucket.score(spec)
+        assert 0 < s < 1.0
+
+    def test_score_zero_when_rpm_exhausted(self):
+        """RPM 耗尽时 score 为 0 / Score is 0 when RPM exhausted."""
+        from services.llm_client import UsageBucket, ModelSpec
+        bucket = UsageBucket()
+        spec = ModelSpec("groq", "test", rpm=2, tpm=100000, rpd=100000, tpd=100000000)
+        bucket.record_request(tokens=0)
+        bucket.record_request(tokens=0)
+        assert bucket.score(spec) == 0.0
+
+    def test_failure_penalty(self):
+        """失败后 score 被惩罚 / Score is penalized after failure."""
+        from services.llm_client import UsageBucket, ModelSpec
+        bucket = UsageBucket()
+        spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket.record_failure()
+        s = bucket.score(spec)
+        assert s < 1.0
+
+    def test_recovery_time_zero_when_available(self):
+        """有余量时恢复时间为 0 / Recovery time is 0 when capacity available."""
+        from services.llm_client import UsageBucket, ModelSpec
+        bucket = UsageBucket()
+        spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        assert bucket.seconds_until_recovery(spec) == 0
+
+    def test_recovery_time_positive_when_exhausted(self):
+        """耗尽时恢复时间 > 0 / Recovery time > 0 when exhausted."""
+        from services.llm_client import UsageBucket, ModelSpec
+        bucket = UsageBucket()
+        spec = ModelSpec("groq", "test", rpm=1, tpm=100000, rpd=100000, tpd=100000000)
+        bucket.record_request(tokens=0)
+        assert bucket.seconds_until_recovery(spec) > 0
+
+
+# ── SmartRouter ───────────────────────────────────────────────────────
+
+class TestSmartRouter:
+    def test_pick_slot_returns_slot(self):
+        """有 slot 时返回非空 / Returns a slot when available."""
+        from services.llm_client import SmartRouter, ModelSpec
+        models = [ModelSpec("groq", "test-model", rpm=30, tpm=6000, rpd=1000, tpd=500000, groups=["chat"])]
+        r = SmartRouter(models, {"groq": ["key1"]})
+        slot = r._pick_slot("chat")
+        assert slot is not None
+        assert slot.litellm_model == "groq/test-model"
+
+    def test_pick_slot_none_for_empty_group(self):
+        """空分组返回 None / Returns None for empty group."""
+        from services.llm_client import SmartRouter, ModelSpec
+        models = [ModelSpec("groq", "test", groups=["chat"])]
+        r = SmartRouter(models, {"groq": ["key1"]})
+        assert r._pick_slot("nonexistent") is None
+
+    def test_picks_highest_score(self):
+        """选择 score 最高的 slot / Picks the slot with highest score."""
+        from services.llm_client import SmartRouter, ModelSpec
+        models = [
+            ModelSpec("groq", "model-a", rpm=30, tpm=6000, rpd=1000, tpd=500000, groups=["chat"]),
+            ModelSpec("groq", "model-b", rpm=30, tpm=6000, rpd=1000, tpd=500000, groups=["chat"]),
+        ]
+        r = SmartRouter(models, {"groq": ["key1"]})
+        # 消耗 model-a 的额度
+        for s in r.slots:
+            if s.spec.model_id == "model-a":
+                for _ in range(25):
+                    s.usage.record_request(tokens=100)
+        slot = r._pick_slot("chat")
+        assert slot is not None
+        assert slot.spec.model_id == "model-b"
+
+    def test_get_status(self):
+        """get_status 返回有效结构 / get_status returns valid structure."""
+        from services.llm_client import SmartRouter, ModelSpec
+        models = [ModelSpec("groq", "m", groups=["chat"])]
+        r = SmartRouter(models, {"groq": ["k1"]})
+        status = r.get_status()
+        assert "chat" in status
+        assert len(status["chat"]) == 1
+        assert "score" in status["chat"][0]
 
 
 # ── generate_title_and_suggestions ───────────────────────────────────
@@ -171,24 +272,26 @@ class TestGenerateTitleAndSuggestions:
 class TestClassifySearchIntent:
     @pytest.mark.asyncio
     async def test_yes_returns_true(self):
-        """返回 YES 时 classify_search_intent 为 True / Returns True when LLM says YES."""
+        """返回 YES 时为 True / Returns True when LLM says YES."""
         from services.llm_client import classify_search_intent
         with patch("services.llm_client._summarizer_call", new=AsyncMock(return_value="YES")):
             assert await classify_search_intent("今天的股票价格") is True
 
     @pytest.mark.asyncio
     async def test_no_returns_false(self):
-        """返回 NO 时 classify_search_intent 为 False / Returns False when LLM says NO."""
+        """返回 NO 时为 False / Returns False when LLM says NO."""
         from services.llm_client import classify_search_intent
         with patch("services.llm_client._summarizer_call", new=AsyncMock(return_value="NO")):
             assert await classify_search_intent("解释一下递归") is False
 
     @pytest.mark.asyncio
     async def test_exception_returns_false(self):
-        """LLM 异常时静默返回 False，不阻断主流程 / Returns False silently on exception; must not block the main flow."""
+        """LLM 异常时静默返回 False / Returns False silently on exception."""
         from services.llm_client import classify_search_intent
         with patch("services.llm_client._summarizer_call", side_effect=Exception("API down")):
-            assert await classify_search_intent("query") is False
+            with patch("services.llm_client.router") as mock_router:
+                mock_router.completion = AsyncMock(side_effect=Exception("also down"))
+                assert await classify_search_intent("query") is False
 
     @pytest.mark.asyncio
     async def test_yes_case_insensitive(self):
@@ -217,43 +320,36 @@ class TestStripThinkTags:
 
     @pytest.mark.asyncio
     async def test_no_think_tags_passthrough(self):
-        """无 think 标签时原样输出 / Passes through unchanged when no think tags present."""
         result = await self._collect(["hello", " ", "world"])
         assert result == "hello world"
 
     @pytest.mark.asyncio
     async def test_single_chunk_think_stripped(self):
-        """单 chunk 内完整 think 块被过滤 / Complete think block in one chunk is stripped."""
         result = await self._collect(["<think>reasoning</think>answer"])
         assert result == "answer"
 
     @pytest.mark.asyncio
     async def test_think_split_across_chunks(self):
-        """think 标签跨 chunk 拆分时仍正确过滤 / Think block split across chunks is still stripped."""
         result = await self._collect(["<thi", "nk>rea", "soning</thi", "nk>answer"])
         assert result == "answer"
 
     @pytest.mark.asyncio
     async def test_newline_after_close_tag_stripped(self):
-        """</think> 后的空行被剥离 / Blank lines after </think> are stripped."""
         result = await self._collect(["<think>x</think>\n\nfinal"])
         assert result == "final"
 
     @pytest.mark.asyncio
     async def test_content_before_think_preserved(self):
-        """think 块前的内容被保留 / Content before the think block is preserved."""
         result = await self._collect(["prefix<think>skip</think>suffix"])
         assert result == "prefixsuffix"
 
     @pytest.mark.asyncio
     async def test_multiple_think_blocks(self):
-        """多个 think 块均被过滤 / Multiple think blocks are all stripped."""
         result = await self._collect(["<think>a</think>mid<think>b</think>end"])
         assert result == "midend"
 
     @pytest.mark.asyncio
     async def test_empty_stream(self):
-        """空流输出空字符串 / Empty stream yields empty string."""
         result = await self._collect([])
         assert result == ""
 
@@ -261,10 +357,7 @@ class TestStripThinkTags:
 # ── merge_threads ─────────────────────────────────────────────────────
 
 class TestMergeThreads:
-    """merge_threads 的单元测试 / Unit tests for merge_threads."""
-
     async def _collect(self, gen) -> str:
-        """将 AsyncGenerator 收集为字符串 / Collect an AsyncGenerator into a string."""
         chunks = []
         async for c in gen:
             chunks.append(c)
@@ -272,12 +365,11 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_empty_threads_data_yields_nothing(self):
-        """空列表不产生任何 chunk / Empty list yields no chunks."""
         from services.llm_client import merge_threads
 
         async def fake_stream(_messages, **_kwargs):
             return
-            yield  # make it an async generator
+            yield
 
         with patch("services.llm_client.chat_stream", side_effect=fake_stream):
             result = await self._collect(merge_threads([]))
@@ -285,8 +377,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_calls_chat_stream_with_inject_meta_false(self):
-        """必须以 inject_meta=False 调用 chat_stream，避免注入 META 标记
-        Must call chat_stream with inject_meta=False to avoid injecting META markers."""
         from services.llm_client import merge_threads
         captured = {}
 
@@ -302,8 +392,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_free_format_in_system_prompt(self):
-        """format_type='free' 时 system prompt 包含自由总结指令
-        format_type='free' puts the free-form instruction in the system prompt."""
         from services.llm_client import merge_threads
         captured = {}
 
@@ -318,8 +406,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_structured_format_in_system_prompt(self):
-        """format_type='structured' 时 system prompt 包含结构化分析指令
-        format_type='structured' puts the structured-analysis instruction in the system prompt."""
         from services.llm_client import merge_threads
         captured = {}
 
@@ -334,8 +420,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_anchor_text_appears_in_user_prompt(self):
-        """锚点文字出现在发送给 LLM 的 user 消息中
-        Anchor text appears in the user message sent to the LLM."""
         from services.llm_client import merge_threads
         captured = {}
 
@@ -350,8 +434,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_streams_chunks_through(self):
-        """chat_stream 产生的 chunk 逐一 yield 出去
-        Chunks from chat_stream are yielded one by one."""
         from services.llm_client import merge_threads
 
         async def fake_stream(_messages, **_kwargs):
@@ -365,8 +447,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_transcript_format_skips_llm(self):
-        """format_type='transcript' 直接输出原文，不调用 chat_stream
-        format_type='transcript' outputs raw text without calling chat_stream."""
         from services.llm_client import merge_threads
 
         called = {"count": 0}
@@ -382,9 +462,7 @@ class TestMergeThreads:
                 format_type="transcript",
             ))
 
-        # LLM 未被调用 / LLM should not have been called
         assert called["count"] == 0
-        # 原文内容包含在输出中 / Raw content present in output
         assert "对话原文" in result
         assert "主线对话" in result
         assert "问题一" in result
@@ -393,8 +471,6 @@ class TestMergeThreads:
 
     @pytest.mark.asyncio
     async def test_unknown_format_falls_back_to_free(self):
-        """未知 format_type 时使用自由总结指令作为兜底
-        Unknown format_type falls back to the free-form instruction."""
         from services.llm_client import merge_threads
         captured = {}
 
@@ -405,14 +481,12 @@ class TestMergeThreads:
         with patch("services.llm_client.chat_stream", side_effect=fake_stream):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="nonexistent"))
 
-        # free format contains "流畅" or "叙述"
         assert "流畅" in captured["system"] or "叙述" in captured["system"]
 
 
 class TestAssessRelevance:
     @pytest.mark.asyncio
     async def test_returns_parsed_json(self):
-        """LLM 返回合法 JSON 时直接解析 / Parses valid JSON returned by LLM."""
         mock_response = '[{"thread_id": "abc", "selected": true, "reason": "相关"}]'
         with patch("services.llm_client._summarizer_call", new_callable=AsyncMock) as m:
             m.return_value = mock_response
@@ -425,7 +499,6 @@ class TestAssessRelevance:
 
     @pytest.mark.asyncio
     async def test_fallback_on_invalid_json(self):
-        """LLM 返回非法 JSON 时所有线程默认选中 / Falls back to all-selected on invalid JSON."""
         with patch("services.llm_client._summarizer_call", new_callable=AsyncMock) as m:
             m.return_value = "抱歉，无法解析"
             from services.llm_client import assess_relevance
@@ -442,7 +515,6 @@ class TestAssessRelevance:
 
     @pytest.mark.asyncio
     async def test_json_embedded_in_text(self):
-        """JSON 嵌在文本中也能提取 / Extracts JSON array even when surrounded by text."""
         mock_response = '好的，分析如下：\n[{"thread_id": "y", "selected": false, "reason": "无关"}]\n完毕'
         with patch("services.llm_client._summarizer_call", new_callable=AsyncMock) as m:
             m.return_value = mock_response

@@ -1,37 +1,47 @@
 # backend/services/llm_client.py
 """
-LiteLLM Router 封装 — 全部使用 Groq，动态路由 + 自动 fallback
-LiteLLM Router wrapper — all calls use Groq with dynamic routing and automatic fallback.
+SmartRouter — 多 Provider 智能路由，用量追踪 + 主动选择 + 恢复预测
+SmartRouter — Multi-provider intelligent routing with usage tracking,
+proactive selection, and soonest-recovery fallback.
+
+Provider 支持 / Provider support:
+  Groq, Cerebras, SambaNova, Gemini — 全部免费 tier 叠加
+  All free tiers stacked together.
 
 模型分组 / Model groups:
-  chat       → 主对话，6 个模型 × N 个 key，所有组合耗尽才 fallback 到 summarizer
-               Main conversation: 6 models × N keys; falls back to summarizer only when all are exhausted
-  summarizer → compact 摘要、分类、格式化，极端情况下临时接主对话
-               Summary compaction, classification, formatting; can temporarily handle main chat in extremis
-  vision     → 图片理解（llama-4-scout）
-               Image understanding (llama-4-scout)
-  whisper    → 语音转文字，走 Groq 原生 API
-               Speech-to-text via the native Groq API
+  chat       → 主对话，大模型优先
+  merge      → 合并输出，需要高 TPM
+  summarizer → 摘要、分类、格式化，轻量模型
+  vision     → 图片理解（Groq llama-4-scout）
 """
 from __future__ import annotations
 
 import os
 import json
+import time
 import random
+import logging
+from dataclasses import dataclass, field
 from typing import AsyncGenerator
 
-from litellm import Router
+import litellm
 from dotenv import load_dotenv
 
 load_dotenv()
 
+_log = logging.getLogger(__name__)
 
-def _load_groq_keys() -> list[str]:
+
+# ═══════════════════════════════════════════════════════════════════════
+# 环境变量加载 / Load environment variables
+# ═══════════════════════════════════════════════════════════════════════
+
+def _load_keys(env_var: str) -> list[str]:
     """
-    从环境变量 GROQ_API_KEYS 加载 API key 列表（JSON 数组格式）。
-    Load the API key list from the GROQ_API_KEYS env var (JSON array format).
+    从环境变量加载 API key 列表（JSON 数组或单个字符串）。
+    Load API key list from env var (JSON array or single string).
     """
-    raw = os.getenv("GROQ_API_KEYS", "[]")
+    raw = os.getenv(env_var, "[]")
     try:
         parsed = json.loads(raw)
         return [k for k in parsed if k] if isinstance(parsed, list) else [raw]
@@ -39,99 +49,387 @@ def _load_groq_keys() -> list[str]:
         return [raw] if raw else []
 
 
+# 保留原名以兼容测试
+def _load_groq_keys() -> list[str]:
+    return _load_keys("GROQ_API_KEYS")
+
+
 GROQ_API_KEYS: list[str] = _load_groq_keys()
+CEREBRAS_API_KEYS: list[str] = _load_keys("CEREBRAS_API_KEYS")
+SAMBANOVA_API_KEYS: list[str] = _load_keys("SAMBANOVA_API_KEYS")
+GEMINI_API_KEYS: list[str] = _load_keys("GEMINI_API_KEYS")
 
-# chat 梯队：主对话模型，usage-based 路由，429 自动 fallback
-# Chat tier: main conversation models, usage-based routing, automatic 429 fallback
-CHAT_MODELS = [
-    "openai/gpt-oss-120b",
-    "moonshotai/kimi-k2-instruct",
-    "moonshotai/kimi-k2-instruct-0905",
-    "llama-3.3-70b-versatile",
-    "qwen/qwen3-32b",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
+
+# ═══════════════════════════════════════════════════════════════════════
+# 模型配置 / Model configuration
+# ═══════════════════════════════════════════════════════════════════════
+
+@dataclass
+class ModelSpec:
+    """一个模型的规格定义 / Specification for a single model."""
+    provider: str        # "groq", "cerebras", "sambanova", "gemini"
+    model_id: str        # provider 内模型名
+    rpm: int = 30        # 每分钟请求数 / requests per minute
+    tpm: int = 6000      # 每分钟 token 数 / tokens per minute
+    rpd: int = 1000      # 每天请求数 / requests per day
+    tpd: int = 500_000   # 每天 token 数 / tokens per day
+    groups: list[str] = field(default_factory=list)  # 所属分组
+
+# Groq 模型（免费 tier：30 RPM, 6K TPM, 14.4K RPD）
+GROQ_MODELS = [
+    ModelSpec("groq", "llama-3.3-70b-versatile",                    rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["chat", "merge"]),
+    ModelSpec("groq", "meta-llama/llama-4-scout-17b-16e-instruct",  rpm=30, tpm=15000, rpd=14400, tpd=500_000, groups=["chat", "merge", "vision"]),
+    ModelSpec("groq", "qwen/qwen3-32b",                             rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["chat"]),
+    ModelSpec("groq", "moonshotai/kimi-k2-instruct-0905",           rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["chat", "merge"]),
+    ModelSpec("groq", "openai/gpt-oss-120b",                        rpm=30, tpm=6000,  rpd=1000,  tpd=500_000, groups=["chat"]),
+    ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,  rpd=14400, tpd=500_000, groups=["summarizer"]),
+    ModelSpec("groq", "openai/gpt-oss-20b",                         rpm=30, tpm=6000,  rpd=1000,  tpd=500_000, groups=["summarizer"]),
 ]
 
-# merge 梯队：仅包含 TPM ≥ 10K 的模型，用于合并输出（输入通常 8K+ tokens）
-# Merge tier: only models with TPM ≥ 10K; used for merge output (input often 8K+ tokens)
-# 排除 openai/gpt-oss-120b (8K TPM) 和 qwen/qwen3-32b (6K TPM)
-MERGE_MODELS = [
-    "moonshotai/kimi-k2-instruct",           # 10K TPM
-    "moonshotai/kimi-k2-instruct-0905",      # 10K TPM
-    "llama-3.3-70b-versatile",               # 12K TPM
-    "meta-llama/llama-4-scout-17b-16e-instruct",  # 30K TPM
+# Cerebras 模型（免费 tier：30 RPM, ~1M TPD）
+CEREBRAS_MODELS = [
+    ModelSpec("cerebras", "llama3.3-70b",  rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["chat", "merge"]),
+    ModelSpec("cerebras", "llama3.1-8b",   rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["summarizer"]),
 ]
 
-# summarizer 梯队：轻量任务（摘要、分类、格式化）
-# Summarizer tier: lightweight tasks (summarization, classification, formatting)
-SUMMARIZER_MODELS = [
-    "llama-3.1-8b-instant",
-    "openai/gpt-oss-20b",
-    # allam-2-7b 移除：阿拉伯语专用，不支持中文，context window 约 4K 容易超限
+# SambaNova 模型（免费 tier：10-30 RPM, 20M TPD）
+SAMBANOVA_MODELS = [
+    ModelSpec("sambanova", "Meta-Llama-3.1-405B-Instruct",   rpm=10, tpm=100000, rpd=1000, tpd=20_000_000, groups=["chat", "merge"]),
+    ModelSpec("sambanova", "Meta-Llama-3.3-70B-Instruct",    rpm=20, tpm=100000, rpd=1000, tpd=20_000_000, groups=["chat", "merge"]),
+    ModelSpec("sambanova", "Meta-Llama-3.1-8B-Instruct",     rpm=30, tpm=100000, rpd=1000, tpd=20_000_000, groups=["summarizer"]),
 ]
 
-# vision 专用模型 / Vision-specific model
-_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+# Gemini 模型（免费 tier：10-15 RPM, 250K TPM, 1K RPD）
+GEMINI_MODELS = [
+    ModelSpec("gemini", "gemini-2.5-flash",      rpm=10, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "merge"]),
+    ModelSpec("gemini", "gemini-2.5-flash-lite",  rpm=15, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "summarizer"]),
+]
 
+ALL_MODELS = GROQ_MODELS + CEREBRAS_MODELS + SAMBANOVA_MODELS + GEMINI_MODELS
+
+# 兼容旧代码 / Backward compatibility
+CHAT_MODELS = [m.model_id for m in ALL_MODELS if "chat" in m.groups]
+MERGE_MODELS = [m.model_id for m in ALL_MODELS if "merge" in m.groups]
+SUMMARIZER_MODELS = [m.model_id for m in ALL_MODELS if "summarizer" in m.groups]
+
+# Fallback 链 / Fallback chain
+FALLBACK_CHAIN: dict[str, list[str]] = {
+    "chat": ["summarizer"],
+    "merge": ["chat", "summarizer"],
+    "summarizer": ["chat"],
+    "vision": [],
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 用量追踪 / Usage tracking
+# ═══════════════════════════════════════════════════════════════════════
+
+class UsageBucket:
+    """
+    时间窗口用量桶：按分钟追踪 RPM/TPM，按天追踪 RPD/TPD。
+    Time-windowed usage bucket: tracks RPM/TPM per minute, RPD/TPD per day.
+    """
+    __slots__ = (
+        "rpm_used", "tpm_used", "rpd_used", "tpd_used",
+        "_minute_ts", "_day_ts",
+        "_last_fail_ts", "_fail_count",
+    )
+
+    def __init__(self):
+        now = time.monotonic()
+        self.rpm_used = 0
+        self.tpm_used = 0
+        self.rpd_used = 0
+        self.tpd_used = 0
+        self._minute_ts = now
+        self._day_ts = now
+        self._last_fail_ts = 0.0
+        self._fail_count = 0
+
+    def _maybe_reset(self):
+        """重置过期的时间窗口 / Reset expired time windows."""
+        now = time.monotonic()
+        if now - self._minute_ts >= 60:
+            self.rpm_used = 0
+            self.tpm_used = 0
+            self._minute_ts = now
+        if now - self._day_ts >= 86400:
+            self.rpd_used = 0
+            self.tpd_used = 0
+            self._day_ts = now
+
+    def record_request(self, tokens: int = 0):
+        """记录一次请求 / Record a request."""
+        self._maybe_reset()
+        self.rpm_used += 1
+        self.rpd_used += 1
+        self.tpm_used += tokens
+        self.tpd_used += tokens
+
+    def record_failure(self):
+        """记录一次 429/5xx 失败 / Record a rate-limit or server failure."""
+        self._last_fail_ts = time.monotonic()
+        self._fail_count += 1
+
+    def record_success(self):
+        """成功后重置失败计数 / Reset failure count on success."""
+        self._fail_count = 0
+
+    def score(self, spec: ModelSpec) -> float:
+        """
+        计算可用性得分（0-1），越高越好。0 表示已满。
+        Calculate availability score (0-1); higher is better. 0 means exhausted.
+
+        得分 = min(各维度剩余比例) / Score = min(remaining ratio across all dimensions)
+        最近失败过的模型额外惩罚 / Recently failed models get an extra penalty.
+        """
+        self._maybe_reset()
+
+        rpm_r = max(0, spec.rpm - self.rpm_used) / spec.rpm if spec.rpm > 0 else 0
+        tpm_r = max(0, spec.tpm - self.tpm_used) / spec.tpm if spec.tpm > 0 else 0
+        rpd_r = max(0, spec.rpd - self.rpd_used) / spec.rpd if spec.rpd > 0 else 0
+
+        s = min(rpm_r, tpm_r, rpd_r)
+
+        # 最近 60 秒内失败过，惩罚衰减
+        if self._fail_count > 0 and self._last_fail_ts > 0:
+            elapsed = time.monotonic() - self._last_fail_ts
+            if elapsed < 60:
+                penalty = 0.5 ** (elapsed / 30)  # 30 秒半衰期
+                s *= (1 - penalty)
+
+        return s
+
+    def seconds_until_recovery(self, spec: ModelSpec) -> float:
+        """
+        预估恢复可用的最短等待时间（秒）。
+        Estimate shortest wait until this slot becomes available again (seconds).
+        """
+        self._maybe_reset()
+        waits = []
+        if self.rpm_used >= spec.rpm:
+            waits.append(60 - (time.monotonic() - self._minute_ts))
+        if self.tpm_used >= spec.tpm:
+            waits.append(60 - (time.monotonic() - self._minute_ts))
+        if self.rpd_used >= spec.rpd:
+            waits.append(86400 - (time.monotonic() - self._day_ts))
+        return max(0, min(waits)) if waits else 0
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Slot = (ModelSpec, api_key) 的运行时实例
+# Slot = runtime instance of (ModelSpec, api_key)
+# ═══════════════════════════════════════════════════════════════════════
+
+@dataclass
+class Slot:
+    spec: ModelSpec
+    api_key: str
+    usage: UsageBucket = field(default_factory=UsageBucket)
+
+    @property
+    def litellm_model(self) -> str:
+        """LiteLLM 格式的模型名 / LiteLLM-format model name."""
+        return f"{self.spec.provider}/{self.spec.model_id}"
+
+    def score(self) -> float:
+        return self.usage.score(self.spec)
+
+    def seconds_until_recovery(self) -> float:
+        return self.usage.seconds_until_recovery(self.spec)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SmartRouter
+# ═══════════════════════════════════════════════════════════════════════
+
+class SmartRouter:
+    """
+    智能路由器：基于实时用量追踪的主动模型选择。
+    Smart router: proactive model selection based on real-time usage tracking.
+
+    策略 / Strategy:
+      1. 按 score 降序排列可用 slot，选最高分
+      2. 如果全部 score=0（耗尽），选最快恢复的 slot 并等待
+      3. 失败时自动重试下一个 slot，直到所有 slot 尝试过
+      4. 当前 group 全部失败后，按 FALLBACK_CHAIN 降级到下一组
+    """
+
+    def __init__(self, models: list[ModelSpec], keys_by_provider: dict[str, list[str]]):
+        self.slots: list[Slot] = []
+        self._slots_by_group: dict[str, list[Slot]] = {}
+
+        for spec in models:
+            provider_keys = keys_by_provider.get(spec.provider, [])
+            for key in provider_keys:
+                slot = Slot(spec=spec, api_key=key)
+                self.slots.append(slot)
+                for group in spec.groups:
+                    self._slots_by_group.setdefault(group, []).append(slot)
+
+        _log.info(
+            "SmartRouter initialized: %d slots, groups=%s",
+            len(self.slots),
+            {g: len(s) for g, s in self._slots_by_group.items()},
+        )
+
+    def _pick_slot(self, group: str) -> Slot | None:
+        """
+        从分组中选最优 slot。得分最高的优先；全为 0 则选恢复最快的。
+        Pick the best slot from a group. Highest score wins; if all zero, pick soonest recovery.
+        """
+        slots = self._slots_by_group.get(group, [])
+        if not slots:
+            return None
+
+        scored = [(s, s.score()) for s in slots]
+        available = [(s, sc) for s, sc in scored if sc > 0]
+
+        if available:
+            # 加少量随机扰动避免集中打一个 / Add jitter to avoid thundering herd
+            available.sort(key=lambda x: x[1] + random.uniform(0, 0.05), reverse=True)
+            return available[0][0]
+
+        # 全部耗尽，选恢复最快的 / All exhausted, pick soonest recovery
+        slots_by_recovery = sorted(scored, key=lambda x: x[0].seconds_until_recovery())
+        return slots_by_recovery[0][0]
+
+    def _get_ordered_slots(self, group: str) -> list[Slot]:
+        """
+        返回按 score 降序排列的 slot 列表，用于重试。
+        Return slots ordered by score (desc) for retry iteration.
+        """
+        slots = self._slots_by_group.get(group, [])
+        return sorted(slots, key=lambda s: s.score(), reverse=True)
+
+    async def completion(
+        self,
+        group: str,
+        messages: list[dict],
+        stream: bool = False,
+        max_tokens: int | None = None,
+        timeout: int = 30,
+    ):
+        """
+        发起 LLM 调用，自动路由 + 重试 + fallback。
+        Make an LLM call with automatic routing, retry, and fallback.
+        """
+        groups_to_try = [group] + FALLBACK_CHAIN.get(group, [])
+        last_error = None
+
+        for try_group in groups_to_try:
+            slots = self._get_ordered_slots(try_group)
+            if not slots:
+                continue
+
+            for slot in slots:
+                try:
+                    # 预估 token 消耗（粗估：输入 tokens ≈ 字符数 / 2）
+                    est_tokens = sum(len(m.get("content", "")) for m in messages) // 2
+                    slot.usage.record_request(est_tokens)
+
+                    kwargs: dict = {
+                        "model": slot.litellm_model,
+                        "messages": messages,
+                        "api_key": slot.api_key,
+                        "stream": stream,
+                        "timeout": timeout,
+                    }
+                    if max_tokens is not None:
+                        kwargs["max_tokens"] = max_tokens
+
+                    response = await litellm.acompletion(**kwargs)
+                    slot.usage.record_success()
+
+                    if try_group != group:
+                        _log.info("Fallback %s→%s, slot=%s", group, try_group, slot.litellm_model)
+
+                    return response
+
+                except Exception as exc:
+                    slot.usage.record_failure()
+                    last_error = exc
+                    status = getattr(exc, "status_code", None)
+                    _log.warning(
+                        "Slot failed: %s key=%.8s… status=%s err=%s",
+                        slot.litellm_model, slot.api_key, status, str(exc)[:100],
+                    )
+                    # 429 或 5xx 继续尝试下一个 slot
+                    continue
+
+        raise last_error or RuntimeError(f"All slots exhausted for group '{group}'")
+
+    def get_status(self) -> dict:
+        """调试用：返回各 group 的 slot 状态 / Debug: return slot status per group."""
+        status = {}
+        for group, slots in self._slots_by_group.items():
+            status[group] = [
+                {
+                    "model": s.litellm_model,
+                    "key": s.api_key[:8] + "...",
+                    "score": round(s.score(), 3),
+                    "rpm_used": s.usage.rpm_used,
+                    "rpd_used": s.usage.rpd_used,
+                    "recovery_s": round(s.seconds_until_recovery(), 1),
+                }
+                for s in slots
+            ]
+        return status
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 全局 Router 实例 / Global router instance
+# ═══════════════════════════════════════════════════════════════════════
+
+def _build_router() -> SmartRouter:
+    keys_by_provider = {
+        "groq": GROQ_API_KEYS,
+        "cerebras": CEREBRAS_API_KEYS,
+        "sambanova": SAMBANOVA_API_KEYS,
+        "gemini": GEMINI_API_KEYS,
+    }
+    return SmartRouter(ALL_MODELS, keys_by_provider)
+
+
+router: SmartRouter = _build_router()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 兼容旧代码的 _build_model_list（测试使用）
+# Backward-compatible _build_model_list (used by tests)
+# ═══════════════════════════════════════════════════════════════════════
 
 def _build_model_list() -> list[dict]:
     """
-    展开所有 key × 模型组合，生成 LiteLLM Router 所需的 model_list。
-    Expand all key × model combinations to build the model_list for the LiteLLM Router.
+    生成类似旧 LiteLLM Router 格式的 model_list（兼容测试）。
+    Generate a model_list similar to the old LiteLLM Router format (for test compatibility).
     """
     model_list = []
-    for key in GROQ_API_KEYS:
-        for model in CHAT_MODELS:
-            model_list.append({
-                "model_name": "chat",
-                "litellm_params": {"model": f"groq/{model}", "api_key": key},
-            })
-        for model in MERGE_MODELS:
-            model_list.append({
-                "model_name": "merge",
-                "litellm_params": {"model": f"groq/{model}", "api_key": key},
-            })
-        for model in SUMMARIZER_MODELS:
-            model_list.append({
-                "model_name": "summarizer",
-                "litellm_params": {"model": f"groq/{model}", "api_key": key},
-            })
-        model_list.append({
-            "model_name": "vision",
-            "litellm_params": {"model": f"groq/{_VISION_MODEL}", "api_key": key},
-        })
+    keys_map = {
+        "groq": GROQ_API_KEYS,
+        "cerebras": CEREBRAS_API_KEYS,
+        "sambanova": SAMBANOVA_API_KEYS,
+        "gemini": GEMINI_API_KEYS,
+    }
+    for spec in ALL_MODELS:
+        for key in keys_map.get(spec.provider, []):
+            for group in spec.groups:
+                model_list.append({
+                    "model_name": group,
+                    "litellm_params": {
+                        "model": f"{spec.provider}/{spec.model_id}",
+                        "api_key": key,
+                    },
+                })
     return model_list
 
 
-def _build_router() -> Router:
-    """
-    构建 LiteLLM Router，配置 usage-based 路由和 fallback 链。
-    Build the LiteLLM Router with usage-based routing and fallback chain.
+# ═══════════════════════════════════════════════════════════════════════
+# META 块与 think 标签处理（不变）
+# META block and think tag processing (unchanged)
+# ═══════════════════════════════════════════════════════════════════════
 
-    fallback 链 / Fallback chain:
-      chat  → summarizer  （chat 全部耗尽时）
-      merge → chat        （merge 全部耗尽时降级到全量 chat 组）
-    """
-    model_list = _build_model_list()
-    total_chat = len(GROQ_API_KEYS) * len(CHAT_MODELS)
-    return Router(
-        model_list=model_list,
-        routing_strategy="usage-based-routing",  # 优先选剩余额度最多的 / Prefer the model with most remaining quota
-        num_retries=3,
-        retry_after=5,
-        fallbacks=[
-            {"chat": ["summarizer"]},       # chat 全部耗尽 → 降级到 summarizer
-            {"merge": ["chat"]},            # merge 耗尽 → 降级到 chat
-            {"summarizer": ["chat"]},       # summarizer TPM/RPD 打满 → 降级到 chat
-        ],
-        allowed_fails=total_chat,
-    )
-
-
-router: Router = _build_router()
-
-# META 块：嵌入主对话末尾，解析出摘要和标题，省去额外 LLM 调用
-# META block: appended at the end of the main reply; parsing it avoids extra LLM calls
 META_SENTINEL = "<<<META>>>"
 
 
@@ -139,12 +437,8 @@ async def _strip_think_tags(
     raw: AsyncGenerator[str, None],
 ) -> AsyncGenerator[str, None]:
     """
-    过滤推理模型输出的 <think>…</think> 块，避免内部推理暴露给用户。
-    流式处理：缓冲跨 chunk 的不完整标签，只 yield 标签外的内容。
-
-    Strip <think>…</think> blocks emitted by reasoning models (e.g. qwen3, deepseek-r1)
-    so users never see internal chain-of-thought.
-    Stateful: buffers partial tags that may span chunk boundaries.
+    过滤推理模型输出的 <think>...</think> 块，避免内部推理暴露给用户。
+    Strip <think>...</think> blocks emitted by reasoning models.
     """
     in_think = False
     buf = ""
@@ -155,21 +449,16 @@ async def _strip_think_tags(
             if in_think:
                 end = buf.find("</think>")
                 if end == -1:
-                    # 可能是 </think> 前缀，保留尾部以防跨 chunk
-                    # May be a partial </think> prefix — keep the tail to handle cross-chunk splits
                     keep = max(0, len(buf) - len("</think>") + 1)
                     buf = buf[keep:]
                     break
                 else:
                     buf = buf[end + len("</think>"):]
                     in_think = False
-                    # 跳过 </think> 后的空白行（模型通常输出 \n\n 后再开始正文）
-                    # Skip blank lines right after </think> (models typically emit \n\n before the answer)
                     buf = buf.lstrip("\n")
             else:
                 start = buf.find("<think>")
                 if start == -1:
-                    # 保留可能是 <think> 前缀的尾部 / Keep tail that might be a partial <think> prefix
                     keep = max(0, len(buf) - len("<think>") + 1)
                     if keep > 0:
                         yield buf[:keep]
@@ -181,19 +470,25 @@ async def _strip_think_tags(
                     buf = buf[start + len("<think>"):]
                     in_think = True
 
-    # 清空剩余缓冲（不在 think 块内）/ Flush remaining buffer if outside a think block
     if buf and not in_think:
         yield buf
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# 公共 API（签名不变）/ Public API (signatures unchanged)
+# ═══════════════════════════════════════════════════════════════════════
 
 def pick_model(model_type: str = "chat") -> str:
     """
     返回当前 model_type 的首选模型 ID（用于日志/调试）。
     Return the preferred model ID for the given model_type (for logging/debugging).
     """
+    slot = router._pick_slot(model_type)
+    if slot:
+        return slot.litellm_model
     if model_type == "chat":
-        return f"groq/{CHAT_MODELS[0]}"
-    return f"groq/{SUMMARIZER_MODELS[0]}"
+        return f"groq/{GROQ_MODELS[0].model_id}" if GROQ_MODELS else "unknown"
+    return f"groq/{GROQ_MODELS[-1].model_id}" if GROQ_MODELS else "unknown"
 
 
 async def chat_stream(
@@ -206,28 +501,14 @@ async def chat_stream(
     """
     主对话流式生成器，每次 yield 一个文字 chunk。
     Main conversation streaming generator; yields one text chunk at a time.
-
-    Router 负责跨模型 × 跨 key 的 429 重试和 chat → summarizer fallback。
-    The Router handles 429 retries across models × keys and the chat → summarizer fallback.
-
-    inject_meta=True（默认）：在 context 末尾注入 META 指令，
-      模型回答末尾追加摘要/标题 JSON 块，stream_manager 解析后写 DB。
-    inject_meta=True (default): append the META instruction to the context;
-      the model appends a summary/title JSON block that stream_manager parses and writes to the DB.
-
-    inject_meta=False：用于搜索等无状态场景，不注入 META 指令。
-    inject_meta=False: for stateless scenarios like search; META instruction is not injected.
     """
     full_messages = list(messages)
 
     if inject_meta:
-        # 构造 META 指令：格式说明与 JSON 模板分离，避免模型把说明文字当摘要值输出
-        # Build the META instruction: keep format rules separate from the JSON template
-        # so models don't echo the instruction text as the summary value.
         summary_rules = (
             f"内部摘要规则（仅用于下方 JSON，不得出现在正文回答中）："
             f"按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
-            f"话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 ≤ {summary_budget} 字。"
+            f"话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 <= {summary_budget} 字。"
         )
         json_template = '"summary": "<按上述规则生成的实际摘要>"'
         if need_title:
@@ -243,8 +524,8 @@ async def chat_stream(
             ),
         })
 
-    response = await router.acompletion(
-        model=model_type,
+    response = await router.completion(
+        group=model_type,
         messages=full_messages,
         stream=True,
         timeout=30,
@@ -266,11 +547,11 @@ async def _summarizer_call(
     timeout: int = 20,
 ) -> str:
     """
-    非流式轻量调用，使用 summarizer 分组，节省 chat RPD 额度。
-    Non-streaming lightweight call using the summarizer group to preserve chat RPD quota.
+    非流式轻量调用，使用 summarizer 分组。
+    Non-streaming lightweight call using the summarizer group.
     """
-    response = await router.acompletion(
-        model="summarizer",
+    response = await router.completion(
+        group="summarizer",
         messages=messages,
         max_tokens=max_tokens,
         timeout=timeout,
@@ -285,9 +566,6 @@ async def generate_title_and_suggestions(
     """
     一次调用同时生成子线程标题（4-8 字）和 3 个建议追问。
     Generate a sub-thread title (4-8 characters) and 3 suggested follow-up questions in one call.
-
-    使用 summarizer 梯队，不占用 chat RPD 额度。
-    Uses the summarizer tier; does not consume chat RPD quota.
     """
     import re
     bg = f"\n\n【锚点所在的完整消息】\n{context_summary}" if context_summary else ""
@@ -311,7 +589,6 @@ async def generate_title_and_suggestions(
     title = anchor_text[:20]
     questions: list[str] = []
 
-    # 解析结构化输出 / Parse structured output
     for line in raw.splitlines():
         line = line.strip()
         if re.match(r"(?i)^title\s*:", line):
@@ -323,7 +600,6 @@ async def generate_title_and_suggestions(
             if q:
                 questions.append(q)
 
-    # 全角冒号兜底 / Fallback for full-width colon
     if not questions:
         for m in re.finditer(r"Q[123]\s*[：:]\s*(.+)", raw):
             questions.append(m.group(1).strip())
@@ -332,7 +608,6 @@ async def generate_title_and_suggestions(
         if m:
             title = m.group(1).strip()
 
-    # 最终兜底：生成通用问题 / Final fallback: generate generic questions
     if not questions:
         short = anchor_text[:10]
         questions = [
@@ -345,10 +620,7 @@ async def generate_title_and_suggestions(
 
 
 async def summarize(text: str, max_tokens: int) -> str:
-    """
-    将文本压缩为 max_tokens 以内的摘要，语言跟随原文。
-    Compress text into a summary within max_tokens, matching the source language.
-    """
+    """将文本压缩为 max_tokens 以内的摘要 / Compress text into a summary within max_tokens."""
     return await _summarizer_call(
         messages=[{
             "role": "user",
@@ -364,10 +636,7 @@ async def summarize(text: str, max_tokens: int) -> str:
 
 
 async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: int) -> str:
-    """
-    将一轮新对话增量合并进现有摘要，控制在 max_tokens 以内。
-    Incrementally merge one new conversation round into the existing summary, within max_tokens.
-    """
+    """将一轮新对话增量合并进现有摘要 / Incrementally merge one new conversation round into the existing summary."""
     return await _summarizer_call(
         messages=[{
             "role": "user",
@@ -390,12 +659,8 @@ async def assess_relevance(
     threads: list[dict],
 ) -> list[dict]:
     """
-    一次 LLM 调用评估各子线程与主线的相关性，返回结构化 JSON 数组。
+    一次 LLM 调用评估各子线程与主线的相关性。
     Assess relevance of sub-threads to the main thread in one LLM call.
-
-    threads: [{"thread_id": str, "title": str, "summary": str}]
-    Returns: [{"thread_id": str, "selected": bool, "reason": str}]
-    Falls back to all-selected on any parse failure.
     """
     import re as _re
 
@@ -420,7 +685,6 @@ async def assess_relevance(
         timeout=30,
     )
 
-    # 尝试从回复中提取 JSON 数组 / Try to extract JSON array from response
     try:
         match = _re.search(r"\[.*\]", raw, _re.DOTALL)
         if match:
@@ -433,7 +697,6 @@ async def assess_relevance(
     except (json.JSONDecodeError, KeyError, ValueError):
         pass
 
-    # 兜底：全部选中 / Fallback: select all
     return [{"thread_id": t["thread_id"], "selected": True, "reason": ""} for t in threads]
 
 
@@ -446,25 +709,10 @@ async def merge_threads(
     """
     以主线对话为主干、子线程为细节补充，合并为结构化输出，流式返回。
     Merge with main thread as the backbone and sub-threads as enriching detail; streamed.
-
-    threads_data 格式 / threads_data format:
-      [{"title": str, "anchor": str, "content": str}, ...]
-
-    main_content: 主线对话原文（可为空）/ Main thread full text (may be empty)
-
-    format_type:
-      "free"       — 自由总结（流畅叙述）/ Free-form summary (flowing prose)
-      "bullets"    — 要点列表（分主题分级）/ Bullet-point list (grouped by theme)
-      "structured" — 结构化分析（问题/方案/权衡/结论）
-                     Structured analysis (problem / solution / trade-offs / conclusion)
-      "custom"     — 用户自定义提示词 / User-supplied custom instruction
-      "transcript" — 对话原文直接输出，不经过 LLM / Raw transcript, no LLM call
     """
     if not threads_data:
         return
 
-    # transcript：直接格式化原文输出，跳过 LLM 调用，节省 TPM 额度
-    # transcript: format raw content directly, skip LLM to preserve TPM quota
     if format_type == "transcript":
         parts: list[str] = ["# 对话原文\n"]
         if main_content and main_content.strip():
@@ -480,8 +728,6 @@ async def merge_threads(
                 section += f"\n\n{content.strip()}"
             parts.append(section)
         transcript_text = "\n\n".join(parts)
-        # 分块 yield，保留流式体验
-        # Yield in chunks to preserve the streaming UX
         chunk_size = 400
         for start in range(0, len(transcript_text), chunk_size):
             yield transcript_text[start : start + chunk_size]
@@ -509,12 +755,10 @@ async def merge_threads(
     else:
         instruction = FORMAT_INSTRUCTIONS.get(format_type, FORMAT_INSTRUCTIONS["free"])
 
-    # 主线内容段落 / Main thread section
     main_section = ""
     if main_content and main_content.strip():
         main_section = f"## 主线对话\n\n{main_content}\n\n"
 
-    # 子线程内容段落 / Sub-thread sections
     sub_sections = []
     for i, t in enumerate(threads_data, 1):
         title = t.get("title") or f"子问题 {i}"
@@ -536,9 +780,7 @@ async def merge_threads(
     if sub_section:
         user_content += sub_section
 
-    # 安全网截断：merge 组最小 TPM 10K，系统消息约 200 tokens，输出预留 1K
-    # Safety net: merge group min TPM is 10K; reserve ~200 tokens for system + ~1K for output
-    _HARD_CAP_CHARS = 17_000  # ~8500 tokens at 2 chars/token (well within 10K TPM)
+    _HARD_CAP_CHARS = 17_000
     if len(user_content) > _HARD_CAP_CHARS:
         user_content = user_content[:_HARD_CAP_CHARS] + "\n\n…（内容过长，已截断）"
 
@@ -559,28 +801,15 @@ async def merge_threads(
         },
     ]
 
-    # 使用 merge 模型组（TPM ≥ 10K），避免大请求被小 TPM 模型拒绝
-    # Use the merge model group (TPM ≥ 10K) to avoid large requests being rejected by low-TPM models
     async for chunk in chat_stream(messages, model_type="merge", inject_meta=False):
         yield chunk
 
 
 async def classify_search_intent(query: str) -> bool:
     """
-    判断用户问题是否需要联网搜索。触发条件：
-      1. 用户明确要求联网搜索（"上网查"、"search for" 等）
-      2. 问题涉及实时/近期数据（股价、天气、新闻等）
-      3. 涉及 AI 可能不了解的人物、事件或网页内容
+    判断用户问题是否需要联网搜索。
     Determine whether the user's question warrants a web search.
-
-    使用 summarizer 梯队，节省 chat RPD。
-    Uses the summarizer tier to preserve chat RPD quota.
-
-    任何异常记录警告并返回 False，不阻断主对话。
-    Any exception logs a warning and returns False; must not block the main conversation.
     """
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
     _messages = [
         {
             "role": "system",
@@ -604,26 +833,24 @@ async def classify_search_intent(query: str) -> bool:
         first = raw.strip().split()[0].upper().rstrip(".,!?") if raw.strip() else ""
         return first == "YES"
 
-    # 先用 summarizer；若失败（RPD 耗尽、429 等）降级到 chat 模型重试一次
-    # Try summarizer first; fall back to chat if it fails (RPD exhausted, 429, etc.)
     try:
         result = await _summarizer_call(_messages, max_tokens=5, timeout=8)
         decision = _parse(result)
-        _log.info("search_intent[summarizer]: query=%r → raw=%r decision=%s", query[:60], result[:20], decision)
+        _log.info("search_intent[summarizer]: query=%r -> raw=%r decision=%s", query[:60], result[:20], decision)
         return decision
     except Exception as exc:
         _log.warning("search_intent summarizer failed (query=%r): %s — retrying with chat", query[:60], exc)
 
     try:
-        response = await router.acompletion(
-            model="chat",
+        response = await router.completion(
+            group="chat",
             messages=_messages,
             max_tokens=5,
             timeout=8,
         )
         result = (response.choices[0].message.content or "").strip()
         decision = _parse(result)
-        _log.info("search_intent[chat]: query=%r → raw=%r decision=%s", query[:60], result[:20], decision)
+        _log.info("search_intent[chat]: query=%r -> raw=%r decision=%s", query[:60], result[:20], decision)
         return decision
     except Exception as exc:
         _log.warning("search_intent chat fallback also failed (query=%r): %s", query[:60], exc)
@@ -631,12 +858,9 @@ async def classify_search_intent(query: str) -> bool:
 
 
 async def vision_chat(messages: list[dict]) -> str:
-    """
-    图片理解，使用 vision 分组（llama-4-scout）。
-    Image understanding using the vision group (llama-4-scout).
-    """
-    response = await router.acompletion(
-        model="vision",
+    """图片理解，使用 vision 分组 / Image understanding using the vision group."""
+    response = await router.completion(
+        group="vision",
         messages=messages,
         timeout=30,
     )
@@ -647,9 +871,6 @@ async def transcribe(audio_file) -> str:
     """
     语音转文字，走 Groq 原生 API（whisper-large-v3-turbo）。
     Speech-to-text via the native Groq API (whisper-large-v3-turbo).
-
-    随机选取一个 key，避免单 key 频率限制。
-    Randomly selects one key to avoid single-key rate limits.
     """
     if not GROQ_API_KEYS:
         raise RuntimeError("GROQ_API_KEYS 未配置，无法转录语音 / GROQ_API_KEYS not configured; cannot transcribe")

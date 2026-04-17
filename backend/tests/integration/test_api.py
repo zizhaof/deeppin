@@ -201,3 +201,51 @@ class TestSession:
             timeout=10,
         )
         assert r.status_code == 404
+
+
+# ── TestProviders ─────────────────────────────────────────────────────────
+
+class TestProviders:
+    """
+    验证每个 provider + key 组合都可用 — 无需认证。
+    Verify every provider + key combination is functional — no auth required.
+    """
+
+    def test_all_providers_reachable(self):
+        """所有已配置的 provider/key 都能成功调用 LLM。
+        All configured provider/key pairs can successfully call the LLM."""
+        r = httpx.get(f"{BASE_URL}/health/providers", timeout=60)
+        assert r.status_code in (200, 503), f"Unexpected status: {r.status_code}"
+        data = r.json()
+
+        assert data["total"] > 0, "No provider/key pairs configured"
+
+        # 打印每个结果方便 CI 调试 / Print each result for CI debugging
+        for result in data["results"]:
+            status = "OK" if result["ok"] else f"FAIL: {result.get('error', 'unknown')}"
+            print(f"  {result['provider']}/{result['model']} [{result['key']}] → {status}")
+
+        assert data["failed"] == 0, (
+            f"{data['failed']}/{data['total']} provider/key pairs failed: "
+            + ", ".join(
+                f"{r['provider']}/{r['model']}[{r['key']}]: {r.get('error', '?')}"
+                for r in data["results"] if not r["ok"]
+            )
+        )
+
+    def test_each_provider_has_at_least_one_slot(self):
+        """每个已配置的 provider 至少有一个可用 slot。
+        Each configured provider has at least one working slot."""
+        r = httpx.get(f"{BASE_URL}/health/providers", timeout=60)
+        data = r.json()
+
+        providers_ok: dict[str, bool] = {}
+        for result in data["results"]:
+            p = result["provider"]
+            if p not in providers_ok:
+                providers_ok[p] = False
+            if result["ok"]:
+                providers_ok[p] = True
+
+        for provider, has_ok in providers_ok.items():
+            assert has_ok, f"Provider '{provider}' has no working slots"

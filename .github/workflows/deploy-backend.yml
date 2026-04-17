@@ -43,6 +43,28 @@ jobs:
     needs: unit-test
     runs-on: ubuntu-latest
     steps:
+      - name: Sync API keys to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            ENV_FILE=/home/ubuntu/deeppin/backend/.env
+
+            update_key() {
+              local KEY="$1" VAL="$2"
+              [ -z "$VAL" ] && return
+              # 先删除旧行，再追加新行（避免 sed 处理 JSON 特殊字符）
+              grep -v "^${KEY}=" "$ENV_FILE" > "${ENV_FILE}.tmp" 2>/dev/null || true
+              echo "${KEY}=${VAL}" >> "${ENV_FILE}.tmp"
+              mv "${ENV_FILE}.tmp" "$ENV_FILE"
+            }
+
+            update_key CEREBRAS_API_KEYS '${{ secrets.CEREBRAS_API_KEYS }}'
+            update_key SAMBANOVA_API_KEYS '${{ secrets.SAMBANOVA_API_KEYS }}'
+            update_key GEMINI_API_KEYS '${{ secrets.GEMINI_API_KEYS }}'
+
       - name: Deploy to Oracle Cloud
         uses: appleboy/ssh-action@v1.0.3
         with:

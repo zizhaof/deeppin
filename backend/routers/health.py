@@ -74,6 +74,37 @@ async def _check_groq() -> dict:
         return {"ok": False, "error": str(e)}
 
 
+async def _check_single_slot(slot) -> dict:
+    """
+    对单个 slot 发最小请求，验证 provider + model + key 可用。
+    Send a minimal request to a single slot to verify provider + model + key.
+    """
+    import litellm
+    try:
+        response = await litellm.acompletion(
+            model=slot.litellm_model,
+            messages=[{"role": "user", "content": "Reply with the single word: ok"}],
+            api_key=slot.api_key,
+            max_tokens=5,
+            timeout=15,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        return {
+            "provider": slot.spec.provider,
+            "model": slot.spec.model_id,
+            "key": slot.api_key[:8] + "...",
+            "ok": bool(text),
+        }
+    except Exception as e:
+        return {
+            "provider": slot.spec.provider,
+            "model": slot.spec.model_id,
+            "key": slot.api_key[:8] + "...",
+            "ok": False,
+            "error": str(e)[:200],
+        }
+
+
 async def _check_supabase() -> bool:
     """检查 Supabase 连接是否正常。/ Check if the Supabase connection is healthy."""
     try:
@@ -119,3 +150,45 @@ async def health():
     # 503 让 Docker 将容器标记为 unhealthy，CI/CD 能感知到
     # Return 503 so Docker marks the container unhealthy when any dependency is down
     return JSONResponse(content=body, status_code=200 if all_ok else 503)
+
+
+@router.get("/health/providers")
+async def health_providers():
+    """
+    逐个验证每个 provider + model + key 组合是否可用。
+    Test each provider + model + key combination individually.
+
+    为避免重复测试同一 (provider, key) 对，每对只取一个模型。
+    To avoid redundant tests, only one model per (provider, key) pair is tested.
+
+    返回 / Returns:
+      { "total": N, "ok": M, "failed": K, "results": [...] }
+      全部通过 → 200，有失败 → 503
+    """
+    from services.llm_client import router as smart_router
+
+    # 每个 (provider, key) 只测一个 slot，避免浪费额度
+    # Test one slot per (provider, key) pair to conserve quota
+    seen: set[tuple[str, str]] = set()
+    slots_to_test = []
+    for slot in smart_router.slots:
+        pair = (slot.spec.provider, slot.api_key)
+        if pair not in seen:
+            seen.add(pair)
+            slots_to_test.append(slot)
+
+    results = await asyncio.gather(*[_check_single_slot(s) for s in slots_to_test])
+
+    ok_count = sum(1 for r in results if r["ok"])
+    failed_count = len(results) - ok_count
+
+    body = {
+        "total": len(results),
+        "ok": ok_count,
+        "failed": failed_count,
+        "results": results,
+    }
+    return JSONResponse(
+        content=body,
+        status_code=200 if failed_count == 0 else 503,
+    )
