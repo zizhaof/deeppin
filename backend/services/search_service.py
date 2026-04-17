@@ -26,6 +26,26 @@ logger = logging.getLogger(__name__)
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080")
 _TIMEOUT = 5.0  # 超时秒数，超时降级为普通对话 / Timeout in seconds; falls back to plain AI on timeout
 
+# 持久化 httpx 客户端，避免每次搜索都创建/销毁连接池
+# Persistent httpx client — avoids creating/destroying the connection pool on each search
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http() -> httpx.AsyncClient:
+    """获取或创建持久化 httpx 客户端 / Get or create the persistent httpx client."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=_TIMEOUT)
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """关闭持久化 httpx 客户端（供 shutdown handler 调用）/ Close the client (called by shutdown handler)."""
+    global _http_client
+    if _http_client and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
+
 
 async def search(query: str, max_results: int = 5) -> list[dict]:
     """
@@ -36,17 +56,17 @@ async def search(query: str, max_results: int = 5) -> list[dict]:
     Returns an empty list on failure or timeout; the caller decides how to degrade.
     """
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(
-                f"{SEARXNG_URL}/search",
-                params={
-                    "q": query,
-                    "format": "json",
-                    "language": "auto",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        client = _get_http()
+        resp = await client.get(
+            f"{SEARXNG_URL}/search",
+            params={
+                "q": query,
+                "format": "json",
+                "language": "auto",
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         results = []
         for item in (data.get("results") or [])[:max_results]:

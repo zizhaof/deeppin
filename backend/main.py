@@ -11,6 +11,7 @@ import os
 import json
 import logging
 import logging.handlers
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,7 +57,22 @@ ALLOWED_ORIGINS: list[str] = json.loads(_raw_origins)
 
 _logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Deeppin API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    应用生命周期管理：启动时无操作，关闭时取消后台任务、关闭连接池。
+    App lifespan: no-op on startup; on shutdown cancel background tasks, close connection pools.
+    """
+    yield
+    from services.stream_manager import cancel_background_tasks
+    from services.search_service import close_http_client
+    _logger.info("Shutting down: cancelling background tasks…")
+    await cancel_background_tasks()
+    await close_http_client()
+    _logger.info("Shutdown complete.")
+
+
+app = FastAPI(title="Deeppin API", version="0.1.0", lifespan=lifespan)
 
 # 启动时打印关键外部依赖配置，方便快速定位连接问题
 # Log critical external dependency config on startup for quick connection diagnosis

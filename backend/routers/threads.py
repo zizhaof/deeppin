@@ -105,7 +105,8 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
     # 有锚点时，后台生成标题 + 建议追问并回写 DB
     # When there is anchor text, generate title + suggestions in the background and write back to DB
     if body.anchor_text:
-        asyncio.create_task(
+        from services.stream_manager import _track
+        _track(
             _generate_and_patch(
                 thread_id_str,
                 body.anchor_text,

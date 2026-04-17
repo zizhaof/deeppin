@@ -42,6 +42,35 @@ from services.search_service import search as searxng_search, inject_search_resu
 
 logger = logging.getLogger(__name__)
 
+# ── Background task 生命周期管理 / Background task lifecycle management ──
+# 所有 fire-and-forget 后台任务都通过 _track() 注册，
+# 确保引用不丢失、异常被记录、任务完成后自动移出集合。
+# All fire-and-forget background tasks are registered via _track(),
+# ensuring references are retained, exceptions are logged, and tasks
+# are automatically removed from the set upon completion.
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def _track(coro) -> asyncio.Task:
+    """创建并追踪一个后台任务 / Create and track a background task."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    return task
+
+
+async def cancel_background_tasks() -> None:
+    """
+    取消所有未完成的后台任务（供 shutdown handler 调用）。
+    Cancel all pending background tasks (called by shutdown handler).
+    """
+    for task in list(_bg_tasks):
+        task.cancel()
+    if _bg_tasks:
+        await asyncio.gather(*_bg_tasks, return_exceptions=True)
+    _bg_tasks.clear()
+
+
 # META sentinel 的字节长度，用于流式截断的边界计算
 # Byte length of the META sentinel, used for streaming truncation boundary calculation
 _SENTINEL_LEN = len(META_SENTINEL)
@@ -379,16 +408,16 @@ async def stream_and_save(
     # 1. 写入当前线程摘要（META 解析到直接写，否则降级调 merge_summary）
     #    Write the thread summary (from META if available; otherwise fall back to merge_summary)
     if summary:
-        asyncio.create_task(_save_summary(thread_id, summary, summary_budget))
+        _track(_save_summary(thread_id, summary, summary_budget))
     else:
-        asyncio.create_task(
+        _track(
             _fallback_update_summary(thread_id, depth, user_content, full_content)
         )
 
     # 2. 主线首次回复：写入会话/线程标题并推送给前端
     #    First main-thread reply: write session/thread title and push to the frontend
     if is_first_main_reply and title:
-        asyncio.create_task(_save_title(thread_id, session_id, title))
+        _track(_save_title(thread_id, session_id, title))
         yield _sse("thread_title", {"thread_id": thread_id, "title": title})
 
     # 3. 对话记忆向量化（节流：每 N 轮一次，计数放后台避免阻塞 SSE 关闭）
@@ -412,7 +441,7 @@ async def stream_and_save(
             except Exception:
                 pass
 
-        asyncio.create_task(_maybe_embed())
+        _track(_maybe_embed())
 
 
 def _sse(event_type: str, data: dict) -> str:
