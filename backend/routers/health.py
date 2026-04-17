@@ -171,3 +171,38 @@ async def health_providers():
         content=body,
         status_code=200 if failed_count == 0 else 503,
     )
+
+
+@router.get("/health/providers/full")
+async def health_providers_full():
+    """
+    逐个验证**每个**配置的 (provider, model, key) 三元组。
+    Test **every** configured (provider, model, key) triple individually.
+
+    与 /health/providers 的区别：不做 (provider, key) 去重，每个模型都单独测一次。
+    Unlike /health/providers, no dedup by (provider, key); every model is tested.
+
+    额度消耗较大，仅用于每日定时巡检或手动排查模型配置漂移。
+    High quota cost; intended for daily scheduled checks or manual drift detection.
+
+    返回 / Returns:
+      { "total": N, "ok": M, "failed": K, "results": [...] }
+      全部通过 → 200，有失败 → 503
+    """
+    from services.llm_client import router as smart_router
+
+    results = await asyncio.gather(*[_check_single_slot(s) for s in smart_router.slots])
+
+    ok_count = sum(1 for r in results if r["ok"])
+    failed_count = len(results) - ok_count
+
+    body = {
+        "total": len(results),
+        "ok": ok_count,
+        "failed": failed_count,
+        "results": results,
+    }
+    return JSONResponse(
+        content=body,
+        status_code=200 if failed_count == 0 else 503,
+    )

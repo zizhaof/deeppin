@@ -233,19 +233,3 @@ class TestProviders:
             )
         )
 
-    def test_each_provider_has_at_least_one_slot(self):
-        """每个已配置的 provider 至少有一个可用 slot。
-        Each configured provider has at least one working slot."""
-        r = httpx.get(f"{BASE_URL}/health/providers", timeout=60)
-        data = r.json()
-
-        providers_ok: dict[str, bool] = {}
-        for result in data["results"]:
-            p = result["provider"]
-            if p not in providers_ok:
-                providers_ok[p] = False
-            if result["ok"]:
-                providers_ok[p] = True
-
-        for provider, has_ok in providers_ok.items():
-            assert has_ok, f"Provider '{provider}' has no working slots"

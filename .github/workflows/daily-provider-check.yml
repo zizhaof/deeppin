@@ -1,0 +1,56 @@
+name: Daily Provider Check
+
+# 每日巡检所有 (provider, model, key) 组合，发现模型漂移或额度问题
+# Daily sweep of every (provider, model, key) triple to catch model drift or quota issues
+#
+# 与部署后集成测试互补：deploy-backend.yml 只测每 (provider, key) 的首个模型（轻量、快速），
+# 这个 workflow 每天跑一次测全部 slot。
+# Complements deploy-backend.yml: that one tests only the first model per (provider, key),
+# while this runs daily and exercises every slot.
+
+on:
+  schedule:
+    - cron: "0 10 * * *"   # 每天 UTC 10:00（北京 18:00 / 美西 02:00 或 03:00）
+  workflow_dispatch:        # 允许手动触发
+    inputs:
+      base_url:
+        description: "Backend base URL to probe"
+        required: false
+        default: "https://deeppin.duckdns.org"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe /health/providers/full
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://deeppin.duckdns.org' }}
+        run: |
+          set -e
+          echo "Probing $BASE_URL/health/providers/full ..."
+
+          # 单次调用，最长等 120s（每个 slot 内部 15s timeout，串并行组合一般 <60s）
+          http_status=$(curl -s -o response.json -w "%{http_code}" \
+            --max-time 120 \
+            "$BASE_URL/health/providers/full")
+
+          echo "HTTP status: $http_status"
+          echo "=== Full response ==="
+          cat response.json | python3 -m json.tool
+          echo "====================="
+
+          # 打印每个 slot 状态
+          python3 <<'PY'
+          import json, sys
+          with open("response.json") as f:
+              data = json.load(f)
+          print(f"\nSummary: total={data['total']} ok={data['ok']} failed={data['failed']}")
+          failures = [r for r in data["results"] if not r["ok"]]
+          if failures:
+              print("\nFailed slots:")
+              for r in failures:
+                  err = (r.get("error") or "").replace("\n", " ")[:200]
+                  print(f"  - {r['provider']}/{r['model']} [{r['key']}]: {err}")
+              sys.exit(1)
+          print("\nAll slots healthy.")
+          PY
