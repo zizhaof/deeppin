@@ -45,9 +45,9 @@ _TEXT_EXTS = {
 
 # 图片扩展名 → MIME，走 vision 模型生成文本描述
 # Image extensions → MIME; routed to the vision model for text description
+# key 必须与 _sniff_format 返回的规范化名一致 / Keys must match _sniff_format's canonical names
 _IMAGE_MIME = {
     "png":  "image/png",
-    "jpg":  "image/jpeg",
     "jpeg": "image/jpeg",
     "webp": "image/webp",
     "gif":  "image/gif",
@@ -110,9 +110,6 @@ def _sniff_format(content: bytes) -> Optional[str]:
     return None
 
 
-_SNIFF_TO_IMAGE: set[str] = {"png", "jpeg", "gif", "webp", "bmp"}
-
-
 # ── 文本提取 / Text extraction ────────────────────────────────────────
 
 async def extract_text(content: bytes, filename: str) -> str:
@@ -131,17 +128,16 @@ async def extract_text(content: bytes, filename: str) -> str:
 
     # 0. 图片（以字节嗅探为准，扩展名可能撒谎）→ vision 模型描述
     #    Images (trust byte sniff, not the extension) → vision model description
-    if sniffed in _SNIFF_TO_IMAGE:
+    if sniffed in _IMAGE_MIME:
         return await _extract_image(content, sniffed)
-    # 扩展名像图片但字节不匹配 → 不信任扩展名，继续走其它路径
-    # Extension looks like an image but bytes say otherwise → don't trust the ext
 
     # 1. Kreuzberg（支持 PDF / Office / 邮件等复杂格式）
-    #    嗅探结果优先用于推断 MIME，filename 扩展名次之
-    #    Kreuzberg (PDF / Office / email); prefer sniffed MIME over filename ext
-    mime_type = _MIME_MAP.get(sniffed or "") or _MIME_MAP.get(ext) or "application/octet-stream"
-    if sniffed == "zip" and ext in _MIME_MAP:
-        mime_type = _MIME_MAP[ext]  # DOCX/XLSX/PPTX 需要精确 MIME
+    #    嗅探结果优先用于推断 MIME，filename 扩展名次之；DOCX/XLSX/PPTX 等 zip 容器需要精确 MIME
+    #    Kreuzberg (PDF / Office / email); prefer sniffed MIME; zip-based formats need the exact MIME
+    mime_type = (
+        _MIME_MAP.get(ext) if sniffed == "zip" and ext in _MIME_MAP
+        else _MIME_MAP.get(sniffed or "") or _MIME_MAP.get(ext) or "application/octet-stream"
+    )
 
     try:
         from kreuzberg import extract_bytes as _kb_extract
@@ -151,19 +147,16 @@ async def extract_text(content: bytes, filename: str) -> str:
     except ImportError:
         pass  # kreuzberg 未安装，走 fallback / kreuzberg not installed; use fallback
     except Exception as e:
-        logger.warning("Kreuzberg 提取失败（%s），走 fallback / Kreuzberg extraction failed (%s), falling back: %s", filename, filename, e)
+        logger.warning("Kreuzberg 提取失败 %s，走 fallback / Kreuzberg extraction failed, falling back: %s", filename, e)
 
     # 2. Fallback：优先用嗅探结果，其次扩展名
     #    Fallback: prefer sniffed format, then filename extension
-    effective = sniffed if sniffed in ("pdf",) else ext
-    if effective == "pdf":
+    if sniffed == "pdf" or ext == "pdf":
         return _extract_pdf(content)
-    if effective in ("docx", "doc"):
+    if ext in ("docx", "doc"):
         return _extract_docx(content)
-    if ext in _TEXT_EXTS:
-        return content.decode("utf-8", errors="replace")
-    # 未知格式：尝试 UTF-8 解码（纯文本会成功，二进制会是乱码但不抛异常）
-    # Unknown format: attempt UTF-8 decode (succeeds for text, garbled but safe for binary)
+    # 纯文本 / 未知格式：尝试 UTF-8 解码（二进制会乱码但不抛异常）
+    # Text or unknown format: attempt UTF-8 decode (garbled but safe for binary)
     return content.decode("utf-8", errors="replace")
 
 
@@ -414,14 +407,13 @@ async def process_attachment(
     try:
         text = await extract_text(content, filename)
         if not text.strip():
-            logger.warning("附件 %s 提取文本为空 / Attachment %s yielded empty text", filename, filename)
+            logger.warning("附件提取文本为空 / Attachment yielded empty text: %s", filename)
             return {"chunk_count": 0, "inline_text": None}
 
         # 短文本直接内联，无需向量化
         # Short text: pass inline as context, skip chunking/embedding
         if len(text) <= INLINE_THRESHOLD:
-            logger.info("附件 %s 内联模式（%d 字符）/ Attachment %s inline mode (%d chars)",
-                        filename, len(text), filename, len(text))
+            logger.info("附件内联模式 / Attachment inline: %s (%d chars)", filename, len(text))
             return {"chunk_count": 0, "inline_text": text.strip()}
 
         # 长文本：语义分块 → 向量化 → 存库
@@ -434,11 +426,11 @@ async def process_attachment(
         embeddings = await embed_texts(chunks)
 
         await _store_chunks(session_id, filename, chunks, embeddings)
-        logger.info("附件 %s RAG 模式：%d 块，session=%s / Attachment %s RAG mode: %d chunks, session=%s",
-                    filename, len(chunks), session_id, filename, len(chunks), session_id)
+        logger.info("附件 RAG 模式 / Attachment RAG: %s (%d chunks, session=%s)",
+                    filename, len(chunks), session_id)
         return {"chunk_count": len(chunks), "inline_text": None}
 
     except Exception:
-        logger.exception("附件 %s 处理失败（session=%s）/ Attachment %s processing failed (session=%s)",
-                         filename, session_id, filename, session_id)
+        logger.exception("附件处理失败 / Attachment processing failed: %s (session=%s)",
+                         filename, session_id)
         return {"chunk_count": 0, "inline_text": None}
