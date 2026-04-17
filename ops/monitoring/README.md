@@ -50,7 +50,7 @@
 |---|---|---|---|
 | `deeppin_llm_calls_total` | Counter | `provider, model, key_prefix, group` | 每个 slot 的成功调用数 |
 | `deeppin_llm_tokens_total` | Counter | `provider, model, key_prefix` | 每个 slot 的累计 token 消耗（近似） |
-| `deeppin_llm_failures_total` | Counter | `provider, model, key_prefix` | 每个 slot 的失败数（429/5xx/fallback） |
+| `deeppin_llm_failures_total` | Counter | `provider, model, key_prefix, reason` | 每个 slot 的失败数。`reason` ∈ {`rate_limit`, `server_error`, `auth`, `timeout`, `network`, `other`}，HTTP 状态码优先、异常类型兜底 |
 | `deeppin_llm_{rpm,tpm,rpd,tpd}_used` | Gauge | `provider, model, key_prefix` | **当前窗口**用量（scrape 时现读） |
 | `deeppin_llm_{rpm,tpm,rpd,tpd}_limit` | Gauge | `provider, model, key_prefix` | 配置的窗口上限 |
 | `deeppin_llm_slot_score` | Gauge | `provider, model, key_prefix` | SmartRouter 打分（0=耗尽，1=全新） |
