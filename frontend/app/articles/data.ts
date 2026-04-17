@@ -43,6 +43,7 @@ export const articles: Article[] = [
           { type: "p", text: "Deeppin 由十几个组件协作完成「插针深度思考」这件事。本文逐一介绍每个组件的职责、何时被调用、以及它和其他组件的关系。先看全局，再逐层拆解。" },
 
           { type: "h1", text: "全局架构" },
+          { type: "diagram", text: "system-connectivity" },
           { type: "code", text: "用户浏览器\n  │\n  ├── HTTPS ──→ Vercel（Next.js 前端）\n  │              ├── components/    UI 渲染\n  │              ├── stores/        Zustand 状态\n  │              └── lib/sse.ts     SSE 客户端\n  │\n  └── HTTPS ──→ Oracle Cloud（Docker Compose）\n                 ├── Nginx          反向代理 + TLS\n                 ├── FastAPI         后端主进程\n                 │    ├── routers/       9 个路由模块\n                 │    ├── services/      7 个服务模块\n                 │    └── db/            Supabase 连接\n                 └── SearXNG         搜索引擎" },
           { type: "p", text: "下面按数据流经的顺序，从外到内逐个介绍。" },
 
@@ -222,6 +223,7 @@ export const articles: Article[] = [
           { type: "p", text: "Deeppin uses over a dozen components working together to deliver the \"pin-and-explore\" deep thinking experience. This article introduces each component's responsibility, when it's invoked, and how it relates to other parts. We start with the big picture, then go layer by layer." },
 
           { type: "h1", text: "Architecture overview" },
+          { type: "diagram", text: "system-connectivity" },
           { type: "code", text: "User Browser\n  |\n  |-- HTTPS --> Vercel (Next.js frontend)\n  |              |-- components/    UI rendering\n  |              |-- stores/        Zustand state\n  |              +-- lib/sse.ts     SSE client\n  |\n  +-- HTTPS --> Oracle Cloud (Docker Compose)\n                 |-- Nginx          Reverse proxy + TLS\n                 |-- FastAPI         Backend main process\n                 |    |-- routers/       9 route modules\n                 |    |-- services/      7 service modules\n                 |    +-- db/            Supabase connector\n                 +-- SearXNG         Search engine" },
           { type: "p", text: "Below, we walk through each component in the order data flows through them — from the outside in." },
 
