@@ -189,7 +189,6 @@ _MODELS_ENDPOINTS: dict[str, tuple[str, str]] = {
     "groq":       ("https://api.groq.com/openai/v1/models",           "bearer"),
     "cerebras":   ("https://api.cerebras.ai/v1/models",               "bearer"),
     "sambanova":  ("https://api.sambanova.ai/v1/models",              "bearer"),
-    "nvidia_nim": ("https://integrate.api.nvidia.com/v1/models",      "bearer"),
     "openrouter": ("https://openrouter.ai/api/v1/models",             "bearer"),
     "gemini":     ("https://generativelanguage.googleapis.com/v1beta/models", "query"),
 }

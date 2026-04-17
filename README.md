@@ -124,7 +124,6 @@ GROQ_API_KEYS=["gsk_...","gsk_..."]
 CEREBRAS_API_KEYS=["csk_..."]
 SAMBANOVA_API_KEYS=["..."]
 GEMINI_API_KEYS=["..."]
-NVIDIA_NIM_API_KEYS=["nvapi-..."]
 OPENROUTER_API_KEYS=["sk-or-v1-..."]
 
 # Supabase

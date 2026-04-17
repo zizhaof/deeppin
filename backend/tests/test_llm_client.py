@@ -131,15 +131,15 @@ class TestUsageBucket:
     def test_fresh_bucket_full_score(self):
         """新桶的 score 应为 1.0 / Fresh bucket should have score 1.0."""
         from services.llm_client import UsageBucket, ModelSpec
-        bucket = UsageBucket()
         spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket = UsageBucket(spec)
         assert bucket.score(spec) == pytest.approx(1.0)
 
     def test_score_decreases_after_requests(self):
         """请求后 score 降低 / Score decreases after requests."""
         from services.llm_client import UsageBucket, ModelSpec
-        bucket = UsageBucket()
         spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket = UsageBucket(spec)
         bucket.record_request(tokens=1000)
         s = bucket.score(spec)
         assert 0 < s < 1.0
@@ -147,8 +147,8 @@ class TestUsageBucket:
     def test_score_zero_when_rpm_exhausted(self):
         """RPM 耗尽时 score 为 0 / Score is 0 when RPM exhausted."""
         from services.llm_client import UsageBucket, ModelSpec
-        bucket = UsageBucket()
         spec = ModelSpec("groq", "test", rpm=2, tpm=100000, rpd=100000, tpd=100000000)
+        bucket = UsageBucket(spec)
         bucket.record_request(tokens=0)
         bucket.record_request(tokens=0)
         assert bucket.score(spec) == 0.0
@@ -156,8 +156,8 @@ class TestUsageBucket:
     def test_failure_penalty(self):
         """失败后 score 被惩罚 / Score is penalized after failure."""
         from services.llm_client import UsageBucket, ModelSpec
-        bucket = UsageBucket()
         spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket = UsageBucket(spec)
         bucket.record_failure()
         s = bucket.score(spec)
         assert s < 1.0
@@ -165,17 +165,90 @@ class TestUsageBucket:
     def test_recovery_time_zero_when_available(self):
         """有余量时恢复时间为 0 / Recovery time is 0 when capacity available."""
         from services.llm_client import UsageBucket, ModelSpec
-        bucket = UsageBucket()
         spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket = UsageBucket(spec)
         assert bucket.seconds_until_recovery(spec) == 0
 
     def test_recovery_time_positive_when_exhausted(self):
         """耗尽时恢复时间 > 0 / Recovery time > 0 when exhausted."""
         from services.llm_client import UsageBucket, ModelSpec
-        bucket = UsageBucket()
         spec = ModelSpec("groq", "test", rpm=1, tpm=100000, rpd=100000, tpd=100000000)
+        bucket = UsageBucket(spec)
         bucket.record_request(tokens=0)
         assert bucket.seconds_until_recovery(spec) > 0
+
+    def test_default_reset_tz_is_utc(self):
+        """ModelSpec 默认 reset_tz=UTC / Default reset_tz should be UTC."""
+        from services.llm_client import ModelSpec
+        assert ModelSpec("groq", "test").reset_tz == "UTC"
+
+    def test_gemini_specs_use_pacific_tz(self):
+        """Gemini 模型配置为 Pacific Time / Gemini specs must use Pacific Time."""
+        from services.llm_client import GEMINI_MODELS
+        assert GEMINI_MODELS, "GEMINI_MODELS should not be empty"
+        for m in GEMINI_MODELS:
+            assert m.reset_tz == "America/Los_Angeles", (
+                f"Gemini model {m.model_id} should reset at PT, got {m.reset_tz}"
+            )
+
+    def test_day_reset_on_natural_date_boundary(self):
+        """跨 reset_tz 自然日时，rpd/tpd 被清零 / Crossing the date boundary in reset_tz zeroes rpd/tpd."""
+        from datetime import date, timedelta
+        from services.llm_client import UsageBucket, ModelSpec
+        spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket = UsageBucket(spec)
+        bucket.record_request(tokens=500)
+        assert bucket.rpd_used == 1 and bucket.tpd_used == 500
+        # 模拟"昨天" / Simulate yesterday so next _maybe_reset() crosses the boundary
+        bucket._day_date = bucket._day_date - timedelta(days=1)
+        bucket._maybe_reset()
+        assert bucket.rpd_used == 0 and bucket.tpd_used == 0
+
+    def test_day_reset_does_not_touch_minute_counters(self):
+        """日边界重置不应清零分钟桶 / Day reset must not touch minute counters."""
+        from datetime import timedelta
+        from services.llm_client import UsageBucket, ModelSpec
+        spec = ModelSpec("groq", "test", rpm=30, tpm=6000, rpd=1000, tpd=500000)
+        bucket = UsageBucket(spec)
+        bucket.record_request(tokens=500)
+        bucket._day_date = bucket._day_date - timedelta(days=1)
+        bucket._maybe_reset()
+        assert bucket.rpm_used == 1 and bucket.tpm_used == 500
+
+    def test_recovery_time_matches_next_midnight_utc(self):
+        """UTC 日耗尽后恢复时间 ≤ 86400s 且为到下一 UTC 00:00 的秒数 /
+        When UTC-tz daily quota is exhausted, recovery time equals seconds to next UTC 00:00."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from services.llm_client import UsageBucket, ModelSpec
+        spec = ModelSpec("groq", "test", rpm=1000, tpm=1_000_000, rpd=1, tpd=1_000_000_000)
+        bucket = UsageBucket(spec)
+        bucket.record_request(tokens=0)
+        secs = bucket.seconds_until_recovery(spec)
+        now = datetime.now(ZoneInfo("UTC"))
+        seconds_left_today = 86400 - (now.hour * 3600 + now.minute * 60 + now.second)
+        assert 0 < secs <= 86400
+        # 允许 5 秒漂移 / Allow 5s drift for test jitter
+        assert abs(secs - seconds_left_today) < 5
+
+    def test_recovery_time_matches_next_midnight_pacific(self):
+        """Gemini slot 的 recovery 应指向 PT 00:00 而非 UTC 00:00 /
+        Gemini slot recovery points to PT 00:00, not UTC 00:00."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from services.llm_client import UsageBucket, ModelSpec
+        spec = ModelSpec(
+            "gemini", "test",
+            rpm=1000, tpm=1_000_000, rpd=1, tpd=1_000_000_000,
+            reset_tz="America/Los_Angeles",
+        )
+        bucket = UsageBucket(spec)
+        bucket.record_request(tokens=0)
+        secs = bucket.seconds_until_recovery(spec)
+        now_pt = datetime.now(ZoneInfo("America/Los_Angeles"))
+        seconds_left_today_pt = 86400 - (now_pt.hour * 3600 + now_pt.minute * 60 + now_pt.second)
+        assert 0 < secs <= 86400
+        assert abs(secs - seconds_left_today_pt) < 5
 
 
 # ── SmartRouter ───────────────────────────────────────────────────────
