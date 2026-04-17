@@ -465,13 +465,18 @@ export default function ChatPage() {
       setPinDialog({ threadId, anchorText: info.text, suggestions: placeholders, loading: true });
 
       // /suggest 后端已做 server-side 轮询（cache_hit → poll_hit → sync_gen，最长 3s）
-      // LLM 结果直接替换占位符；失败 / 空响应时退化保留占位符
-      // Backend /suggest already polls server-side (up to 3s). Replace placeholders with the
-      // real LLM questions; on failure / empty response keep placeholders as a graceful fallback.
+      // 合并策略：3 模板 + 最多 3 条 LLM 追问；归一化字面去重，避免 sync_gen 兜底时
+      //          跟占位符撞车导致重复项（LLM 正常生成的上下文追问基本不会跟模板撞）。
+      // Backend /suggest polls server-side (up to 3s). Merge 3 placeholders with up to 3 LLM
+      // follow-ups; dedup on normalized form to avoid collisions with sync_gen's template fallback.
+      const normalize = (s: string) => s.replace(/\s+/g, "").toLowerCase();
       getSuggestions(threadId).then((questions) => {
-        const next = questions.length > 0 ? questions : placeholders;
+        let next = placeholders;
         if (questions.length > 0) {
-          setSuggestions(threadId, questions);
+          const seen = new Set(placeholders.map(normalize));
+          const fresh = questions.filter((q) => !seen.has(normalize(q)));
+          next = [...placeholders, ...fresh].slice(0, 6);
+          setSuggestions(threadId, next);
         }
         setPinDialog((prev) =>
           prev?.threadId === threadId
