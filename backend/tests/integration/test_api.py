@@ -211,9 +211,16 @@ class TestProviders:
     Verify every provider + key combination is functional — no auth required.
     """
 
+    # 免费额度特别紧、会周期性 RPD 爆的 provider；失败时仅警告，不挂 CI
+    # Providers with tight free quotas that exhaust periodically; failures warn only, no CI fail.
+    # 持续性故障由 daily-provider-check workflow 捕获
+    # Persistent outages are caught by the daily-provider-check workflow.
+    FLAKY_PROVIDERS = {"gemini"}
+
     def test_all_providers_reachable(self):
-        """所有已配置的 provider/key 都能成功调用 LLM。
-        All configured provider/key pairs can successfully call the LLM."""
+        """所有已配置的 provider/key 都能成功调用 LLM（FLAKY_PROVIDERS 除外）。
+        All configured provider/key pairs can successfully call the LLM
+        (except FLAKY_PROVIDERS, which only warn)."""
         r = httpx.get(f"{BASE_URL}/health/providers", timeout=60)
         assert r.status_code in (200, 503), f"Unexpected status: {r.status_code}"
         data = r.json()
@@ -225,11 +232,23 @@ class TestProviders:
             status = "OK" if result["ok"] else f"FAIL: {result.get('error', 'unknown')}"
             print(f"  {result['provider']}/{result['model']} [{result['key']}] → {status}")
 
-        assert data["failed"] == 0, (
-            f"{data['failed']}/{data['total']} provider/key pairs failed: "
+        flaky_failures = [r for r in data["results"]
+                          if not r["ok"] and r["provider"] in self.FLAKY_PROVIDERS]
+        hard_failures = [r for r in data["results"]
+                         if not r["ok"] and r["provider"] not in self.FLAKY_PROVIDERS]
+
+        if flaky_failures:
+            print(
+                f"\nWARNING: {len(flaky_failures)} flaky-provider failure(s) tolerated "
+                f"(daily cron will catch persistent outage): "
+                + ", ".join(f"{r['provider']}/{r['model']}" for r in flaky_failures)
+            )
+
+        assert not hard_failures, (
+            f"{len(hard_failures)}/{data['total']} provider/key pairs failed: "
             + ", ".join(
                 f"{r['provider']}/{r['model']}[{r['key']}]: {r.get('error', '?')}"
-                for r in data["results"] if not r["ok"]
+                for r in hard_failures
             )
         )
 
