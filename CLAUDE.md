@@ -402,40 +402,59 @@ server {
 
 ## CI/CD Pipeline
 
+### 分支策略
+- `main` = 线上真源。push 即自动部 prod。
+- 工作分支（`feat/*` / `chat-<id>`）= 不自动部署。
+- **Staging** = 手动触发（GitHub UI / `gh` CLI / 手机 bot `/deploy`），部到 `staging-deeppin.duckdns.org` 验证，通过再合 main。
+
+### 三个 workflow
+
+| workflow | 触发 | 动作 |
+|---|---|---|
+| `test-backend.yml` | PR 到 main / 非 main 分支 push（`backend/**`） | 跑 `pytest tests/ --ignore=tests/integration` |
+| `deploy-backend.yml` | push 到 main（`backend/**` / compose / nginx / scripts） | 单测 → prod 部署 → smoke test → 集成测试 |
+| `deploy-staging.yml` | `workflow_dispatch`（手动或 bot） | 单测 → 部指定分支到 staging（覆盖上一个） |
+
+### Staging 架构
+
 ```
-本地开发 → git push → GitHub
-                │
-                ├── 前端：Vercel 自动检测，零配置部署
-                │
-                └── 后端：GitHub Actions
-                          → SSH 到 Oracle
-                          → git pull
-                          → docker-compose up -d --build
+Oracle 同一台：
+├── /home/ubuntu/deeppin              # prod
+│   └── compose project: deeppin      → backend 容器 :8000
+│       nginx 容器 :443              → deeppin.duckdns.org
+└── /home/ubuntu/deeppin-staging      # staging（workflow 首次部署会 clone）
+    └── compose project: deeppin-staging
+        └── backend 宿主机 127.0.0.1:8001  ← prod 的 nginx 通过 host.docker.internal 转发
+            searxng 宿主机 127.0.0.1:8081
 ```
 
-```yaml
-# .github/workflows/deploy-backend.yml
-name: Deploy Backend
-on:
-  push:
-    branches: [main]
-    paths: ['backend/**']
+**共享**：Supabase（同一项目 + 同一组 API keys）、Let's Encrypt 证书目录、主 nginx 容器  
+**独立**：代码目录、compose project、宿主机端口
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to Oracle
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.ORACLE_HOST }}
-          username: ubuntu
-          key: ${{ secrets.ORACLE_SSH_KEY }}
-          script: |
-            cd /home/ubuntu/deeppin
-            git pull origin main
-            docker-compose up -d --build backend
+手动拉起 staging（workflow 内部用这条命令）：
+```bash
+docker compose -p deeppin-staging --env-file compose.staging.env \
+  -f docker-compose.yml -f docker-compose.staging.yml up -d --build backend searxng
 ```
+
+### 日常工作流
+
+```
+1. 开 feat/xxx 分支改代码
+2. push → GitHub Actions 自动跑 test-backend.yml（单测门禁）
+3. 想在手机上真跑一遍 → 发 bot /deploy feat/xxx → staging 更新
+4. 访问 https://staging-deeppin.duckdns.org/health 验证
+5. 开 PR 合 main → 合并后 deploy-backend.yml 自动部 prod
+```
+
+### Staging 首次搭建（一次性）
+
+1. duckdns.org 登录，注册 `staging-deeppin` 指向 Oracle IP
+2. Oracle 上申请证书：`sudo certbot certonly -d staging-deeppin.duckdns.org`
+3. 把 GitHub PAT（有 `repo` + `workflow` 权限）写到 claude-telegram bot 的 `.env`：`GITHUB_TOKEN=ghp_...`
+4. 首次 `gh workflow run deploy-staging.yml -r main` 拉起 staging 环境
+
+### 旧 deploy-backend.yml 省略，详见文件内容（单测 → prod → smoke → 集成测试）
 
 ---
 

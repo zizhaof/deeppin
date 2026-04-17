@@ -1,0 +1,95 @@
+name: Deploy Staging
+
+# 手动触发：在 GitHub UI 点 Run workflow，或 `gh workflow run deploy-staging.yml -r <branch>`，
+# 或手机发 `/deploy <branch>` 给 claude-telegram bot。
+# Staging = staging-deeppin.duckdns.org（共享生产 Supabase，与 prod 并存互不影响）。
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy to staging"
+        required: true
+        default: "main"
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run unit tests
+        run: pytest tests/ --ignore=tests/integration -q
+        working-directory: backend
+        env:
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          SUPABASE_ANON_KEY: placeholder
+          GROQ_API_KEYS: '["placeholder"]'
+          LOG_DIR: /tmp/deeppin-logs
+
+  deploy:
+    needs: unit-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy branch to Oracle staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ubuntu
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -e
+            BRANCH="${{ inputs.branch }}"
+            STAGING_DIR=/home/ubuntu/deeppin-staging
+
+            # 首次部署：clone；后续：fetch + 硬重置到目标分支
+            if [ ! -d "$STAGING_DIR/.git" ]; then
+              git clone https://github.com/zizhaof/deeppin.git "$STAGING_DIR"
+              # 首次部署需要把 prod 的 .env 拷过来（共享 Supabase + API keys）
+              cp /home/ubuntu/deeppin/backend/.env "$STAGING_DIR/backend/.env"
+            fi
+
+            cd "$STAGING_DIR"
+            git fetch origin
+            git checkout "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            # staging 用独立 compose project name + 独立 env file（端口换掉）
+            docker compose -p deeppin-staging --env-file compose.staging.env \
+              -f docker-compose.yml -f docker-compose.staging.yml \
+              up -d --build backend searxng
+
+            # 等 healthy
+            echo "等待 staging backend healthy..."
+            for i in $(seq 1 24); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' deeppin-staging-backend-1 2>/dev/null || echo "unknown")
+              echo "  Attempt $i: staging-backend=$STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "Staging backend healthy"
+                break
+              fi
+              if [ "$i" -eq 24 ]; then
+                docker compose -p deeppin-staging logs backend --tail 30
+                exit 1
+              fi
+              sleep 5
+            done
+
+            # reload 主 nginx（让它识别 staging server block）
+            docker exec deeppin-nginx-1 nginx -s reload || true
+
+            docker image prune -f
+            echo "Staging 部署完成: branch=$BRANCH"

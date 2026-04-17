@@ -1,0 +1,23 @@
+# Staging 版 compose override：只启 backend + searxng，不起 nginx（共享 prod 的 nginx 容器）。
+# 容器内端口沿用 prod (8000/8080)，仅改宿主机映射：staging backend 宿主机 :8001，prod :8000。
+# prod 的 nginx 通过 host-gateway 反代到 staging backend 的宿主机端口。
+#
+# 用法：
+#   docker compose -p deeppin-staging --env-file compose.staging.env \
+#     -f docker-compose.yml -f docker-compose.staging.yml up -d backend searxng
+
+services:
+  backend:
+    ports:
+      # 监听所有接口（0.0.0.0），nginx 容器通过 docker bridge 访问；
+      # 外部访问靠 Oracle 安全组过滤（8001/8081 不在开放端口里）。
+      - "8001:8000"
+
+  searxng:
+    ports:
+      - "8081:8080"
+
+  # 共享 prod 的 nginx，staging 这边不要启
+  nginx:
+    profiles:
+      - disabled

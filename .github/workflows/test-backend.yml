@@ -1,0 +1,38 @@
+name: Test Backend
+
+# 所有 PR 和非 main 分支 push 都跑单测。main 的测试由 deploy-backend.yml 内联跑。
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'backend/**'
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run unit tests
+        run: pytest tests/ --ignore=tests/integration -q
+        working-directory: backend
+        env:
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          SUPABASE_ANON_KEY: placeholder
+          GROQ_API_KEYS: '["placeholder"]'
+          LOG_DIR: /tmp/deeppin-logs
