@@ -16,6 +16,7 @@ Thread router — create and manage threads (pins).
 import asyncio
 import json
 import logging
+import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -129,6 +130,7 @@ async def _generate_and_patch(
     失败静默处理，不影响子线程正常使用（标题/建议可为空）。
     Failures are silent; they do not affect normal sub-thread use (title/suggestions may be empty).
     """
+    t0 = time.monotonic()
     # 取锚点所在的完整消息，帮助 LLM 在完整段落语境中理解锚点含义
     # Fetch the full message containing the anchor so the LLM understands it in its paragraph context
     context_summary = ""
@@ -146,14 +148,19 @@ async def _generate_and_patch(
                 context_summary = msg_res.data["content"]
         except Exception:
             logger.warning("_generate_and_patch 取锚点消息失败（thread=%s）/ Failed to fetch anchor message (thread=%s)", thread_id, thread_id)
+    t_fetch = time.monotonic() - t0
 
+    llm_ok = True
     try:
         title, suggestions = await generate_title_and_suggestions(anchor_text, context_summary)
-    except Exception:
+    except Exception as e:
         # LLM 失败：截取锚点前20字作为标题，建议追问为空
         # LLM failed: use first 20 chars of anchor as title; no suggestions
+        llm_ok = False
         title = anchor_text[:20]
         suggestions = []
+        logger.warning("[bg-patch] LLM 失败 thread=%s err=%s", thread_id, e)
+    t_llm = time.monotonic() - t0 - t_fetch
 
     try:
         sb = get_supabase()
@@ -163,6 +170,11 @@ async def _generate_and_patch(
         }).eq("id", thread_id).execute())
     except Exception:
         logger.exception("标题/建议回写失败（thread=%s）/ Title/suggestions write-back failed (thread=%s)", thread_id, thread_id)
+
+    logger.info(
+        "[bg-patch] thread=%s fetch=%.2fs llm=%.2fs total=%.2fs llm_ok=%s n_questions=%d",
+        thread_id, t_fetch, t_llm, time.monotonic() - t0, llm_ok, len(suggestions),
+    )
 
 
 @router.get("/threads/{thread_id}/suggest")
@@ -180,6 +192,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
     (_generate_and_patch is usually done by then); if still missing, generate and write back in real time.
     """
     _user_id, sb = auth
+    t0 = time.monotonic()
 
     thread_res = await _db(lambda: (
         sb.table("threads")
@@ -198,13 +211,17 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
     if cached:
         try:
             questions = cached if isinstance(cached, list) else json.loads(cached)
+            logger.info(
+                "[suggest] thread=%s path=cache_hit elapsed=%.2fs n=%d",
+                thread_id, time.monotonic() - t0, len(questions[:3]),
+            )
             return {"questions": questions[:3]}
         except Exception:
             pass  # 缓存损坏，走实时生成 / Cache corrupt; fall through to real-time generation
 
     # _generate_and_patch 可能仍在后台跑，轮询最多等 3s（每 200ms 查一次，最多 15 次）
     # _generate_and_patch may still be running; poll every 200ms up to 3s total (15 attempts)
-    for _ in range(15):
+    for i in range(15):
         await asyncio.sleep(0.2)
         thread_res2 = await _db(lambda: (
             sb.table("threads")
@@ -217,6 +234,10 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         if cached2:
             try:
                 questions = cached2 if isinstance(cached2, list) else json.loads(cached2)
+                logger.info(
+                    "[suggest] thread=%s path=poll_hit attempts=%d elapsed=%.2fs n=%d",
+                    thread_id, i + 1, time.monotonic() - t0, len(questions[:3]),
+                )
                 return {"questions": questions[:3]}
             except Exception:
                 break  # 缓存损坏，直接实时生成 / Cache corrupt; fall through to real-time generation
@@ -239,15 +260,18 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         except Exception:
             pass
 
+    sync_llm_ok = True
     try:
         _, questions = await generate_title_and_suggestions(anchor, context_summary)
-    except Exception:
+    except Exception as e:
+        sync_llm_ok = False
         short = anchor[:10]
         questions = [
             f"请详细解释「{short}」",
             f"「{short}」有哪些应用场景？",
             f"「{short}」的优缺点是什么？",
         ]
+        logger.warning("[suggest] sync LLM 失败 thread=%s err=%s", thread_id, e)
 
     # 回写缓存，避免下次再生成 / Write back to cache to avoid regenerating next time
     try:
@@ -255,6 +279,10 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
     except Exception:
         pass
 
+    logger.info(
+        "[suggest] thread=%s path=sync_gen llm_ok=%s elapsed=%.2fs n=%d",
+        thread_id, sync_llm_ok, time.monotonic() - t0, len(questions[:3]),
+    )
     return {"questions": questions[:3]}
 
 
