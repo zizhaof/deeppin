@@ -9,6 +9,8 @@ services:
       - SEARXNG_URL=${SEARXNG_INTERNAL}
     volumes:
       - ./logs:/app/logs   # 日志持久化到宿主机 / persist logs to host
+      - hf-cache:/root/.cache/huggingface   # 共享 HuggingFace 模型缓存（prod/staging 复用同一份 bge-m3）
+                                            # shared HF model cache (prod & staging share one bge-m3 copy)
     healthcheck:
       # CMD-SHELL 走 shell，支持变量；backend /health 聚合检查所有依赖（含 searxng/supabase）
       # CMD-SHELL runs via shell; backend /health aggregates all dependency checks
@@ -87,3 +89,7 @@ services:
 volumes:
   prometheus_data:
   grafana_data:
+  hf-cache:
+    external: true
+    name: deeppin-hf-cache   # 全局 named volume，prod 和 staging 共用，省一份 bge-m3（~4.3G）
+                             # global named volume shared by prod & staging to dedupe bge-m3 (~4.3G)

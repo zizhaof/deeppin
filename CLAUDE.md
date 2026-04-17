@@ -523,7 +523,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 ## 代码规范
 - **代码注释：中英双语**（中文写在前，英文紧跟或下一行）。docstring、模块文档、日志消息都双语
 - **Markdown 文档：中文为主**（CLAUDE.md、内部设计文档）。`README.md` 是对外的，保留中英双语
-- **提交信息：中文**（`feat:` / `fix:` / `refactor:` / `test:` / `docs:` 前缀 + 中文简述）
+- **提交信息：全英文**（`feat:` / `fix:` / `refactor:` / `test:` / `docs:` 前缀 + 英文简述。正文和脚注也用英文）
 - TypeScript 严格模式（前端）
 - Python 全部 async/await，类型注解必须写（后端）
 - 组件用函数式，不用 class

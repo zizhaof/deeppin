@@ -12,6 +12,8 @@ services:
       # 监听所有接口（0.0.0.0），nginx 容器通过 docker bridge 访问；
       # 外部访问靠 Oracle 安全组过滤（8001/8081 不在开放端口里）。
       - "8001:8000"
+    # volumes: 继承 base（./logs + hf-cache 共享 volume），不需要在这里重复声明
+    # volumes: inherited from base (./logs + shared hf-cache); no need to re-declare
 
   searxng:
     ports:
