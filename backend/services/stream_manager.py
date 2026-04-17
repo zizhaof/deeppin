@@ -398,6 +398,7 @@ async def stream_and_save(
             "thread_id": thread_id,
             "role": "assistant",
             "content": full_content,
+            "model": stream.model_used,
         }).execute())
         message_id = result.data[0]["id"] if result.data else None
         yield _sse("done", {"message_id": message_id, "model": stream.model_used})

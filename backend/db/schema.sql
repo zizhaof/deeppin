@@ -29,6 +29,7 @@ create table if not exists messages (
   role text not null check (role in ('user', 'assistant')),
   content text not null,
   token_count int,
+  model text,  -- 生成该消息的 LLM（含 provider 前缀），如 "groq/llama-3.3-70b-versatile"
   created_at timestamptz default now()
 );
 

@@ -78,14 +78,13 @@ class ModelSpec:
     groups: list[str] = field(default_factory=list)  # 所属分组
 
 # Groq 模型（免费 tier：30 RPM, 6K TPM, 14.4K RPD）
+# kimi-k2-instruct-0905 于 2026-04-15 下线；gpt-oss-20b 为推理模型做 summarizer 会浪费 TPM
 GROQ_MODELS = [
     ModelSpec("groq", "llama-3.3-70b-versatile",                    rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["chat", "merge"]),
     ModelSpec("groq", "meta-llama/llama-4-scout-17b-16e-instruct",  rpm=30, tpm=15000,  rpd=14400, tpd=500_000, groups=["chat", "merge", "vision"]),
     ModelSpec("groq", "qwen/qwen3-32b",                             rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["chat"]),
-    ModelSpec("groq", "moonshotai/kimi-k2-instruct-0905",           rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["chat", "merge"]),
     ModelSpec("groq", "openai/gpt-oss-120b",                        rpm=30, tpm=6000,   rpd=1000,  tpd=500_000, groups=["chat"]),
     ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,   rpd=14400, tpd=500_000, groups=["summarizer"]),
-    ModelSpec("groq", "openai/gpt-oss-20b",                         rpm=30, tpm=6000,   rpd=1000,  tpd=500_000, groups=["summarizer"]),
 ]
 
 # Cerebras 模型（免费 tier：30 RPM, 60K TPM, 14.4K RPD, 1M TPD）
@@ -103,27 +102,30 @@ SAMBANOVA_MODELS = [
 ]
 
 # Gemini 模型（免费 tier：10-15 RPM, 250K TPM, 1K RPD）
+# gemini-2.5-flash 原生多模态，加入 vision 分组
 GEMINI_MODELS = [
-    ModelSpec("gemini", "gemini-2.5-flash",      rpm=10, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "merge"]),
+    ModelSpec("gemini", "gemini-2.5-flash",      rpm=10, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "merge", "vision"]),
     ModelSpec("gemini", "gemini-2.5-flash-lite",  rpm=15, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "summarizer"]),
 ]
 
 # NVIDIA NIM 模型（免费 tier：40 RPM，TPM 未公开，保守估计 10K）
-# 2026-04 实测可用模型
+# 10K TPM 不适合 merge（一次调用就打满分钟额度），故移除 merge 分组
+# gemma-3-27b-it 原生多模态，加入 vision 分组
+# nemotron-nano-8b-v1 为推理模型，做 summarizer 浪费 TPM，已移除
 NVIDIA_NIM_MODELS = [
-    ModelSpec("nvidia_nim", "meta/llama-3.3-70b-instruct",                rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
-    ModelSpec("nvidia_nim", "meta/llama-4-maverick-17b-128e-instruct",    rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
-    ModelSpec("nvidia_nim", "nvidia/llama-3.3-nemotron-super-49b-v1",     rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
-    ModelSpec("nvidia_nim", "google/gemma-3-27b-it",                      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
+    ModelSpec("nvidia_nim", "meta/llama-3.3-70b-instruct",                rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
+    ModelSpec("nvidia_nim", "meta/llama-4-maverick-17b-128e-instruct",    rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
+    ModelSpec("nvidia_nim", "nvidia/llama-3.3-nemotron-super-49b-v1",     rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
+    ModelSpec("nvidia_nim", "google/gemma-3-27b-it",                      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "vision"]),
     ModelSpec("nvidia_nim", "meta/llama-3.1-8b-instruct",                 rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["summarizer"]),
-    ModelSpec("nvidia_nim", "nvidia/llama-3.1-nemotron-nano-8b-v1",      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["summarizer"]),
 ]
 
 # OpenRouter 免费模型（20 RPM, 200 RPD，买 $10 credit 可升到 1000 RPD）
 # 模型 ID 带 :free 后缀，上游 provider 可能临时限流
+# 10K TPM 不适合 merge（一次调用就打满分钟额度），故移除 merge 分组
 OPENROUTER_MODELS = [
-    ModelSpec("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",       rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat", "merge"]),
-    ModelSpec("openrouter", "openai/gpt-oss-120b:free",                     rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat", "merge"]),
+    ModelSpec("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",       rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
+    ModelSpec("openrouter", "openai/gpt-oss-120b:free",                     rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
     ModelSpec("openrouter", "meta-llama/llama-3.3-70b-instruct:free",       rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
     ModelSpec("openrouter", "nousresearch/hermes-3-llama-3.1-405b:free",    rpm=20, tpm=10000, rpd=200, tpd=2_000_000, groups=["chat"]),
 ]
@@ -368,6 +370,13 @@ class SmartRouter:
                     if try_group != group:
                         _log.info("Fallback %s→%s, slot=%s", group, try_group, slot.litellm_model)
 
+                    # 把真实使用的 provider/model 附加到 response 上，供调用方读取
+                    # Attach the actual provider/model to the response for caller introspection
+                    try:
+                        response._smart_router_model = slot.litellm_model
+                    except (AttributeError, TypeError):
+                        pass
+
                     return response
 
                 except Exception as exc:
@@ -575,11 +584,12 @@ async def chat_stream(
     )
 
     result = ChatStreamResult.__new__(ChatStreamResult)
-    result.model_used = None
+    # 优先用 SmartRouter 附加的 provider/model（含前缀），其次回退到 LiteLLM 返回的 chunk.model
+    # Prefer SmartRouter's attached provider/model (with prefix), fall back to LiteLLM's chunk.model
+    result.model_used = getattr(response, "_smart_router_model", None)
 
     async def _raw_deltas() -> AsyncGenerator[str, None]:
         async for chunk in response:
-            # 从首个 chunk 捕获模型名 / Capture model name from the first chunk
             if result.model_used is None:
                 result.model_used = getattr(chunk, "model", None)
             delta = chunk.choices[0].delta.content
