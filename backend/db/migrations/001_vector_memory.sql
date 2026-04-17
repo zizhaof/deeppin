@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS attachment_chunks (
   filename      text NOT NULL,
   chunk_index   int  NOT NULL DEFAULT 0,
   content       text NOT NULL,
-  embedding     vector(384),        -- paraphrase-multilingual-MiniLM-L12-v2, 384 维
+  embedding     vector(1024),        -- BAAI/bge-m3, 1024 维
   created_at    timestamptz DEFAULT now()
 );
 
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS conversation_memories (
   session_id  uuid NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   thread_id   uuid REFERENCES threads(id) ON DELETE CASCADE,
   content     text NOT NULL,        -- "用户：...\nAI：..." 格式的对话摘要
-  embedding   vector(384),
+  embedding   vector(1024),
   created_at  timestamptz DEFAULT now()
 );
 
@@ -41,8 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_conv_memories_session ON conversation_memories(se
 CREATE OR REPLACE FUNCTION search_attachment_chunks(
   query_embedding text,
   p_session_id    uuid,
-  p_top_k         int  DEFAULT 5,
-  p_threshold     float DEFAULT 0.25
+  p_top_k         int  DEFAULT 4,
+  p_threshold     float DEFAULT 0.45
 )
 RETURNS TABLE (
   id         uuid,
@@ -58,12 +58,12 @@ AS $$
     filename,
     chunk_index,
     content,
-    1 - (embedding <=> query_embedding::vector(384)) AS similarity
+    1 - (embedding <=> query_embedding::vector(1024)) AS similarity
   FROM attachment_chunks
   WHERE session_id = p_session_id
     AND embedding IS NOT NULL
-    AND 1 - (embedding <=> query_embedding::vector(384)) > p_threshold
-  ORDER BY embedding <=> query_embedding::vector(384)
+    AND 1 - (embedding <=> query_embedding::vector(1024)) > p_threshold
+  ORDER BY embedding <=> query_embedding::vector(1024)
   LIMIT p_top_k;
 $$;
 
@@ -73,7 +73,7 @@ CREATE OR REPLACE FUNCTION search_conversation_memories(
   query_embedding text,
   p_session_id    uuid,
   p_top_k         int   DEFAULT 3,
-  p_threshold     float DEFAULT 0.25
+  p_threshold     float DEFAULT 0.45
 )
 RETURNS TABLE (
   id         uuid,
@@ -87,12 +87,12 @@ AS $$
     id,
     thread_id,
     content,
-    1 - (embedding <=> query_embedding::vector(384)) AS similarity
+    1 - (embedding <=> query_embedding::vector(1024)) AS similarity
   FROM conversation_memories
   WHERE session_id = p_session_id
     AND embedding IS NOT NULL
     AND created_at < NOW() - INTERVAL '5 seconds'
-    AND 1 - (embedding <=> query_embedding::vector(384)) > p_threshold
-  ORDER BY embedding <=> query_embedding::vector(384)
+    AND 1 - (embedding <=> query_embedding::vector(1024)) > p_threshold
+  ORDER BY embedding <=> query_embedding::vector(1024)
   LIMIT p_top_k;
 $$;

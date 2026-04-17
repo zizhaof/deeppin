@@ -75,8 +75,8 @@ def _encode_sync(texts: list[str]) -> list[list[float]]:
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     """
-    批量向量化，返回 list[384-dim float list]。
-    Embed a batch of texts; returns a list of 384-dimensional float vectors.
+    批量向量化，返回 list[1024-dim float list]。
+    Embed a batch of texts; returns a list of 1024-dimensional float vectors.
     """
     if not texts:
         return []

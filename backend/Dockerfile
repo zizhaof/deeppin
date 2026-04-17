@@ -12,9 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 预下载 sentence-transformers 模型，避免冷启动时下载（~500MB）
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
-
 # 复制源码
 COPY . .
 
