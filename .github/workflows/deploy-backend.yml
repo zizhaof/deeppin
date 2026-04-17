@@ -99,8 +99,8 @@ jobs:
               sleep 5
             done
 
-            # nginx 在依赖 healthy 后启动
-            docker compose --env-file compose.env up -d nginx
+            # nginx + 监控栈在依赖 healthy 后启动
+            docker compose --env-file compose.env up -d nginx prometheus grafana
 
             # 清理旧镜像
             docker image prune -f
