@@ -3,6 +3,8 @@ name: Deploy Staging
 # 手动触发：在 GitHub UI 点 Run workflow，或 `gh workflow run deploy-staging.yml -r <branch>`，
 # 或手机发 `/deploy <branch>` 给 claude-telegram bot。
 # Staging = staging-deeppin.duckdns.org（共享生产 Supabase，与 prod 并存互不影响）。
+# run-name 显示被部署的分支 / run-name shows which branch is being deployed
+run-name: "Staging · ${{ inputs.branch }}"
 on:
   workflow_dispatch:
     inputs:
