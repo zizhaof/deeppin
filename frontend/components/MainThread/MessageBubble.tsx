@@ -27,6 +27,8 @@ interface Props {
   streaming?: boolean;
   anchors?: AnchorRange[];
   userAvatarUrl?: string | null;
+  /** 生成该回复的 LLM 模型名（如 "groq/llama-3.3-70b-versatile"） */
+  model?: string | null;
   onSelect?: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
@@ -194,6 +196,7 @@ function MessageBubble({
   streaming,
   anchors = [],
   userAvatarUrl,
+  model,
   onSelect,
   onAnchorClick,
   onAnchorHover,
@@ -420,22 +423,29 @@ function MessageBubble({
           )}
         </div>
 
-        {/* Markdown 切换按钮 — AI 消息 hover 时显示 */}
+        {/* 模型标签 + Markdown 切换按钮 — AI 消息底部 */}
         {!isUser && !streaming && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setRawMode((r) => !r); }}
-            className="absolute -bottom-5 right-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-[10px] text-ph hover:text-lo flex items-center gap-1 select-none"
-            title={rawMode ? t.showMd : t.showRaw}
-          >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              {rawMode ? (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-              )}
-            </svg>
-            <span>{rawMode ? t.mdMode : t.rawMode}</span>
-          </button>
+          <div className="absolute -bottom-5 left-0 right-0 flex items-center justify-between opacity-0 group-hover/bubble:opacity-100 transition-opacity select-none">
+            {model ? (
+              <span className="text-[10px] text-faint truncate max-w-[60%]" title={model}>
+                {model}
+              </span>
+            ) : <span />}
+            <button
+              onClick={(e) => { e.stopPropagation(); setRawMode((r) => !r); }}
+              className="text-[10px] text-ph hover:text-lo flex items-center gap-1"
+              title={rawMode ? t.showMd : t.showRaw}
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                {rawMode ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                )}
+              </svg>
+              <span>{rawMode ? t.mdMode : t.rawMode}</span>
+            </button>
+          </div>
         )}
       </div>
 

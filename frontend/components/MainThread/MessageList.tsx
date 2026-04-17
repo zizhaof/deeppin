@@ -100,6 +100,7 @@ export default function MessageList({
               content={msg.content}
               anchors={anchorsByMessage[msg.id] ?? EMPTY_ANCHORS}
               userAvatarUrl={userAvatarUrl}
+              model={msg.model}
               onMessageRef={onMessageRef}
               onSelect={onTextSelect}
               onAnchorClick={onAnchorClick}

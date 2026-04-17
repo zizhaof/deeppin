@@ -34,7 +34,7 @@ export type SSEEvent =
   | { type: "ping" }
   | { type: "status"; text: string }
   | { type: "chunk"; content: string }
-  | { type: "done"; message_id?: string | null }
+  | { type: "done"; message_id?: string | null; model?: string | null }
   | { type: "error"; message: string }
   | { type: "thread_title"; thread_id: string; title: string };
 
@@ -143,7 +143,7 @@ export async function sendMessageStream(
   threadId: string,
   content: string,
   onChunk: (chunk: string) => void,
-  onDone: (fullText: string, messageId: string | null) => void,
+  onDone: (fullText: string, messageId: string | null, model?: string | null) => void,
   onError: (message: string) => void,
   onThreadTitle?: (threadId: string, title: string) => void,
   onStatus?: (text: string) => void,
@@ -185,7 +185,7 @@ export async function sendMessageStream(
           fullText += event.content;
           onChunk(event.content);
         } else if (event.type === "done") {
-          onDone(fullText, event.message_id ?? null);
+          onDone(fullText, event.message_id ?? null, event.model);
         } else if (event.type === "error") {
           onError(event.message);
         } else if (event.type === "thread_title") {

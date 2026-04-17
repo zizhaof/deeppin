@@ -12,6 +12,8 @@ const zh = {
   // 侧边栏标题
   subQuestions: "子问题",
   overview: "概览",
+  viewList: "列表",
+  viewGraph: "节点图",
   // 空状态
   selectToPin: "选中文字开启子问题",
   noThreads: "暂无线程",
@@ -124,6 +126,8 @@ const en = {
   switchThread: "Switch",
   subQuestions: "Questions",
   overview: "Overview",
+  viewList: "List",
+  viewGraph: "Graph",
   selectToPin: "Select text to open a question",
   noThreads: "No threads",
   welcomeTitle: "Deep thinking starts here",

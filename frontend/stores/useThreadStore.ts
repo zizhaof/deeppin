@@ -75,7 +75,7 @@ export interface ThreadState {
   updateThreadTitle: (threadId: string, title: string) => void;
   setMessages: (threadId: string, messages: Message[]) => void;
   appendChunk: (threadId: string, chunk: string) => void;
-  finalizeStream: (threadId: string, fullText: string, messageId?: string | null) => void;
+  finalizeStream: (threadId: string, fullText: string, messageId?: string | null, model?: string | null) => void;
   addUserMessage: (threadId: string, content: string) => void;
   setStreamStatus: (threadId: string, text: string) => void;
 }
@@ -235,7 +235,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       };
     }),
 
-  finalizeStream: (threadId, fullText, messageId) =>
+  finalizeStream: (threadId, fullText, messageId, model) =>
     set((s) => {
       const prev = s.messagesByThread[threadId] ?? [];
       const assistantMsg: Message = {
@@ -245,6 +245,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         content: fullText,
         token_count: null,
         created_at: new Date().toISOString(),
+        model: model ?? null,
       };
       const streaming = { ...s.streamingByThread };
       delete streaming[threadId];

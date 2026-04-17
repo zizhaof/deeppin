@@ -356,6 +356,15 @@ class TestStripThinkTags:
 
 # ── merge_threads ─────────────────────────────────────────────────────
 
+def _wrap_fake_stream(gen_fn):
+    """将 async generator 函数包装为返回 ChatStreamResult 的 async function，兼容新签名。"""
+    from services.llm_client import ChatStreamResult
+
+    async def wrapper(*args, **kwargs):
+        return ChatStreamResult(gen_fn(*args, **kwargs))
+    return wrapper
+
+
 class TestMergeThreads:
     async def _collect(self, gen) -> str:
         chunks = []
@@ -371,7 +380,7 @@ class TestMergeThreads:
             return
             yield
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             result = await self._collect(merge_threads([]))
         assert result == ""
 
@@ -385,7 +394,7 @@ class TestMergeThreads:
             captured["inject_meta"] = kwargs.get("inject_meta")
             yield "chunk"
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "A", "content": "C"}]))
 
         assert captured.get("inject_meta") is False
@@ -399,7 +408,7 @@ class TestMergeThreads:
             captured["system"] = messages[0]["content"]
             yield "ok"
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="free"))
 
         assert "流畅" in captured["system"] or "叙述" in captured["system"]
@@ -413,7 +422,7 @@ class TestMergeThreads:
             captured["system"] = messages[0]["content"]
             yield "ok"
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="structured"))
 
         assert "结构化" in captured["system"] or "权衡" in captured["system"]
@@ -427,7 +436,7 @@ class TestMergeThreads:
             captured["user"] = messages[1]["content"]
             yield "ok"
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "My Title", "anchor": "unique_anchor_xyz", "content": "body"}]))
 
         assert "unique_anchor_xyz" in captured["user"]
@@ -440,7 +449,7 @@ class TestMergeThreads:
             for w in ["hello", " ", "world"]:
                 yield w
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             result = await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}]))
 
         assert result == "hello world"
@@ -455,7 +464,7 @@ class TestMergeThreads:
             called["count"] += 1
             yield "should not be called"
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             result = await self._collect(merge_threads(
                 [{"title": "问题一", "anchor": "锚点文本", "content": "用户：hi\nAI：hello"}],
                 main_content="用户：主线\nAI：回复",
@@ -478,7 +487,7 @@ class TestMergeThreads:
             captured["system"] = messages[0]["content"]
             yield "ok"
 
-        with patch("services.llm_client.chat_stream", side_effect=fake_stream):
+        with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="nonexistent"))
 
         assert "流畅" in captured["system"] or "叙述" in captured["system"]

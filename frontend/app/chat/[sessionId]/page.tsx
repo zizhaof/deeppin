@@ -334,7 +334,7 @@ export default function ChatPage() {
       threadId,
       content,
       (chunk) => appendChunk(threadId, chunk),
-      (fullText, messageId) => finalizeStream(threadId, fullText, messageId),
+      (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
       (tid, title) => updateThreadTitle(tid, title),
       (text) => setStreamStatus(threadId, text),
@@ -350,7 +350,7 @@ export default function ChatPage() {
       threadId,
       question,
       (chunk) => appendChunk(threadId, chunk),
-      (fullText, messageId) => finalizeStream(threadId, fullText, messageId),
+      (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       (msg) => finalizeStream(threadId, `${t.streamError} ${msg}`),
       undefined,
       (text) => setStreamStatus(threadId, text),
@@ -683,7 +683,7 @@ export default function ChatPage() {
                     <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
                     <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
                   </svg>
-                  <span className="text-[9px] font-medium">列表</span>
+                  <span className="text-[9px] font-medium">{t.viewList}</span>
                 </button>
                 <button
                   onClick={() => switchRightView("canvas")}
@@ -693,7 +693,7 @@ export default function ChatPage() {
                     <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
                     <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
                   </svg>
-                  <span className="text-[9px] font-medium">节点图</span>
+                  <span className="text-[9px] font-medium">{t.viewGraph}</span>
                 </button>
               </div>
               <span className="text-[9px] text-ph tabular-nums select-none flex-1">{threads.length}</span>

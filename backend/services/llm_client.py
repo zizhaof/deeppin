@@ -88,10 +88,11 @@ GROQ_MODELS = [
     ModelSpec("groq", "openai/gpt-oss-20b",                         rpm=30, tpm=6000,   rpd=1000,  tpd=500_000, groups=["summarizer"]),
 ]
 
-# Cerebras 模型（免费 tier：30 RPM, ~1M TPD）
-# 2026-04 大批模型下架，仅剩 llama3.1-8b
+# Cerebras 模型（免费 tier：30 RPM, 60K TPM, 14.4K RPD, 1M TPD）
+# 2026-04 实测可用：llama3.1-8b + qwen-3-235b（gpt-oss-120b 和 zai-glm-4.7 免费 tier 404）
 CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "llama3.1-8b",  rpm=30, tpm=60000, rpd=1000, tpd=1_000_000, groups=["summarizer"]),
+    ModelSpec("cerebras", "qwen-3-235b-a22b-instruct-2507",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "merge"]),
+    ModelSpec("cerebras", "llama3.1-8b",                      rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["summarizer"]),
 ]
 
 # SambaNova 模型（免费 tier：20 RPM, 100K TPM）
@@ -115,6 +116,7 @@ NVIDIA_NIM_MODELS = [
     ModelSpec("nvidia_nim", "nvidia/llama-3.3-nemotron-super-49b-v1",     rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat", "merge"]),
     ModelSpec("nvidia_nim", "google/gemma-3-27b-it",                      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["chat"]),
     ModelSpec("nvidia_nim", "meta/llama-3.1-8b-instruct",                 rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["summarizer"]),
+    ModelSpec("nvidia_nim", "nvidia/llama-3.1-nemotron-nano-8b-v1",      rpm=40, tpm=10000, rpd=5000, tpd=5_000_000, groups=["summarizer"]),
 ]
 
 # OpenRouter 免费模型（20 RPM, 200 RPD，买 $10 credit 可升到 1000 RPD）
@@ -514,16 +516,34 @@ def pick_model(model_type: str = "chat") -> str:
     return f"groq/{GROQ_MODELS[-1].model_id}" if GROQ_MODELS else "unknown"
 
 
+class ChatStreamResult:
+    """
+    流式生成结果：既是 async iterable（yield 文字 chunk），也携带模型信息。
+    Streaming result: async iterable yielding text chunks, plus model metadata.
+    """
+
+    def __init__(self, gen: AsyncGenerator[str, None]):
+        self._gen = gen
+        self.model_used: str | None = None
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> str:
+        return await self._gen.__anext__()
+
+
 async def chat_stream(
     messages: list[dict],
     model_type: str = "chat",
     need_title: bool = False,
     summary_budget: int = 100,
     inject_meta: bool = True,
-) -> AsyncGenerator[str, None]:
+) -> ChatStreamResult:
     """
-    主对话流式生成器，每次 yield 一个文字 chunk。
+    主对话流式生成器，每次 yield 一个文字 chunk，同时通过 .model_used 暴露模型名。
     Main conversation streaming generator; yields one text chunk at a time.
+    The model name is exposed via .model_used after the first chunk.
     """
     full_messages = list(messages)
 
@@ -554,14 +574,24 @@ async def chat_stream(
         timeout=30,
     )
 
+    result = ChatStreamResult.__new__(ChatStreamResult)
+    result.model_used = None
+
     async def _raw_deltas() -> AsyncGenerator[str, None]:
         async for chunk in response:
+            # 从首个 chunk 捕获模型名 / Capture model name from the first chunk
+            if result.model_used is None:
+                result.model_used = getattr(chunk, "model", None)
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
 
-    async for text in _strip_think_tags(_raw_deltas()):
-        yield text
+    async def _wrapped() -> AsyncGenerator[str, None]:
+        async for text in _strip_think_tags(_raw_deltas()):
+            yield text
+
+    result._gen = _wrapped()
+    return result
 
 
 async def _summarizer_call(
@@ -824,7 +854,8 @@ async def merge_threads(
         },
     ]
 
-    async for chunk in chat_stream(messages, model_type="merge", inject_meta=False):
+    stream = await chat_stream(messages, model_type="merge", inject_meta=False)
+    async for chunk in stream:
         yield chunk
 
 

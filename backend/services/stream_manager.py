@@ -331,12 +331,14 @@ async def stream_and_save(
     meta_str = ""        # META 分隔符后的原始文本 / Raw text after the META separator
     in_meta = False
 
+    stream = await chat_stream(
+        context,
+        need_title=is_first_main_reply,
+        summary_budget=summary_budget,
+    )
+
     try:
-        async for chunk in chat_stream(
-            context,
-            need_title=is_first_main_reply,
-            summary_budget=summary_budget,
-        ):
+        async for chunk in stream:
             if in_meta:
                 # 已进入 META 区域，收集但不输出
                 # Inside META region: collect but do not yield
@@ -388,7 +390,7 @@ async def stream_and_save(
     if not full_content.strip():
         # LLM 未输出任何内容，不存空消息
         # LLM produced no output; do not save an empty message
-        yield _sse("done", {"message_id": None})
+        yield _sse("done", {"message_id": None, "model": stream.model_used})
         return
 
     try:
@@ -398,7 +400,7 @@ async def stream_and_save(
             "content": full_content,
         }).execute())
         message_id = result.data[0]["id"] if result.data else None
-        yield _sse("done", {"message_id": message_id})
+        yield _sse("done", {"message_id": message_id, "model": stream.model_used})
     except Exception as exc:
         yield _sse("error", {"message": f"保存回复失败 / Failed to save reply: {exc}"})
         return

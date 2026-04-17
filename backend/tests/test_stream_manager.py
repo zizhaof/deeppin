@@ -16,6 +16,14 @@ Unit tests for the stream manager.
 import json
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
+from services.llm_client import ChatStreamResult
+
+
+def _wrap_fake_stream(gen_fn):
+    """将 async generator 函数包装为返回 ChatStreamResult 的 async function。"""
+    async def wrapper(*args, **kwargs):
+        return ChatStreamResult(gen_fn(*args, **kwargs))
+    return wrapper
 
 
 # ── _parse_meta ───────────────────────────────────────────────────────
@@ -251,7 +259,7 @@ class TestStreamAndSave:
         with patch("services.stream_manager.get_supabase", return_value=sb), \
              patch("services.stream_manager.build_context", new=AsyncMock(return_value=[])), \
              patch("services.stream_manager.classify_search_intent", new=AsyncMock(return_value=False)), \
-             patch("services.stream_manager.chat_stream", side_effect=fake_chat_stream), \
+             patch("services.stream_manager.chat_stream", side_effect=_wrap_fake_stream(fake_chat_stream)), \
              patch("services.memory_service.store_long_text_chunks", new=AsyncMock(return_value=0)):
 
             from services.stream_manager import stream_and_save
@@ -286,7 +294,7 @@ class TestStreamAndSave:
         with patch("services.stream_manager.get_supabase", return_value=sb), \
              patch("services.stream_manager.build_context", new=AsyncMock(return_value=[])), \
              patch("services.stream_manager.classify_search_intent", new=AsyncMock(return_value=False)), \
-             patch("services.stream_manager.chat_stream", side_effect=fake_chat_stream), \
+             patch("services.stream_manager.chat_stream", side_effect=_wrap_fake_stream(fake_chat_stream)), \
              patch("services.memory_service.store_long_text_chunks", new=AsyncMock(return_value=0)), \
              patch("services.stream_manager._save_summary", new=AsyncMock()), \
              patch("services.memory_service.store_conversation_memory", new=AsyncMock()):
@@ -327,7 +335,7 @@ class TestStreamAndSave:
         with patch("services.stream_manager.get_supabase", return_value=sb), \
              patch("services.stream_manager.build_context", new=AsyncMock(return_value=[])), \
              patch("services.stream_manager.classify_search_intent", new=AsyncMock(return_value=False)), \
-             patch("services.stream_manager.chat_stream", side_effect=fake_chat_stream), \
+             patch("services.stream_manager.chat_stream", side_effect=_wrap_fake_stream(fake_chat_stream)), \
              patch("services.memory_service.store_long_text_chunks", new=AsyncMock(return_value=0)):
 
             from services.stream_manager import stream_and_save

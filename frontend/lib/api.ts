@@ -65,6 +65,8 @@ export interface Message {
   content: string;
   token_count: number | null;
   created_at: string;
+  /** 生成该回复的 LLM 模型名（如 "groq/llama-3.3-70b-versatile"） */
+  model?: string | null;
 }
 
 /** 获取所有 sessions 列表（按创建时间倒序） */

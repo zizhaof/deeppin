@@ -341,7 +341,7 @@ export default function MobileChatLayout({
                     <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
                     <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none" />
                   </svg>
-                  <span className="text-[10px] font-medium">列表</span>
+                  <span className="text-[10px] font-medium">{t.viewList}</span>
                 </button>
                 <button
                   onClick={() => setTreeView("canvas")}
@@ -353,7 +353,7 @@ export default function MobileChatLayout({
                     <circle cx="12" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="19" cy="19" r="2" />
                     <path d="M12 7v4M12 11l-5 6M12 11l5 6" />
                   </svg>
-                  <span className="text-[10px] font-medium">节点图</span>
+                  <span className="text-[10px] font-medium">{t.viewGraph}</span>
                 </button>
               </div>
               <span className="text-[9px] text-ph tabular-nums ml-1">{threads.length}</span>
