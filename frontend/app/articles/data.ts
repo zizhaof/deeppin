@@ -2238,4 +2238,134 @@ export const articles: Article[] = [
     },
   },
 
+  // ─────────────────────────────────────────────────────────────
+  // 运维 / Ops
+  // ─────────────────────────────────────────────────────────────
+
+  {
+    slug: "monitoring-stack",
+    title: {
+      zh: "Deeppin 的监控栈：Prometheus + Grafana 怎么跑起来的",
+      en: "Deeppin's Monitoring Stack: How Prometheus + Grafana Got Wired Up",
+    },
+    date: "2026-04-17",
+    summary: {
+      zh: "从 /debug 端点自己扒日志到真正装上 Prometheus + Grafana——埋了哪些指标、怎么访问、踩过哪些坑。",
+      en: "From hand-rolled /debug endpoints to a real Prometheus + Grafana stack — what metrics are exposed, how to access them, and the gotchas we tripped on.",
+    },
+    tags: ["monitoring", "prometheus", "grafana", "ops"],
+    content: {
+      zh: {
+        title: "Deeppin 的监控栈：Prometheus + Grafana 怎么跑起来的",
+        body: [
+          { type: "p", text: "Deeppin 上线初期，看系统状态靠的是 /health 和一个自己拼的 /debug 端点——进程 uptime、每个 LLM slot 的剩余额度、最近的几次失败调用。够用，但非常难看出「过去一小时 429 率是不是涨了」这种时间维度上的问题。于是 2026-04-17 这天把 Prometheus + Grafana 加进 docker-compose，本文说清楚它是怎么跑起来的。" },
+
+          { type: "h1", text: "一、全局数据流" },
+          { type: "code", text: "┌──────────────┐    /metrics      ┌──────────────┐     datasource      ┌──────────┐\n│ backend:8000 │ ───────────────▶ │ prometheus   │ ──────────────────▶ │ grafana  │\n│ (FastAPI)    │   scrape 15s     │ :9090 loop   │   PromQL queries    │ :3000    │\n└──────────────┘                  └──────────────┘                     └──────────┘\n                                        │ 90d / 10GB retention              │\n                                        ▼                                   ▼\n                                  prometheus_data vol              /grafana/ via nginx" },
+          { type: "p", text: "三个关键选择：Prometheus 只监听 127.0.0.1 回环（SSH 隧道访问），Grafana 通过 nginx 子路径 /grafana/ 对外，backend /metrics 被 nginx 屏蔽（只允许 compose 内部访问）。下面逐一解释为什么。" },
+
+          { type: "h1", text: "二、埋了哪些指标" },
+          { type: "p", text: "埋点分三层，各用各的策略。" },
+
+          { type: "h2", text: "2.1 HTTP 层：自动" },
+          { type: "p", text: "prometheus-fastapi-instrumentator 在 FastAPI 启动时注入一层中间件，把每个请求的 handler、method、status、duration 自动记成 Histogram。不用手写，所有 /api/** 都覆盖到。" },
+
+          { type: "h2", text: "2.2 组件层：手动 Counter + Histogram" },
+          { type: "p", text: "embedding / searxng / supabase 的调用在代码里手动埋。比如 embedding：" },
+          { type: "code", text: "EMBEDDING_CALLS = Counter(\n    \"deeppin_embedding_calls_total\",\n    \"Number of embedding batch calls\",\n    [\"result\"],  # ok / error\n)\nEMBEDDING_DURATION = Histogram(\n    \"deeppin_embedding_duration_seconds\",\n    \"Embedding batch duration\",\n    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),\n)" },
+          { type: "p", text: "为什么不用自动工具：这些是函数级调用，不是 HTTP 层的事；另外我们想按 result（ok/error/timeout）区分标签，自动埋点给不了这种语义。" },
+
+          { type: "h2", text: "2.3 LLM Slot 状态：自定义 Collector" },
+          { type: "p", text: "这是最特别的一层。SmartRouter 里每个 slot 有 rpm_used / tpm_used / rpd_used / tpd_used 四个窗口计数器，随请求实时变化。如果用 Gauge 每次 record_request 都 .set()，读写竞争和锁开销都不划算。" },
+          { type: "p", text: "换成自定义 Collector：Prometheus 每次 scrape（15s 一次）才调用 collect()，遍历所有 slot 把当前状态导出成 GaugeMetricFamily。读是瞬时一次性动作，写完全不动。" },
+          { type: "code", text: "class _LLMSlotCollector(Collector):\n    def collect(self):\n        for slot in llm_router.slots:\n            key_prefix = slot.api_key[:8]\n            labels = [slot.spec.provider, slot.spec.model_id, key_prefix]\n            # yield rpm_used / tpm_used / rpd_used / tpd_used\n            # yield rpm_limit / ... / tpd_limit\n            # yield slot.score()\n            # yield slot.seconds_until_recovery()" },
+          { type: "p", text: "key_prefix 取 API key 前 8 位，用来在同 provider 多账号时区分哪个账号的额度在耗。" },
+
+          { type: "h1", text: "三、怎么访问" },
+          { type: "ul", items: [
+            "Grafana：https://deeppin.duckdns.org/grafana/，账号 admin，初始密码在 compose.env 的 GRAFANA_ADMIN_PASSWORD，登录后 UI 改一次就持久化到 grafana_data volume",
+            "Prometheus UI：127.0.0.1:9090 仅回环，本机 ssh -L 9090:127.0.0.1:9090 oracle 打隧道，再浏览器访问 http://localhost:9090",
+            "Backend /metrics：公网 404（nginx 配了 location = /metrics { return 404 }），只有 compose 内 prometheus 容器能 scrape backend:8000/metrics",
+          ]},
+          { type: "p", text: "Prometheus 不对外的原因：没做认证层，暴露出去任何人都能拉历史指标+查 PromQL，风险不值。Grafana 有账号体系，可以对外。" },
+
+          { type: "h1", text: "四、Grafana 子路径的坑" },
+          { type: "p", text: "Grafana 开了 GF_SERVER_SERVE_FROM_SUB_PATH=true + GF_SERVER_ROOT_URL=https://deeppin.duckdns.org/grafana/，nginx 用 location /grafana/ 反代。看起来直白，但第一次部署立刻进入登录死循环。" },
+          { type: "p", text: "问题出在 proxy_pass 的尾斜杠：" },
+          { type: "code", text: "# 错的：nginx 会把 /grafana/ 前缀剥掉，转成 http://grafana:3000/\nlocation /grafana/ {\n    proxy_pass http://grafana:3000/;\n}\n\n# 对的：保留 /grafana/ 前缀\nlocation /grafana/ {\n    proxy_pass http://grafana:3000;\n}" },
+          { type: "p", text: "SERVE_FROM_SUB_PATH=true 的含义是 Grafana 期望 **收到** 完整的 /grafana/ 路径。nginx 剥掉前缀后，Grafana 看到的是 /，内部 302 重定向回 /grafana/login（因为它认为根路径是 /grafana/），浏览器又打回来 /，死循环。" },
+
+          { type: "h1", text: "五、Dashboard 的 No Data 坑" },
+          { type: "p", text: "第二个坑：dashboard JSON 硬编码了 datasource uid: \"prometheus\"，但 Grafana 启动时给 provisioned datasource 自动生成了 hash UID，panel 查询找不到数据源，全部 No data。" },
+          { type: "p", text: "修法是在 datasources/prometheus.yml 显式固定 uid，再加 deleteDatasources 段强制重建旧的：" },
+          { type: "code", text: "deleteDatasources:\n  - name: Prometheus\n    orgId: 1\ndatasources:\n  - name: Prometheus\n    uid: prometheus   # 固定 UID，panel JSON 可以直接引用\n    type: prometheus\n    url: http://prometheus:9090" },
+
+          { type: "h1", text: "六、现在还不做的" },
+          { type: "ul", items: [
+            "Alertmanager：只采集不告警。第一条想做的是 up{job=\"deeppin-backend\"} == 0 for 2m 发 Telegram bot，但暂时没加",
+            "Logs 聚合：没接 Loki / ELK，仍然是 tail -f /app/logs/app.log",
+            "Tracing：没接 OpenTelemetry / Jaeger，请求链路看不了",
+            "自动备份：prometheus_data / grafana_data 丢了就丢了（历史指标 90d 有限，dashboard 走 provisioning 自动重建）",
+          ]},
+          { type: "p", text: "规则很简单：看不见的东西没法优化。但过早加复杂度是另一种坏品味。先把看板跑稳、产生几天真实数据、看出哪些 panel 没用、哪些缺——再决定要不要加告警和链路追踪。" },
+        ],
+      },
+      en: {
+        title: "Deeppin's Monitoring Stack: How Prometheus + Grafana Got Wired Up",
+        body: [
+          { type: "p", text: "Early in Deeppin's life, system visibility came from /health plus a hand-rolled /debug endpoint — uptime, per-slot LLM quota, last few failures. Enough to tell if something was broken right now, but hopeless for questions like \"did the 429 rate creep up over the past hour?\" On 2026-04-17 we added Prometheus + Grafana to docker-compose. This post walks through how it got wired up." },
+
+          { type: "h1", text: "1. Overall data flow" },
+          { type: "code", text: "┌──────────────┐    /metrics      ┌──────────────┐     datasource      ┌──────────┐\n│ backend:8000 │ ───────────────▶ │ prometheus   │ ──────────────────▶ │ grafana  │\n│ (FastAPI)    │   scrape 15s     │ :9090 loop   │   PromQL queries    │ :3000    │\n└──────────────┘                  └──────────────┘                     └──────────┘\n                                        │ 90d / 10GB retention              │\n                                        ▼                                   ▼\n                                  prometheus_data vol              /grafana/ via nginx" },
+          { type: "p", text: "Three deliberate choices: Prometheus binds to 127.0.0.1 only (SSH tunnel to reach it), Grafana sits behind nginx at /grafana/, and backend /metrics is blocked at nginx so only the compose-internal prometheus container can scrape it. Rationale below." },
+
+          { type: "h1", text: "2. What's instrumented" },
+          { type: "p", text: "Three layers, each with a different strategy." },
+
+          { type: "h2", text: "2.1 HTTP layer: automatic" },
+          { type: "p", text: "prometheus-fastapi-instrumentator injects middleware at FastAPI startup that records handler / method / status / duration as Histograms for every request. No hand-written code; every /api/** is covered." },
+
+          { type: "h2", text: "2.2 Component layer: manual Counter + Histogram" },
+          { type: "p", text: "embedding / searxng / supabase calls are instrumented by hand. Example for embedding:" },
+          { type: "code", text: "EMBEDDING_CALLS = Counter(\n    \"deeppin_embedding_calls_total\",\n    \"Number of embedding batch calls\",\n    [\"result\"],  # ok / error\n)\nEMBEDDING_DURATION = Histogram(\n    \"deeppin_embedding_duration_seconds\",\n    \"Embedding batch duration\",\n    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),\n)" },
+          { type: "p", text: "Why not auto-instrument: these are function-level calls, not HTTP events. And we want a result label (ok / error / timeout) that automatic tooling can't infer." },
+
+          { type: "h2", text: "2.3 LLM slot state: custom Collector" },
+          { type: "p", text: "This layer is unusual. Each slot in SmartRouter has rpm_used / tpm_used / rpd_used / tpd_used counters that move on every request. Updating Gauges with .set() inside record_request would add write contention and lock overhead for data we don't need at that resolution." },
+          { type: "p", text: "Instead, a custom Collector: Prometheus calls collect() on each scrape (every 15s). We walk the slots, read current state, and yield GaugeMetricFamily values. Reads are a single snapshot; writes touch nothing." },
+          { type: "code", text: "class _LLMSlotCollector(Collector):\n    def collect(self):\n        for slot in llm_router.slots:\n            key_prefix = slot.api_key[:8]\n            labels = [slot.spec.provider, slot.spec.model_id, key_prefix]\n            # yield rpm_used / tpm_used / rpd_used / tpd_used\n            # yield rpm_limit / ... / tpd_limit\n            # yield slot.score()\n            # yield slot.seconds_until_recovery()" },
+          { type: "p", text: "key_prefix is the first 8 chars of the API key — lets us distinguish accounts when a provider has multiple keys configured." },
+
+          { type: "h1", text: "3. Access" },
+          { type: "ul", items: [
+            "Grafana: https://deeppin.duckdns.org/grafana/, user admin, bootstrap password in compose.env's GRAFANA_ADMIN_PASSWORD. Changing it in the UI persists to the grafana_data volume.",
+            "Prometheus UI: 127.0.0.1:9090 (loopback only). Tunnel from your laptop: ssh -L 9090:127.0.0.1:9090 oracle, then open http://localhost:9090",
+            "Backend /metrics: returns 404 publicly (nginx: location = /metrics { return 404 }). Only the compose-internal prometheus container can scrape backend:8000/metrics.",
+          ]},
+          { type: "p", text: "Why Prometheus isn't public: no auth layer built in — exposing it lets anyone pull historical metrics and run arbitrary PromQL. Not worth the risk. Grafana has accounts, so it can be public." },
+
+          { type: "h1", text: "4. The Grafana sub-path trap" },
+          { type: "p", text: "Grafana runs with GF_SERVER_SERVE_FROM_SUB_PATH=true + GF_SERVER_ROOT_URL=https://deeppin.duckdns.org/grafana/, nginx proxies at location /grafana/. Looks straightforward. First deploy: instant login redirect loop." },
+          { type: "p", text: "The trap is the trailing slash on proxy_pass:" },
+          { type: "code", text: "# Wrong: nginx strips /grafana/ prefix, proxy hits http://grafana:3000/\nlocation /grafana/ {\n    proxy_pass http://grafana:3000/;\n}\n\n# Right: preserve /grafana/ prefix\nlocation /grafana/ {\n    proxy_pass http://grafana:3000;\n}" },
+          { type: "p", text: "SERVE_FROM_SUB_PATH=true means Grafana expects to **receive** the full /grafana/ path. Strip the prefix at nginx and Grafana sees /, decides the user is unauthenticated, 302-redirects to /grafana/login (since it thinks its root is /grafana/), browser bounces back to /, infinite loop." },
+
+          { type: "h1", text: "5. The No-Data dashboard trap" },
+          { type: "p", text: "Second trap: the dashboard JSON hardcoded datasource uid: \"prometheus\", but on first boot Grafana auto-generated a hash UID for the provisioned datasource. Every panel's query referenced a datasource UID that didn't exist → No data everywhere." },
+          { type: "p", text: "Fix is to pin the UID in datasources/prometheus.yml and add a deleteDatasources block to force-rebuild stale ones:" },
+          { type: "code", text: "deleteDatasources:\n  - name: Prometheus\n    orgId: 1\ndatasources:\n  - name: Prometheus\n    uid: prometheus   # fixed UID so panel JSON can reference it\n    type: prometheus\n    url: http://prometheus:9090" },
+
+          { type: "h1", text: "6. What's not done yet" },
+          { type: "ul", items: [
+            "Alertmanager: collecting only, no alerts. First rule I want is up{job=\"deeppin-backend\"} == 0 for 2m firing to the Telegram bot — not wired yet.",
+            "Log aggregation: no Loki / ELK. Still tail -f /app/logs/app.log.",
+            "Tracing: no OpenTelemetry / Jaeger. Request traces are invisible.",
+            "Automatic backup: prometheus_data / grafana_data go unbacked. Historical metrics are already capped at 90d; dashboards come back via provisioning.",
+          ]},
+          { type: "p", text: "The rule is simple: what you can't see, you can't improve. But adding complexity too early is its own failure mode. Get the dashboards running, feed them a few days of real traffic, see which panels are noise and which are missing — then decide whether alerting and tracing are worth their weight." },
+        ],
+      },
+    },
+  },
+
 ];
