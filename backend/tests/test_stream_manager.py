@@ -142,11 +142,12 @@ class TestMetaSentinelStripping:
 
     def _simulate_stream(self, chunks: list[str]):
         """
-        模拟 stream_and_save 内部的 buffer/sentinel 截断逻辑。
-        Simulate the buffer/sentinel stripping logic inside stream_and_save.
+        模拟 stream_and_save 内部的 buffer/sentinel 截断逻辑，
+        与生产代码共用同一套 _SENTINEL_RE 正则。
+        Simulate the buffer/sentinel stripping logic inside stream_and_save,
+        reusing the production _SENTINEL_RE regex.
         """
-        from services.llm_client import META_SENTINEL
-        sentinel_len = len(META_SENTINEL)
+        from services.stream_manager import _SENTINEL_RE, _SENTINEL_LEN
         buffer = ""
         full_content = ""
         meta_str = ""
@@ -157,15 +158,21 @@ class TestMetaSentinelStripping:
                 meta_str += chunk
                 continue
             buffer += chunk
-            idx = buffer.find(META_SENTINEL)
-            if idx != -1:
-                before = buffer[:idx]
+            m = _SENTINEL_RE.search(buffer)
+            if m:
+                before = buffer[:m.start()]
                 full_content += before
-                meta_str = buffer[idx + sentinel_len:]
+                if m.group().startswith("<"):
+                    meta_str = buffer[m.end():]
+                else:
+                    # 裸 JSON 分支保留 `{` 起的内容以便 JSON 解析。
+                    # Bare-JSON branch: keep from `{` onwards for JSON parsing.
+                    brace_idx = buffer.index("{", m.start())
+                    meta_str = buffer[brace_idx:]
                 in_meta = True
                 buffer = ""
             else:
-                safe_len = max(0, len(buffer) - (sentinel_len - 1))
+                safe_len = max(0, len(buffer) - (_SENTINEL_LEN - 1))
                 if safe_len > 0:
                     full_content += buffer[:safe_len]
                     buffer = buffer[safe_len:]
@@ -216,6 +223,60 @@ class TestMetaSentinelStripping:
         content, meta = self._simulate_stream(chunks)
         assert "保留内容" in content
         assert "丢弃" not in content
+
+    # ── 裸 JSON fallback（模型跳过 sentinel 的情况）────────────────────
+    # Bare-JSON fallback (model skips the sentinel and outputs JSON directly)
+
+    def test_bare_json_summary_stripped(self):
+        """模型跳过 sentinel 直接输出 JSON 时，JSON 不漏到正文 / Bare JSON without sentinel is stripped from the body."""
+        chunks = [
+            '从那天起，柳叶成为了村庄中最受尊敬的人。\n\n',
+            '{"summary": "柳叶探索森林的故事", "title": "柳叶和神秘森林"}',
+        ]
+        content, meta = self._simulate_stream(chunks)
+        assert "柳叶成为了村庄中最受尊敬的人" in content
+        assert '"summary"' not in content
+        assert '"title"' not in content
+        assert "柳叶和神秘森林" in meta
+
+    def test_bare_json_meta_parseable(self):
+        """裸 JSON fallback 提取的 meta 仍可被 _parse_meta 解析 / Meta extracted from bare-JSON fallback remains JSON-parseable."""
+        from services.stream_manager import _parse_meta
+        chunks = ['正文。\n{"summary": "摘要内容", "title": "标题"}']
+        content, meta = self._simulate_stream(chunks)
+        parsed = _parse_meta(meta)
+        assert parsed.get("summary") == "摘要内容"
+        assert parsed.get("title") == "标题"
+
+    def test_bare_json_split_across_chunks(self):
+        """裸 JSON 跨 chunk 边界时也能被检测 / Bare-JSON start detected across chunk boundaries."""
+        chunks = ['正文内容。\n{"sum', 'mary": "摘要"}']
+        content, meta = self._simulate_stream(chunks)
+        assert content == "正文内容。"
+        assert '"summary"' in meta
+
+    def test_bare_json_with_leading_whitespace(self):
+        """带前导空白的裸 JSON 也被识别 / Bare JSON with leading whitespace is still matched."""
+        chunks = ['正文\n  {"title": "标题"}']
+        content, meta = self._simulate_stream(chunks)
+        assert content == "正文"
+        assert '"title"' in meta
+
+    def test_bare_json_without_newline_prefix_not_matched(self):
+        """没有换行前缀的 `{` 不触发 fallback（避免误伤正文内的 JSON）/ A `{` without a leading newline is NOT treated as META (avoid false positives)."""
+        chunks = ['参考格式 {"summary": "x"} 这样写。']
+        content, meta = self._simulate_stream(chunks)
+        # 整段都是正文 / Entire chunk is body content
+        assert '{"summary"' in content
+        assert meta == ""
+
+    def test_sentinel_takes_precedence_over_bare_json(self):
+        """同时出现 sentinel 和 JSON 时，sentinel 分支优先且不把 `{` 漏到正文 / Sentinel branch wins; `{` is not leaked into the body."""
+        from services.llm_client import META_SENTINEL
+        chunks = [f'正文{META_SENTINEL}\n{{"summary": "x"}}']
+        content, meta = self._simulate_stream(chunks)
+        assert content == "正文"
+        assert "{" not in content
 
 
 # ── stream_and_save 完整流程（mock DB + LLM）─────────────────────────

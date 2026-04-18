@@ -26,15 +26,20 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from dependencies.auth import get_current_user
-from services.llm_client import chat_stream, META_SENTINEL
+from services.llm_client import chat_stream
 from services.search_service import search as searxng_search
 
 router = APIRouter()
 
-# META sentinel 长度，用于流式截断边界计算
-# Length of the META sentinel used for boundary calculation during streaming
-_SENTINEL_LEN = len(META_SENTINEL)
-_SENTINEL_RE = re.compile(r"<<<META>>+")
+# 匹配 META sentinel，以及模型偷懒跳过 sentinel 直接输出裸 JSON 的情况。
+# Matches the META sentinel, plus the fallback where the model skips the sentinel
+# and emits bare JSON like `\n{"summary": "..."}` directly after the body.
+_SENTINEL_RE = re.compile(
+    r'<<<META>>+|\n\s{0,4}\{\s{0,4}"(?:summary|title)"\s{0,4}:'
+)
+# 末尾需要保留的最大字节数，覆盖正则所有可能的匹配前缀。
+# Max tail bytes to withhold; must cover every possible match prefix of _SENTINEL_RE.
+_SENTINEL_LEN = 24
 
 
 class SearchRequest(BaseModel):
