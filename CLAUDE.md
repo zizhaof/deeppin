@@ -238,19 +238,26 @@ cd backend && pytest tests/test_foo.py -q                    # 单文件
 3. Commit 信息：`<type>: <英文简述>`，必要时带正文解释为什么。
 4. **push 前 confirm**：用户没明说「push」就不要自己 push。
 
-### 本地并发 Claude：用 git worktree
+### 工作区规矩：所有改动都走 worktree，主仓永远 clean 在 main
 
-- 单会话 interactive 开发：主 clone 够用
-- 想同时起 2+ 个 Claude 在本地工作 → **开 worktree，不要共享一个 checkout**
-  ```bash
-  git worktree add ../deeppin-<name> <branch>   # branch 不存在会从 HEAD 建
-  cd ../deeppin-<name>                          # 起新 Claude 会话
-  # 每个 worktree 独立 HEAD / index / node_modules，互不踩
-  ```
+**铁律**：
+- 主仓 `~/workspace/deeppin/` **永远** checkout 在 `main`、**永远** 没有 uncommitted change。只读 / 看 log / 开 PR 预览可以，写代码 → 去 worktree。
+- 任何改动 → 开自己的 worktree，并且从**最新的 main** 起：先在主仓 `git fetch origin && git pull --ff-only origin main`，再 `dpwt <branch>`（或 `git worktree add ~/workspace/deeppin-trees/<safe-branch> -b <branch> origin/main`）。
+- **staging 验过才能 merge 回 main**（backend/infra 改动尤其不能跳过 staging，见上文「分支策略」）。单测过不等于 staging 过。
+- 单会话也走 worktree —— 哪怕只有一个 Claude 在跑。主仓保持 clean 是为了能随时看 main 状态、跑只读命令、开 PR 不踩住未提交 change。
+
+```bash
+# 推荐用 dpwt helper（~/.zshrc）；底层等价于：
+git -C ~/workspace/deeppin fetch origin
+git -C ~/workspace/deeppin pull --ff-only origin main     # 确保主仓 main 最新
+git worktree add ~/workspace/deeppin-trees/<safe-branch> -b <branch> origin/main
+cd ~/workspace/deeppin-trees/<safe-branch>
+# 起 Claude 会话在这里；每个 worktree 独立 HEAD / index / node_modules
+```
+
 - 共享 checkout 会踩 HEAD / index / 文件写入竞争，并发跑必炸
 - Telegram bot 自动给每个 chat 起 worktree（`$WORKSPACES_ROOT/<workspace>/chat-<id>/`）；Mac 端按需手动开
-- 合 PR 后清：`git worktree remove ../deeppin-<name>`（分支保留）
-- 每次 session 启动前 `git fetch origin main && git rebase origin/main`，避免陈旧 base
+- 合 PR 后清：`dpwt-rm <branch>` 或 `git worktree remove ~/workspace/deeppin-trees/<safe-branch>`
 - 详细设计见文章 `worktree-concurrent-claude`
 
 ---
