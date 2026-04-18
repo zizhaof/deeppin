@@ -3,6 +3,8 @@ name: Deploy Staging
 # 手动触发：在 GitHub UI 点 Run workflow，或 `gh workflow run deploy-staging.yml -r <branch>`，
 # 或手机发 `/deploy <branch>` 给 claude-telegram bot。
 # Staging = staging-deeppin.duckdns.org（共享生产 Supabase，与 prod 并存互不影响）。
+# run-name 显示被部署的分支 / run-name shows which branch is being deployed
+run-name: "Staging · ${{ inputs.branch }}"
 on:
   workflow_dispatch:
     inputs:
@@ -119,3 +121,25 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+  # ── Job 4: 把部署的分支 force-push 到 'staging' 固定分支 ────────────────
+  # Vercel 的 auto-branch-alias 会给 staging 分支稳定的 preview URL：
+  #   https://deeppin-git-staging-zizhaofs-projects.vercel.app
+  # 必须用 PAT 而不是 GITHUB_TOKEN —— GITHUB_TOKEN 做的 push 不会触发
+  # 外部 webhook（防止 workflow 互相死循环），Vercel 就不会收到构建信号。
+  #
+  # ── Job 4: force-push the deployed branch to the 'staging' ref so
+  # Vercel's auto branch-alias gives us a stable preview URL. Needs PAT:
+  # GITHUB_TOKEN pushes don't fire external webhooks, so Vercel wouldn't
+  # pick it up.
+  sync-staging-branch:
+    needs: integration-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          token: ${{ secrets.PAT_FOR_STAGING_PUSH }}
+
+      - name: Force-push to 'staging' branch
+        run: git push -f origin HEAD:staging
