@@ -762,7 +762,7 @@ export default function ChatPage() {
                 <button
                   onClick={() => setShowFlattenConfirm(true)}
                   disabled={flattening}
-                  className="flex items-center gap-1 px-2 py-1 rounded-md text-amber-300 hover:text-white bg-amber-600/15 hover:bg-amber-600/35 border border-amber-500/30 hover:border-amber-400/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-400/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   title="扁平化：把所有子线程并回主线（不可逆） / Flatten: merge all sub-threads back into main (irreversible)"
                 >
                   <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
