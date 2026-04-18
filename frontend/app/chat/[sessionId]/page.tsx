@@ -466,6 +466,19 @@ export default function ChatPage() {
     router.push(`/chat/${id}`);
   }, [isAnon, router]);
 
+  // ── 匿名用户手动触发 Google linkIdentity（保留 user_id + 历史）──
+  // Anon sign-in — linkIdentity preserves user_id + all trial messages.
+  const handleSignIn = useCallback(async () => {
+    const supabase = createClient();
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+    const { error } = await supabase.auth.linkIdentity({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (error) alert(error.message);
+  }, []);
+
   const handleDeleteSession = useCallback(async (sid: string) => {
     if (!window.confirm(t.confirmDelete)) return;
     try {
@@ -689,6 +702,8 @@ export default function ChatPage() {
         onToggleLang={toggleLang}
         onOpenSessions={handleOpenSessions}
         onNewChat={handleNewChat}
+        isAnon={isAnon}
+        onSignIn={handleSignIn}
       />
 
       {/* drawable area — SVG 在此范围内，不包含 InputBar，避免引导线污染输入框 */}
