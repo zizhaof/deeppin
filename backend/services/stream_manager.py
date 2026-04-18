@@ -88,6 +88,11 @@ _SENTINEL_LEN = len(META_TAG_OPEN)
 # Write conversation embedding every N rounds (local model has no extra cost; 1 = every round)
 EMBED_EVERY_N_ROUNDS = 1
 
+# 匿名用户生命期累计的对话轮数上限（所有线程加总）。
+# Lifetime turn cap for anonymous users (summed across all threads in the session).
+# Sources of truth: 008_anon_trial.sql (增 column), routers/stream.py + threads.py (gate)。
+ANON_TURN_LIMIT = 20
+
 # _db 已从 db.supabase.run_db 导入（见顶部 import），保留原名以兼容测试 patch。
 # _db is imported from db.supabase.run_db at the top (aliased to preserve test patch compatibility).
 
@@ -226,10 +231,17 @@ async def stream_and_save(
     user_content: str,
     attachment_filename: str | None = None,
     thread_meta: dict | None = None,
+    session_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     核心 SSE 生成器：保存消息 → 构建 context → 流式生成 → 后台写摘要/标题/embedding。
     Core SSE generator: save message → build context → stream → background write summary/title/embedding.
+
+    session_id 传入时，本轮结束前原子递增 sessions.turn_count，用于匿名用户额度与
+    整体使用统计。不传（老调用方）则跳过，不影响主流程。
+    When session_id is provided, sessions.turn_count is atomically incremented before
+    the turn completes — used for anon-user quota + usage stats. Optional for backward
+    compatibility; callers that omit it skip the increment.
     """
     yield _sse("ping", {})
 
@@ -247,6 +259,22 @@ async def stream_and_save(
     except Exception as exc:
         yield _sse("error", {"message": f"保存消息失败 / Failed to save message: {exc}"})
         return
+
+    # 原子递增 turn_count（RPC 内部 UPDATE ... RETURNING；对并发安全）。
+    # Router 已在请求入口做过 gate，这里单纯做记账。失败不中断主流程。
+    # Atomic increment via RPC (UPDATE ... RETURNING); concurrency-safe.
+    # Router already gated the request; this is pure accounting. Don't fail the turn if it errors.
+    if session_id:
+        try:
+            await _db(
+                lambda: get_supabase().rpc(
+                    "increment_session_turn_count",
+                    {"p_session_id": session_id},
+                ).execute(),
+                table="sessions",
+            )
+        except Exception:
+            logger.exception("turn_count 递增失败（session=%s）/ turn_count increment failed", session_id)
 
     # 线程元数据：优先使用调用方传入的（stream.py 已查过，避免重复 DB 往返）
     # Thread metadata: prefer caller-supplied data (stream.py already fetched it, skip redundant query)

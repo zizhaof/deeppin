@@ -4,8 +4,9 @@
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, createSession, deleteSession } from "@/lib/api";
+import { listSessions, createSession, deleteSession, ApiError } from "@/lib/api";
 import type { Session } from "@/lib/api";
+import QuotaExceededModal from "@/components/QuotaExceededModal";
 import { createClient } from "@/lib/supabase";
 import Link from "next/link";
 import { useT, useLangStore } from "@/stores/useLangStore";
@@ -126,6 +127,12 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [heroText, setHeroText] = useState("");
   const heroComposingRef = useRef(false);
+  /** 匿名用户超过 1-session 上限时弹窗（罕见：需要手动清 prewarm 时触发）。
+   *  Modal shown when an anon user trips the 1-session cap during fallback createSession. */
+  const [quotaModal, setQuotaModal] = useState<{ message?: string } | null>(null);
+  /** 当前用户是否匿名；用来在 SessionDrawer 里隐藏「新对话」按钮。
+   *  Anon flag — hides the "new chat" button in SessionDrawer (1-session cap). */
+  const [isAnon, setIsAnon] = useState(false);
   // 预热：登录后立即在后台创建好一个 session，点击时直接跳转无需等待
   const prewarmedRef = useRef<string | null>(null);
 
@@ -147,6 +154,9 @@ export default function HomePage() {
           email: session.user.email,
           avatar_url: session.user.user_metadata?.avatar_url,
         });
+        // is_anonymous 可能不存在于老版本 supabase-js；缺失则视为非匿名。
+        // is_anonymous may not exist on older supabase-js — treat absence as non-anon.
+        setIsAnon(Boolean((session.user as { is_anonymous?: boolean }).is_anonymous));
         listSessions()
           .then(setSessions)
           .catch(() => setSessions([]))
@@ -170,10 +180,18 @@ export default function HomePage() {
 
   const handleNewChat = async (initialMessage?: string) => {
     const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    // 未登录 → 匿名试用（lazy：只在用户主动点「新对话」时才创建匿名账号，避免
+    // 爬虫/预渲染污染 auth.users）。失败才退到 /login。
+    // No session → lazy signInAnonymously (only on user action to keep auth.users clean).
+    // Fall back to /login only if anon sign-in fails.
     if (!session) {
-      router.push("/login");
-      return;
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error || !data.session) {
+        router.push("/login");
+        return;
+      }
+      session = data.session;
     }
     if (initialMessage?.trim()) {
       sessionStorage.setItem("deeppin:pending-msg", initialMessage.trim());
@@ -194,8 +212,13 @@ export default function HomePage() {
     try {
       const s = await createSession();
       router.push(`/chat/${s.id}`);
-    } catch {
+    } catch (err) {
       setCreating(false);
+      // 匿名用户已用掉 1 session 额度 → 弹登录引导
+      // Anon user already burned their 1-session allowance → show sign-in modal
+      if (err instanceof ApiError && err.code === "anon_session_limit") {
+        setQuotaModal({ message: err.message });
+      }
     }
   };
 
@@ -214,6 +237,19 @@ export default function HomePage() {
     await supabase.auth.signOut();
     setUser(null);
     setSessions([]);
+  };
+
+  // 匿名用户手动触发 Google 绑定(linkIdentity 保留 user_id 与历史消息)。
+  // Anon users manually trigger Google link-identity (preserves user_id + history).
+  const handleSignIn = async () => {
+    const supabase = createClient();
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+    const { error } = await supabase.auth.linkIdentity({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (error) alert(error.message);
   };
 
   // 渐入动画 / Staggered entrance
@@ -241,7 +277,7 @@ export default function HomePage() {
       </div>
 
       {/* 抽屉 */}
-      <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} />
+      <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} isAnon={isAnon} onAnonNewChat={() => setQuotaModal({})} />
 
       {/* 顶栏 */}
       <header className="relative z-10 border-b border-subtle px-4 py-3 flex items-center justify-between">
@@ -265,7 +301,9 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {user && (
+          {/* 登录用户显示头像 + 退出；匿名不显示退出(强引导走登录按钮)
+           *  Signed-in users see avatar + logout; anon users don't get a logout option (nudges toward Sign in) */}
+          {user && !isAnon && (
             <>
               {user.avatar_url && (
                 <img
@@ -295,16 +333,27 @@ export default function HomePage() {
           >
             {t.toggleLang}
           </button>
-          <button
-            onClick={() => handleNewChat()}
-            disabled={creating}
-            className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            {creating ? t.creating : t.newChat}
-          </button>
+          {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
+           *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat" */}
+          {isAnon ? (
+            <button
+              onClick={handleSignIn}
+              className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+            >
+              {t.signIn}
+            </button>
+          ) : (
+            <button
+              onClick={() => handleNewChat()}
+              disabled={creating}
+              className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              {creating ? t.creating : t.newChat}
+            </button>
+          )}
         </div>
       </header>
 
@@ -391,6 +440,13 @@ export default function HomePage() {
 
         <div className="h-8" />
       </main>
+
+      <QuotaExceededModal
+        open={quotaModal !== null}
+        variant="session"
+        message={quotaModal?.message}
+        onClose={() => setQuotaModal(null)}
+      />
     </div>
   );
 }

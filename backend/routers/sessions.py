@@ -18,13 +18,17 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 from db.supabase import get_supabase
-from dependencies.auth import get_current_user
+from dependencies.auth import CurrentUser, get_current_user, get_current_user_full
 from models.session import CreateSessionRequest, Session
 from services.flatten_service import compute_preorder, is_already_flattened
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# 匿名用户最多只能持有 1 个 session；登录/linkIdentity 后解除限制。
+# Anonymous users may hold at most 1 session; linking an identity removes the cap.
+ANON_MAX_SESSIONS = 1
 
 
 async def _db(fn):
@@ -39,7 +43,7 @@ async def list_sessions(auth=Depends(get_current_user)):
     _user_id, sb = auth
     res = await _db(lambda: (
         sb.table("sessions")
-        .select("id, title, created_at")
+        .select("id, title, created_at, turn_count")
         .order("created_at", desc=True)
         .limit(50)
         .execute()
@@ -48,9 +52,31 @@ async def list_sessions(auth=Depends(get_current_user)):
 
 
 @router.post("/sessions", response_model=Session, status_code=201)
-async def create_session(body: CreateSessionRequest, auth=Depends(get_current_user)):
-    """创建新 session，并自动创建对应的主线 thread（depth=0）。"""
-    user_id, sb = auth
+async def create_session(
+    body: CreateSessionRequest,
+    user: CurrentUser = Depends(get_current_user_full),
+):
+    """创建新 session，并自动创建对应的主线 thread（depth=0）。
+    匿名用户最多持有 1 个 session：超出直接 402，提示登录解除上限。
+    Anonymous users get at most 1 session; beyond that returns 402 and nudges sign-in."""
+    user_id, sb = user.user_id, user.sb
+
+    if user.is_anonymous:
+        count_res = await _db(lambda: (
+            sb.table("sessions").select("id", count="exact").limit(1).execute()
+        ))
+        if (count_res.count or 0) >= ANON_MAX_SESSIONS:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "anon_session_limit",
+                    "limit": ANON_MAX_SESSIONS,
+                    "message": (
+                        "匿名试用仅支持 1 个会话，登录后可开新对话。"
+                        " / Free trial supports 1 session. Sign in to start new conversations."
+                    ),
+                },
+            )
 
     row: dict = {"title": body.title, "user_id": user_id}
     if body.id:
@@ -103,9 +129,25 @@ async def get_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
-async def delete_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
-    """删除指定 session（RLS 保证只能删自己的）。CASCADE 自动清理 threads/messages/summaries。"""
-    _user_id, sb = auth
+async def delete_session(
+    session_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user_full),
+):
+    """删除指定 session（RLS 保证只能删自己的）。CASCADE 自动清理 threads/messages/summaries。
+    匿名用户禁止删除 —— 否则可以「删除 + 重建」绕过生命期 20 轮配额。
+    Anonymous users can't delete — otherwise delete+recreate would reset the lifetime 20-turn cap."""
+    if user.is_anonymous:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "anon_cannot_delete",
+                "message": (
+                    "匿名试用不支持删除对话，登录后可管理所有会话。"
+                    " / Sign in to delete or manage sessions."
+                ),
+            },
+        )
+    sb = user.sb
     res = await _db(lambda: (
         sb.table("sessions").delete().eq("id", str(session_id)).execute()
     ))

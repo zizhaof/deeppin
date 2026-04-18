@@ -22,6 +22,15 @@ interface Props {
   lang: Lang;
   onToggleLang: () => void;
   onOpenSessions: () => void;
+  /** 顶栏「新对话」按钮的点击回调；匿名用户在上层弹登录引导，登录用户直接 router.push 新 UUID。
+   *  Handler for the topbar "new chat" button; parent branches on isAnon. */
+  onNewChat: () => void;
+  /** 匿名用户；隐藏个人菜单（删除账号对匿名无意义）+ 顶栏右侧显示「登录」按钮。
+   *  Anon flag — hides account menu (delete-account is meaningless for anon) + shows a top-right "Sign in" button. */
+  isAnon?: boolean;
+  /** 匿名用户点「登录」时触发 linkIdentity。
+   *  Handler for the anon-only "Sign in" button; triggers linkIdentity. */
+  onSignIn?: () => void;
 }
 
 export default function ThreadNav({
@@ -34,6 +43,9 @@ export default function ThreadNav({
   onSelect,
   onToggleLang,
   onOpenSessions,
+  onNewChat,
+  isAnon = false,
+  onSignIn,
 }: Props) {
   const t = useT();
   const router = useRouter();
@@ -81,6 +93,18 @@ export default function ThreadNav({
           <line x1="3" y1="6" x2="21" y2="6" />
           <line x1="3" y1="12" x2="21" y2="12" />
           <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* 新对话按钮 — 登录用户直接新建；匿名用户由上层弹登录引导 */}
+      {/* New chat — signed-in goes straight to a new UUID; anon triggers the sign-in modal in the parent */}
+      <button
+        onClick={onNewChat}
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group cursor-pointer"
+        title={t.newChat}
+      >
+        <svg className="w-3.5 h-3.5 text-faint group-hover:text-md transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
 
@@ -156,34 +180,46 @@ export default function ThreadNav({
         {t.toggleLang}
       </button>
 
-      {/* 用户菜单 */}
-      <div className="relative flex-shrink-0">
+      {/* 匿名用户：显示「登录」按钮（不显示个人菜单，删除账号对匿名无意义） */}
+      {/* 登录用户：显示个人菜单（含删除账号） */}
+      {/* Anon: "Sign in" button (no account menu — delete-account is meaningless for anon). */}
+      {/* Signed-in: account menu (includes delete-account). */}
+      {isAnon ? (
         <button
-          onClick={() => setUserMenuOpen((v) => !v)}
-          disabled={deleting}
-          className="w-7 h-7 flex items-center justify-center rounded-lg border border-subtle hover:border-base hover:bg-glass transition-all disabled:opacity-50"
-          title="账号设置"
+          onClick={onSignIn}
+          className="flex-shrink-0 text-[11px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg transition-colors"
         >
-          <svg className="w-3.5 h-3.5 text-faint" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-          </svg>
+          {t.signIn}
         </button>
+      ) : (
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={() => setUserMenuOpen((v) => !v)}
+            disabled={deleting}
+            className="w-7 h-7 flex items-center justify-center rounded-lg border border-subtle hover:border-base hover:bg-glass transition-all disabled:opacity-50"
+            title="账号设置"
+          >
+            <svg className="w-3.5 h-3.5 text-faint" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+            </svg>
+          </button>
 
-        {userMenuOpen && (
-          <>
-            {/* 点击外部关闭 */}
-            <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[140px] bg-surface border border-base rounded-xl shadow-lg overflow-hidden">
-              <button
-                onClick={handleDeleteAccount}
-                className="w-full text-left px-3.5 py-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-              >
-                删除账号
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+          {userMenuOpen && (
+            <>
+              {/* 点击外部关闭 */}
+              <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+              <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[140px] bg-surface border border-base rounded-xl shadow-lg overflow-hidden">
+                <button
+                  onClick={handleDeleteAccount}
+                  className="w-full text-left px-3.5 py-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                >
+                  删除账号
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </header>
   );
 }

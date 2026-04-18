@@ -13,6 +13,12 @@ POST /api/threads/{thread_id}/chat
        data: {"type": "done", "message_id": "..."}
        data: {"type": "error", "message": "..."}
        data: {"type": "thread_title", "thread_id": "...", "title": "..."}
+
+匿名用户额度 / Anonymous user quota:
+  - 匿名用户生命期累计 20 轮（所有线程加起来）
+    Anonymous users: 20 turns total across all threads in the session.
+  - 超出返回 402 + {code: "anon_quota_exceeded"}，前端捕捉后弹登录
+    Exceed → HTTP 402 + structured code; frontend catches and prompts sign-in.
 """
 
 import asyncio
@@ -20,9 +26,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from dependencies.auth import get_current_user
+from dependencies.auth import CurrentUser, get_current_user_full
 from models.message import ChatRequest
-from services.stream_manager import stream_and_save
+from services.stream_manager import ANON_TURN_LIMIT, stream_and_save
 
 router = APIRouter()
 
@@ -37,15 +43,19 @@ async def _db(fn):
 
 
 @router.post("/threads/{thread_id}/chat")
-async def chat(thread_id: uuid.UUID, body: ChatRequest, auth=Depends(get_current_user)):
+async def chat(
+    thread_id: uuid.UUID,
+    body: ChatRequest,
+    user: CurrentUser = Depends(get_current_user_full),
+):
     """
     向指定线程发送消息，返回 SSE 流式 AI 回复。
     Send a message to the specified thread and return a streaming SSE AI response.
 
-    前置检查线程是否存在，不存在返回 404。
-    Checks thread existence upfront; returns 404 if not found.
+    前置检查：线程存在性 + 匿名额度。
+    Upfront checks: thread existence + anonymous quota.
     """
-    _user_id, sb = auth
+    sb = user.sb
 
     # RLS: 若线程不属于该用户，maybe_single() 返回 None → 404
     # 同时取 depth/title/session_id，避免 stream_manager 再发一次 DB 请求（节省一次 round-trip）
@@ -59,11 +69,42 @@ async def chat(thread_id: uuid.UUID, body: ChatRequest, auth=Depends(get_current
     if not thread_res or not thread_res.data:
         raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
 
-    thread_meta = thread_res.data  # 传给 stream_and_save，省去内部重复查询
+    thread_meta = thread_res.data
+    session_id: str | None = thread_meta.get("session_id")
+
+    # 匿名用户：查 session.turn_count，达到上限就 402
+    # Anonymous users: fetch session.turn_count; 402 at the cap.
+    if user.is_anonymous and session_id:
+        session_res = await _db(lambda: (
+            sb.table("sessions")
+            .select("turn_count")
+            .eq("id", session_id)
+            .maybe_single()
+            .execute()
+        ))
+        turn_count = (session_res.data or {}).get("turn_count", 0) if session_res else 0
+        if turn_count >= ANON_TURN_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "anon_quota_exceeded",
+                    "limit": ANON_TURN_LIMIT,
+                    "message": (
+                        "已达到免费试用上限，登录后继续对话（已有消息会保留）。"
+                        " / Free-trial limit reached. Sign in to continue — your conversation will be kept."
+                    ),
+                },
+            )
 
     # stream_and_save 内部使用 service_role 写消息（背景任务模式，绕过 RLS 是预期行为）
     return StreamingResponse(
-        stream_and_save(str(thread_id), body.content, body.attachment_filename, thread_meta=thread_meta),
+        stream_and_save(
+            str(thread_id),
+            body.content,
+            body.attachment_filename,
+            thread_meta=thread_meta,
+            session_id=session_id,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
