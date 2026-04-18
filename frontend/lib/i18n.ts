@@ -132,6 +132,7 @@ const zh = {
   anonSessionLimitTitle: "试用仅支持 1 个对话",
   anonSessionLimitDesc: "登录后可开启任意多个对话，历史消息不会丢失。",
   signInGoogle: "用 Google 登录",
+  signIn: "登录",
   later: "稍后",
 } as const;
 
@@ -243,6 +244,7 @@ const en = {
   anonSessionLimitTitle: "Free trial: 1 conversation",
   anonSessionLimitDesc: "Sign in to start as many conversations as you want — nothing is lost.",
   signInGoogle: "Sign in with Google",
+  signIn: "Sign in",
   later: "Later",
 } as const;
 

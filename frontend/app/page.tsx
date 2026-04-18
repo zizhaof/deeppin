@@ -239,6 +239,19 @@ export default function HomePage() {
     setSessions([]);
   };
 
+  // 匿名用户手动触发 Google 绑定(linkIdentity 保留 user_id 与历史消息)。
+  // Anon users manually trigger Google link-identity (preserves user_id + history).
+  const handleSignIn = async () => {
+    const supabase = createClient();
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+    const { error } = await supabase.auth.linkIdentity({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (error) alert(error.message);
+  };
+
   // 渐入动画 / Staggered entrance
   const fadeUp = (delay: number): CSSProperties => ({
     opacity: mounted ? 1 : 0,
@@ -288,7 +301,9 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {user && (
+          {/* 登录用户显示头像 + 退出；匿名不显示退出(强引导走登录按钮)
+           *  Signed-in users see avatar + logout; anon users don't get a logout option (nudges toward Sign in) */}
+          {user && !isAnon && (
             <>
               {user.avatar_url && (
                 <img
@@ -318,16 +333,27 @@ export default function HomePage() {
           >
             {t.toggleLang}
           </button>
-          <button
-            onClick={() => handleNewChat()}
-            disabled={creating}
-            className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            {creating ? t.creating : t.newChat}
-          </button>
+          {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
+           *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat" */}
+          {isAnon ? (
+            <button
+              onClick={handleSignIn}
+              className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+            >
+              {t.signIn}
+            </button>
+          ) : (
+            <button
+              onClick={() => handleNewChat()}
+              disabled={creating}
+              className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              {creating ? t.creating : t.newChat}
+            </button>
+          )}
         </div>
       </header>
 
