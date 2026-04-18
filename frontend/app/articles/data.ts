@@ -2935,10 +2935,12 @@ export const articles: Article[] = [
           { type: "p", text: "没有任何跨会话的锁、队列、信号量。隔离是文件系统 + git 分支两层 hard-fence——设计上就不可能踩到对方。" },
 
           { type: "h1", text: "八、和 Mac 工作流的配合" },
-          { type: "p", text: "Mac 这一端我不用 worktree，直接在 /Users/.../deeppin 上开 feat 分支 commit push。两条路径都终结在 GitHub PR：" },
-          { type: "code", text: "              main (GitHub)\n               ▲\n               │ PR / merge\n               │\n  ┌────────────┴────────────┐\n  │                         │\nfeat/xxx (Mac)        chat-<id> (Oracle worktree)\n  │                         │\n  │ 本地 commit push        │ bot 自动 commit push\n  │                         │\nMacBook                  Oracle" },
+          { type: "p", text: "Mac 端按需用 worktree。单会话 interactive 开发——就一个 Claude 在 iTerm 里——主 clone 够用，`git checkout feat/xxx` 切分支就完事。但只要想同时起第二个 Claude（另一个 iTerm tab 里跑个小 fix，Cursor 里保持 dev server，等等），立刻就得开 worktree——Oracle 上炸过的那些坑 Mac 上一模一样会出现。" },
+          { type: "code", text: "# Mac 端临时加 worktree\ngit worktree add ../deeppin-hotfix fix/xxx\ncd ../deeppin-hotfix\nclaude    # 这个 Claude 和主目录的 Claude 完全隔离\n\n# 工作完合 PR 之后\ngit worktree remove ../deeppin-hotfix   # 分支保留，只删目录" },
+          { type: "p", text: "两条路径都终结在 GitHub PR：" },
+          { type: "code", text: "              main (GitHub)\n               ▲\n               │ PR / merge\n               │\n  ┌────────────┼────────────┐\n  │           │            │\nfeat/xxx (Mac 主)  fix/xxx (Mac 临时 worktree)  chat-<id> (Oracle worktree)\n  │           │            │\n  │ 本地 commit push         │ bot 自动 commit push\n  │           │            │\nMacBook                   Oracle" },
           { type: "p", text: "合流点是 PR。如果 Mac 的 feat 和某个 chat-<id> 动了相同文件，GitHub 会在 PR 阶段标冲突，让人集中解。早期暴露总比合进 main 之后发现要好。" },
-          { type: "p", text: "有个隐性协议：任何一个 Claude session 干的活都应该走 PR，不直接改 main。这条规则在前面几篇（特别是 CI/CD 和 staging-asymmetry 那节工作流表）已经贯彻了；worktree 模型天然强化它——chat-<id> 分支跟 main 分离，想推 main 得多做一步显式操作。" },
+          { type: "p", text: "有个隐性协议：任何一个 Claude session 干的活都应该走 PR，不直接改 main。这条规则在前面几篇（特别是 CI/CD 和 staging-asymmetry 那节工作流表）已经贯彻了；worktree 模型天然强化它——分支跟 main 分离，想推 main 得多做一步显式操作。" },
 
           { type: "h1", text: "九、几个非显而易见的细节" },
           { type: "ul", items: [
@@ -3024,10 +3026,12 @@ export const articles: Article[] = [
           { type: "p", text: "No cross-session locks, queues, or semaphores. Isolation lives in two hard fences — filesystem and git branch — and by construction sessions can't step on each other." },
 
           { type: "h1", text: "8. Coordination with the Mac workflow" },
-          { type: "p", text: "On the Mac I don't use worktrees — I just open feat branches in /Users/.../deeppin, commit, push. Both paths converge at GitHub PR:" },
-          { type: "code", text: "              main (GitHub)\n               ▲\n               │ PR / merge\n               │\n  ┌────────────┴────────────┐\n  │                         │\nfeat/xxx (Mac)        chat-<id> (Oracle worktree)\n  │                         │\n  │ local commit + push     │ bot commits + pushes\n  │                         │\nMacBook                  Oracle" },
+          { type: "p", text: "On the Mac I use worktrees on demand. For single-session interactive work — one Claude in one iTerm tab — the main clone is plenty; `git checkout feat/xxx` and go. But the moment I want a second Claude running alongside (say, a small fix in another iTerm tab, or keeping the dev server pinned to one branch while editing another) the same races that bite on Oracle bite on Mac. Time to spin up a worktree." },
+          { type: "code", text: "# Temporary worktree on Mac\ngit worktree add ../deeppin-hotfix fix/xxx\ncd ../deeppin-hotfix\nclaude    # fully isolated from the main-dir Claude session\n\n# After the PR merges\ngit worktree remove ../deeppin-hotfix   # branch is preserved, just the directory goes" },
+          { type: "p", text: "All paths converge at GitHub PR:" },
+          { type: "code", text: "              main (GitHub)\n               ▲\n               │ PR / merge\n               │\n  ┌────────────┼────────────┐\n  │           │            │\nfeat/xxx (Mac main)  fix/xxx (Mac temp wt)   chat-<id> (Oracle wt)\n  │           │            │\n  │ local commit + push     │ bot commits + pushes\n  │           │            │\nMacBook                  Oracle" },
           { type: "p", text: "The merge point is the PR. If a Mac feat/ branch and some chat-<id> touched the same files, GitHub flags the conflict during PR review — surfaced centrally, resolved by a human. Better there than after merging into main." },
-          { type: "p", text: "Implicit contract: every Claude session's output goes through a PR, never directly to main. Earlier posts (CI/CD, staging-asymmetry's workflow table) already codify this; the worktree model strengthens it — chat-<id> branches are structurally divorced from main, and pushing to main takes explicit extra steps." },
+          { type: "p", text: "Implicit contract: every Claude session's output goes through a PR, never directly to main. Earlier posts (CI/CD, staging-asymmetry's workflow table) already codify this; the worktree model strengthens it — branches are structurally divorced from main, and pushing to main takes explicit extra steps." },
 
           { type: "h1", text: "9. A few non-obvious details" },
           { type: "ul", items: [

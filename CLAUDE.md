@@ -611,6 +611,21 @@ cd backend && TEST_BASE_URL=https://deeppin.duckdns.org \
 3. **commit 信息**：`<type>: <中文简述>`，必要时带多行 body 解释为什么。
 4. **push 前 confirm**：除非用户明说「push」，不要自己 push。
 
+### 本地并发 Claude：用 git worktree
+
+- 单会话 interactive 开发，主 clone 够用
+- 想同时起 2+ 个 Claude 在本地工作 → **开 worktree，不要共享一个 checkout**
+  ```bash
+  git worktree add ../deeppin-<name> <branch>    # <branch> 不存在会从 HEAD 建
+  cd ../deeppin-<name>                           # 在这里起新的 Claude 会话
+  # 每个 worktree 独立 HEAD / index / node_modules，互不踩
+  ```
+- 共享一个 checkout 会踩 HEAD / index / 文件写入竞争（Claude 不擅长排队），并发跑必炸
+- Telegram bot 自动给每个 chat 起 worktree（路径：`$WORKSPACES_ROOT/<workspace>/chat-<id>/`，分支 `chat-<id>`）；Mac 端按需手动开
+- 合完 PR 可清：`git worktree remove ../deeppin-<name>`（分支保留有历史，想翻旧工作 `git checkout <branch>` 还能找回）
+- 每次 session 启动前先 `git fetch origin main && git rebase origin/main`，避免在陈旧 base 上积累改动
+- 详细设计见文章 `worktree-concurrent-claude`
+
 ---
 
 ## 运维 / 生产访问
