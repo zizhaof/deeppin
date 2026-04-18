@@ -7,9 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: "Branch to deploy to staging"
+        # 必填，无默认 —— 防止误用 `gh workflow run -r BRANCH`（-r 只决定从哪个分支
+        # 读 workflow 文件，不会传给 inputs）导致 input 取默认值 "main"，把 main 当成
+        # 目标分支静默部署到 staging。
+        # Required, no default — prevents the `gh workflow run -r BRANCH` footgun
+        # (`-r` only selects which branch the workflow file is loaded from; it does
+        # NOT populate inputs). Without this, inputs.branch would silently fall back
+        # to a default and the wrong branch would be deployed.
+        description: "Branch to deploy to staging (required, no default)"
         required: true
-        default: "main"
 
 jobs:
   unit-test:
