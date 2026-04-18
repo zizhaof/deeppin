@@ -141,6 +141,7 @@ POST /api/merge                      合并输出
 ### staging 实务
 
 - 同一时间只能验一个分支（Oracle 24G 塞不下多个 bge-m3 backend）；前端每分支独立 Vercel preview URL（serverless 零成本）
+- **部署 staging 前必须跟用户确认**：可能有其他 Claude session / 另一条分支正在 staging 上验证，盲目覆盖会打断别人的测。触发 `deploy-staging.yml`（或 `docker compose ... up -d` 到 staging）之前问一句「staging 空吗？可以抢吗？」
 - `docker compose restart <svc>` **不重读** `env_file`；改 .env 要 `up -d --force-recreate <svc>`
 - 手动部 staging：`docker compose -p deeppin-staging --env-file compose.staging.env -f docker-compose.yml -f docker-compose.staging.yml up -d --build backend searxng`
 
