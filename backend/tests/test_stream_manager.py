@@ -67,6 +67,19 @@ class TestParseMeta:
         result = self._call(raw)
         assert result.get("summary") == "test"
 
+    def test_close_tag_stripped(self):
+        """</deeppin_meta> 关闭标签在解析前被去掉 / </deeppin_meta> closing tag is stripped before parsing."""
+        raw = '{"summary": "x", "title": "y"}</deeppin_meta>'
+        result = self._call(raw)
+        assert result.get("summary") == "x"
+        assert result.get("title") == "y"
+
+    def test_close_tag_with_trailing_whitespace(self):
+        """关闭标签后还有空白也能正确剥离 / Trailing whitespace after the closing tag is also handled."""
+        raw = '{"summary": "x"}</deeppin_meta>\n\n  '
+        result = self._call(raw)
+        assert result.get("summary") == "x"
+
     def test_regex_fallback_extracts_fields(self):
         """完全无效的 JSON 时正则提取字段 / Regex extracts fields from completely invalid JSON."""
         raw = 'garbage {"summary": "正则提取", "title": "标题"} more garbage'
@@ -142,11 +155,12 @@ class TestMetaSentinelStripping:
 
     def _simulate_stream(self, chunks: list[str]):
         """
-        模拟 stream_and_save 内部的 buffer/sentinel 截断逻辑。
-        Simulate the buffer/sentinel stripping logic inside stream_and_save.
+        模拟 stream_and_save 内部的 buffer/sentinel 截断逻辑，
+        与生产代码共用同一套 _SENTINEL_RE 正则。
+        Simulate the buffer/sentinel stripping logic inside stream_and_save,
+        reusing the production _SENTINEL_RE regex.
         """
-        from services.llm_client import META_SENTINEL
-        sentinel_len = len(META_SENTINEL)
+        from services.stream_manager import _SENTINEL_RE, _SENTINEL_LEN
         buffer = ""
         full_content = ""
         meta_str = ""
@@ -157,15 +171,15 @@ class TestMetaSentinelStripping:
                 meta_str += chunk
                 continue
             buffer += chunk
-            idx = buffer.find(META_SENTINEL)
-            if idx != -1:
-                before = buffer[:idx]
+            m = _SENTINEL_RE.search(buffer)
+            if m:
+                before = buffer[:m.start()]
                 full_content += before
-                meta_str = buffer[idx + sentinel_len:]
+                meta_str = buffer[m.end():]
                 in_meta = True
                 buffer = ""
             else:
-                safe_len = max(0, len(buffer) - (sentinel_len - 1))
+                safe_len = max(0, len(buffer) - (_SENTINEL_LEN - 1))
                 if safe_len > 0:
                     full_content += buffer[:safe_len]
                     buffer = buffer[safe_len:]
@@ -182,22 +196,23 @@ class TestMetaSentinelStripping:
         assert content == "Hello world!"
         assert meta == ""
 
-    def test_meta_sentinel_in_single_chunk(self):
-        """META sentinel 在单个 chunk 中出现，正文截断正确 / META sentinel in a single chunk; body is correctly truncated."""
-        from services.llm_client import META_SENTINEL
-        chunks = [f"正文内容{META_SENTINEL}{{\"summary\":\"摘要\"}}"]
+    def test_meta_tag_in_single_chunk(self):
+        """META 起始标签在单个 chunk 中出现，正文截断正确 / META open tag in a single chunk; body is correctly truncated."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        chunks = [f'正文内容{META_TAG_OPEN}{{"summary":"摘要"}}{META_TAG_CLOSE}']
         content, meta = self._simulate_stream(chunks)
         assert content == "正文内容"
         assert "summary" in meta
+        # 关闭标签随 meta_str 一起被收集，留给 _parse_meta 剥离
+        # Closing tag is collected as part of meta_str; _parse_meta strips it later
+        assert META_TAG_CLOSE in meta
 
-    def test_meta_sentinel_split_across_chunks(self):
-        """META sentinel 跨 chunk 边界时也能被检测到 / META sentinel spanning a chunk boundary is still detected."""
-        from services.llm_client import META_SENTINEL
-        # 将 sentinel 拆成两半
-        # Split the sentinel in half
-        half = len(META_SENTINEL) // 2
-        part1 = "正文" + META_SENTINEL[:half]
-        part2 = META_SENTINEL[half:] + '{"summary":"摘要"}'
+    def test_meta_tag_split_across_chunks(self):
+        """起始标签跨 chunk 边界时也能被检测到 / Open tag spanning a chunk boundary is still detected."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        half = len(META_TAG_OPEN) // 2
+        part1 = "正文" + META_TAG_OPEN[:half]
+        part2 = META_TAG_OPEN[half:] + '{"summary":"摘要"}' + META_TAG_CLOSE
         chunks = [part1, part2]
         content, meta = self._simulate_stream(chunks)
         assert content == "正文"
@@ -210,12 +225,33 @@ class TestMetaSentinelStripping:
         assert meta == ""
 
     def test_content_before_and_after_meta(self):
-        """META 之前的内容保留，之后的内容丢弃 / Content before META is kept; content after is discarded."""
-        from services.llm_client import META_SENTINEL
-        chunks = [f"保留内容{META_SENTINEL}丢弃内容"]
+        """META 之前的内容保留，之后的内容（含整个 META 块）丢弃 / Content before META is kept; META block (and everything after) is discarded from body."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        chunks = [f"保留内容{META_TAG_OPEN}丢弃内容{META_TAG_CLOSE}"]
         content, meta = self._simulate_stream(chunks)
         assert "保留内容" in content
         assert "丢弃" not in content
+
+    def test_meta_round_trip_parses(self):
+        """流式截断 + _parse_meta 端到端：标签内 JSON 能正确解析 / End-to-end stripping + _parse_meta: JSON inside the tag parses correctly."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        from services.stream_manager import _parse_meta
+        chunks = [
+            f'正文。{META_TAG_OPEN}{{"summary": "摘要内容", "title": "标题"}}{META_TAG_CLOSE}'
+        ]
+        content, meta = self._simulate_stream(chunks)
+        assert content == "正文。"
+        parsed = _parse_meta(meta)
+        assert parsed.get("summary") == "摘要内容"
+        assert parsed.get("title") == "标题"
+
+    def test_body_json_without_meta_tag_not_stripped(self):
+        """正文中的普通 JSON 片段不会被误判为 META / Plain JSON snippets in the body are NOT mistaken for META."""
+        chunks = ['某 API 响应格式：\n{"summary": "x", "title": "y"} 这种就是。']
+        content, meta = self._simulate_stream(chunks)
+        # 整段都是正文 / Entire chunk is body content
+        assert '{"summary"' in content
+        assert meta == ""
 
 
 # ── stream_and_save 完整流程（mock DB + LLM）─────────────────────────

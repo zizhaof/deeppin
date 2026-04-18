@@ -506,7 +506,14 @@ def _build_model_list() -> list[dict]:
 # META block and think tag processing (unchanged)
 # ═══════════════════════════════════════════════════════════════════════
 
-META_SENTINEL = "<<<META>>>"
+# 主对话末尾的 META 元数据 XML 标签。用 deeppin_meta 这种独有标识，
+# 避免免费 tier 弱模型把 <<<META>>> 这类 chevron 当成 placeholder 占位符吞掉。
+# Closing tag is symmetric so models naturally pair them.
+# META metadata XML tag emitted at the end of each main reply. The unique
+# `deeppin_meta` identifier prevents weaker free-tier models from interpreting
+# chevron-wrapped sentinels (like <<<META>>>) as placeholder syntax.
+META_TAG_OPEN = "<deeppin_meta>"
+META_TAG_CLOSE = "</deeppin_meta>"
 
 
 async def _strip_think_tags(
@@ -604,17 +611,17 @@ async def chat_stream(
             f"按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
             f"话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 <= {summary_budget} 字。"
         )
-        json_template = '"summary": "<按上述规则生成的实际摘要>"'
+        example_fields = '"summary": "按上述规则生成的实际摘要"'
         if need_title:
-            json_template += ', "title": "<6-12 个汉字的对话标题>"'
+            example_fields += ', "title": "6-12 个汉字的对话标题"'
         full_messages.append({
             "role": "system",
             "content": (
                 f"{summary_rules}\n\n"
                 "重要：正文回答必须使用自然语言，禁止在正文中使用 [Topic:] 格式。\n\n"
-                "完成正文回答后，必须在末尾紧接输出以下 JSON（用真实内容替换尖括号占位符，不要输出其他文字）：\n"
-                f"{META_SENTINEL}\n"
-                f"{{{json_template}}}"
+                f"完成正文回答后，紧接输出以下 XML 元数据标签（包括完整的 {META_TAG_OPEN} "
+                f"起始标签和 {META_TAG_CLOSE} 结束标签，标签名一字不漏，标签外不要输出任何字符）：\n"
+                f"{META_TAG_OPEN}{{{example_fields}}}{META_TAG_CLOSE}"
             ),
         })
 
