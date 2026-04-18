@@ -36,7 +36,7 @@ import re
 from typing import AsyncGenerator
 
 from db.supabase import get_supabase, reset_supabase, run_db as _db
-from services.llm_client import chat_stream, merge_summary, classify_search_intent
+from services.llm_client import chat_stream, merge_summary, classify_search_intent, META_TAG_OPEN, META_TAG_CLOSE
 from services.context_builder import build_context, _budget_for_depth
 from services.search_service import search as searxng_search, inject_search_results
 
@@ -71,21 +71,18 @@ async def cancel_background_tasks() -> None:
     _bg_tasks.clear()
 
 
-# 匹配模型实际输出的 sentinel，以及模型偷懒跳过 sentinel 直接输出裸 JSON 的情况。
-# Matches the META sentinel, plus the fallback case where the model skips the sentinel
-# and emits bare JSON like `\n{"summary": "..."}` directly after the body.
-# 裸 JSON 必须是「换行 + {」开头，且首个键是 summary/title，以降低误伤正常包含 JSON 的回答。
-# The bare-JSON branch requires a preceding newline and summary/title as the first key
-# to avoid stripping legitimate JSON snippets inside normal answers.
-_SENTINEL_RE = re.compile(
-    r'<<<META>>+|\n\s{0,4}\{\s{0,4}"(?:summary|title)"\s{0,4}:'
-)
+# 匹配 META 元数据 XML 起始标签 <deeppin_meta>。
+# Matches the META metadata XML opening tag <deeppin_meta>.
+# 用独有标识符避免被弱模型当 placeholder 简化（旧的 <<<META>>> 会被吞成 META）。
+# Using a unique identifier prevents weak models from "simplifying" it as a placeholder
+# (the old <<<META>>> sentinel was being collapsed to bare META by some free-tier models).
+_SENTINEL_RE = re.compile(re.escape(META_TAG_OPEN))
 
-# 流式输出时，末尾需要保留的最大字节数 —— 覆盖上面正则所有可能的匹配前缀，
-# 避免把 sentinel 的前半段提前 yield 给前端后再发现要截断。
-# Max tail bytes to withhold while streaming — must cover every possible match prefix
-# of _SENTINEL_RE so we never yield the first half of a sentinel before detecting it.
-_SENTINEL_LEN = 24
+# 流式输出时末尾保留的最大字节数 = 起始标签长度 - 1，
+# 避免把标签前半段提前 yield 给前端后才发现要截断。
+# Max tail bytes withheld while streaming = open-tag length - 1, so we never
+# yield the first half of the opening tag before detecting the full match.
+_SENTINEL_LEN = len(META_TAG_OPEN)
 
 # 每 N 轮写一次对话 embedding（本地模型无额外成本，设为 1 即每轮都写）
 # Write conversation embedding every N rounds (local model has no extra cost; 1 = every round)
@@ -110,8 +107,8 @@ def _parse_meta(raw: str) -> dict:
          Regex field extraction for summary and title
     """
     raw = raw.strip()
-    # 去掉可能的末尾标记 / Strip possible trailing marker
-    raw = raw.replace("<<<END>>>", "").strip()
+    # 去掉结束标签和历史末尾标记 / Strip closing tag and legacy trailing markers
+    raw = raw.replace(META_TAG_CLOSE, "").replace("<<<END>>>", "").strip()
 
     # 尝试直接解析 / Try direct parse
     try:
@@ -343,20 +340,13 @@ async def stream_and_save(
 
             m = _SENTINEL_RE.search(buffer)
             if m:
-                # 找到 META sentinel（<<<META>>> 变体）或裸 JSON fallback。
-                # Matched either a <<<META>>> sentinel variant or the bare-JSON fallback.
+                # 找到 <deeppin_meta> 起始标签：截断正文，进入 META 模式。
+                # Found <deeppin_meta> opening tag: truncate body and enter META mode.
                 before = buffer[:m.start()]
                 if before:
                     full_content += before
                     yield _sse("chunk", {"content": before})
-                if m.group().startswith("<"):
-                    # sentinel 分支：整段丢弃 / Sentinel branch: discard the whole marker
-                    meta_str = buffer[m.end():]
-                else:
-                    # 裸 JSON 分支：保留从 `{` 起的内容供 json.loads 使用
-                    # Bare-JSON branch: keep from `{` onwards so json.loads can parse
-                    brace_idx = buffer.index("{", m.start())
-                    meta_str = buffer[brace_idx:]
+                meta_str = buffer[m.end():]
                 in_meta = True
                 buffer = ""
             else:

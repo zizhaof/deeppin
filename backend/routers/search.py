@@ -18,7 +18,6 @@ POST /api/search
 from __future__ import annotations
 
 import json
-import re
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
@@ -30,16 +29,6 @@ from services.llm_client import chat_stream
 from services.search_service import search as searxng_search
 
 router = APIRouter()
-
-# 匹配 META sentinel，以及模型偷懒跳过 sentinel 直接输出裸 JSON 的情况。
-# Matches the META sentinel, plus the fallback where the model skips the sentinel
-# and emits bare JSON like `\n{"summary": "..."}` directly after the body.
-_SENTINEL_RE = re.compile(
-    r'<<<META>>+|\n\s{0,4}\{\s{0,4}"(?:summary|title)"\s{0,4}:'
-)
-# 末尾需要保留的最大字节数，覆盖正则所有可能的匹配前缀。
-# Max tail bytes to withhold; must cover every possible match prefix of _SENTINEL_RE.
-_SENTINEL_LEN = 24
 
 
 class SearchRequest(BaseModel):
@@ -84,49 +73,17 @@ async def _search_stream(query: str) -> AsyncGenerator[str, None]:
 
     context = _build_context(query, results)
 
-    # 流式生成（不注入 META 块，搜索结果不写 DB）
-    # Stream generation without META injection; search results are not persisted
-    buffer = ""
-    full_content = ""
-    in_meta = False
-
+    # 流式生成：传 inject_meta=False，模型不会被要求输出 META 标签，
+    # 搜索结果也不写 DB，因此可以直接 forward 每个 chunk。
+    # Stream generation: inject_meta=False so the model is never instructed to
+    # emit a META tag. Search results are not persisted, so each chunk can be
+    # forwarded straight to the client.
     try:
         async for chunk in chat_stream(context, inject_meta=False):
-            if in_meta:
-                continue  # 保险处理，搜索流不应出现 META / Safety guard; META should not appear in search stream
-
-            buffer += chunk
-            m = _SENTINEL_RE.search(buffer)
-            if m:
-                # 找到 META sentinel（支持 >> / >>> 变体）
-                # Found META sentinel (handles >> / >>> variants)
-                before = buffer[:m.start()]
-                if before:
-                    full_content += before
-                    yield _sse("chunk", {"content": before})
-                in_meta = True
-                buffer = ""
-            else:
-                # 只输出不可能是 sentinel 开头的安全部分
-                # Only emit the portion that cannot be the start of the sentinel
-                safe_len = max(0, len(buffer) - (_SENTINEL_LEN - 1))
-                if safe_len > 0:
-                    safe_part = buffer[:safe_len]
-                    full_content += safe_part
-                    yield _sse("chunk", {"content": safe_part})
-                    buffer = buffer[safe_len:]
-
+            yield _sse("chunk", {"content": chunk})
     except Exception as exc:
-        if buffer and not in_meta:
-            full_content += buffer
         yield _sse("error", {"message": f"AI 生成失败 / AI generation failed: {exc}"})
         return
-
-    # 冲刷末尾 buffer（正常结束且模型未输出 META 的情况）
-    # Flush the remaining buffer (normal end without META output)
-    if buffer and not in_meta:
-        full_content += buffer
-        yield _sse("chunk", {"content": buffer})
 
     yield _sse("done", {"message_id": None})
 

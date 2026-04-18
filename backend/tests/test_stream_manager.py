@@ -67,6 +67,19 @@ class TestParseMeta:
         result = self._call(raw)
         assert result.get("summary") == "test"
 
+    def test_close_tag_stripped(self):
+        """</deeppin_meta> 关闭标签在解析前被去掉 / </deeppin_meta> closing tag is stripped before parsing."""
+        raw = '{"summary": "x", "title": "y"}</deeppin_meta>'
+        result = self._call(raw)
+        assert result.get("summary") == "x"
+        assert result.get("title") == "y"
+
+    def test_close_tag_with_trailing_whitespace(self):
+        """关闭标签后还有空白也能正确剥离 / Trailing whitespace after the closing tag is also handled."""
+        raw = '{"summary": "x"}</deeppin_meta>\n\n  '
+        result = self._call(raw)
+        assert result.get("summary") == "x"
+
     def test_regex_fallback_extracts_fields(self):
         """完全无效的 JSON 时正则提取字段 / Regex extracts fields from completely invalid JSON."""
         raw = 'garbage {"summary": "正则提取", "title": "标题"} more garbage'
@@ -162,13 +175,7 @@ class TestMetaSentinelStripping:
             if m:
                 before = buffer[:m.start()]
                 full_content += before
-                if m.group().startswith("<"):
-                    meta_str = buffer[m.end():]
-                else:
-                    # 裸 JSON 分支保留 `{` 起的内容以便 JSON 解析。
-                    # Bare-JSON branch: keep from `{` onwards for JSON parsing.
-                    brace_idx = buffer.index("{", m.start())
-                    meta_str = buffer[brace_idx:]
+                meta_str = buffer[m.end():]
                 in_meta = True
                 buffer = ""
             else:
@@ -189,22 +196,23 @@ class TestMetaSentinelStripping:
         assert content == "Hello world!"
         assert meta == ""
 
-    def test_meta_sentinel_in_single_chunk(self):
-        """META sentinel 在单个 chunk 中出现，正文截断正确 / META sentinel in a single chunk; body is correctly truncated."""
-        from services.llm_client import META_SENTINEL
-        chunks = [f"正文内容{META_SENTINEL}{{\"summary\":\"摘要\"}}"]
+    def test_meta_tag_in_single_chunk(self):
+        """META 起始标签在单个 chunk 中出现，正文截断正确 / META open tag in a single chunk; body is correctly truncated."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        chunks = [f'正文内容{META_TAG_OPEN}{{"summary":"摘要"}}{META_TAG_CLOSE}']
         content, meta = self._simulate_stream(chunks)
         assert content == "正文内容"
         assert "summary" in meta
+        # 关闭标签随 meta_str 一起被收集，留给 _parse_meta 剥离
+        # Closing tag is collected as part of meta_str; _parse_meta strips it later
+        assert META_TAG_CLOSE in meta
 
-    def test_meta_sentinel_split_across_chunks(self):
-        """META sentinel 跨 chunk 边界时也能被检测到 / META sentinel spanning a chunk boundary is still detected."""
-        from services.llm_client import META_SENTINEL
-        # 将 sentinel 拆成两半
-        # Split the sentinel in half
-        half = len(META_SENTINEL) // 2
-        part1 = "正文" + META_SENTINEL[:half]
-        part2 = META_SENTINEL[half:] + '{"summary":"摘要"}'
+    def test_meta_tag_split_across_chunks(self):
+        """起始标签跨 chunk 边界时也能被检测到 / Open tag spanning a chunk boundary is still detected."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        half = len(META_TAG_OPEN) // 2
+        part1 = "正文" + META_TAG_OPEN[:half]
+        part2 = META_TAG_OPEN[half:] + '{"summary":"摘要"}' + META_TAG_CLOSE
         chunks = [part1, part2]
         content, meta = self._simulate_stream(chunks)
         assert content == "正文"
@@ -217,66 +225,33 @@ class TestMetaSentinelStripping:
         assert meta == ""
 
     def test_content_before_and_after_meta(self):
-        """META 之前的内容保留，之后的内容丢弃 / Content before META is kept; content after is discarded."""
-        from services.llm_client import META_SENTINEL
-        chunks = [f"保留内容{META_SENTINEL}丢弃内容"]
+        """META 之前的内容保留，之后的内容（含整个 META 块）丢弃 / Content before META is kept; META block (and everything after) is discarded from body."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        chunks = [f"保留内容{META_TAG_OPEN}丢弃内容{META_TAG_CLOSE}"]
         content, meta = self._simulate_stream(chunks)
         assert "保留内容" in content
         assert "丢弃" not in content
 
-    # ── 裸 JSON fallback（模型跳过 sentinel 的情况）────────────────────
-    # Bare-JSON fallback (model skips the sentinel and outputs JSON directly)
-
-    def test_bare_json_summary_stripped(self):
-        """模型跳过 sentinel 直接输出 JSON 时，JSON 不漏到正文 / Bare JSON without sentinel is stripped from the body."""
+    def test_meta_round_trip_parses(self):
+        """流式截断 + _parse_meta 端到端：标签内 JSON 能正确解析 / End-to-end stripping + _parse_meta: JSON inside the tag parses correctly."""
+        from services.llm_client import META_TAG_OPEN, META_TAG_CLOSE
+        from services.stream_manager import _parse_meta
         chunks = [
-            '从那天起，柳叶成为了村庄中最受尊敬的人。\n\n',
-            '{"summary": "柳叶探索森林的故事", "title": "柳叶和神秘森林"}',
+            f'正文。{META_TAG_OPEN}{{"summary": "摘要内容", "title": "标题"}}{META_TAG_CLOSE}'
         ]
         content, meta = self._simulate_stream(chunks)
-        assert "柳叶成为了村庄中最受尊敬的人" in content
-        assert '"summary"' not in content
-        assert '"title"' not in content
-        assert "柳叶和神秘森林" in meta
-
-    def test_bare_json_meta_parseable(self):
-        """裸 JSON fallback 提取的 meta 仍可被 _parse_meta 解析 / Meta extracted from bare-JSON fallback remains JSON-parseable."""
-        from services.stream_manager import _parse_meta
-        chunks = ['正文。\n{"summary": "摘要内容", "title": "标题"}']
-        content, meta = self._simulate_stream(chunks)
+        assert content == "正文。"
         parsed = _parse_meta(meta)
         assert parsed.get("summary") == "摘要内容"
         assert parsed.get("title") == "标题"
 
-    def test_bare_json_split_across_chunks(self):
-        """裸 JSON 跨 chunk 边界时也能被检测 / Bare-JSON start detected across chunk boundaries."""
-        chunks = ['正文内容。\n{"sum', 'mary": "摘要"}']
-        content, meta = self._simulate_stream(chunks)
-        assert content == "正文内容。"
-        assert '"summary"' in meta
-
-    def test_bare_json_with_leading_whitespace(self):
-        """带前导空白的裸 JSON 也被识别 / Bare JSON with leading whitespace is still matched."""
-        chunks = ['正文\n  {"title": "标题"}']
-        content, meta = self._simulate_stream(chunks)
-        assert content == "正文"
-        assert '"title"' in meta
-
-    def test_bare_json_without_newline_prefix_not_matched(self):
-        """没有换行前缀的 `{` 不触发 fallback（避免误伤正文内的 JSON）/ A `{` without a leading newline is NOT treated as META (avoid false positives)."""
-        chunks = ['参考格式 {"summary": "x"} 这样写。']
+    def test_body_json_without_meta_tag_not_stripped(self):
+        """正文中的普通 JSON 片段不会被误判为 META / Plain JSON snippets in the body are NOT mistaken for META."""
+        chunks = ['某 API 响应格式：\n{"summary": "x", "title": "y"} 这种就是。']
         content, meta = self._simulate_stream(chunks)
         # 整段都是正文 / Entire chunk is body content
         assert '{"summary"' in content
         assert meta == ""
-
-    def test_sentinel_takes_precedence_over_bare_json(self):
-        """同时出现 sentinel 和 JSON 时，sentinel 分支优先且不把 `{` 漏到正文 / Sentinel branch wins; `{` is not leaked into the body."""
-        from services.llm_client import META_SENTINEL
-        chunks = [f'正文{META_SENTINEL}\n{{"summary": "x"}}']
-        content, meta = self._simulate_stream(chunks)
-        assert content == "正文"
-        assert "{" not in content
 
 
 # ── stream_and_save 完整流程（mock DB + LLM）─────────────────────────
