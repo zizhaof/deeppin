@@ -606,6 +606,15 @@ async def chat_stream(
     full_messages = list(messages)
 
     if inject_meta:
+        # 语言规则（最高优先级）：跟随用户最新一条消息的语言，除非该消息明确要求改用其他语言
+        # Language rule (highest priority): follow the user's most recent message's language,
+        # unless that message explicitly requests a different language.
+        language_rule = (
+            "Language rule (highest priority): Reply in the same language as the user's "
+            "most recent message. If that message explicitly requests a different language "
+            '(e.g. "please answer in English", "用中文回答"), follow the explicit request '
+            "instead. Do not be influenced by earlier turns' language."
+        )
         summary_rules = (
             f"内部摘要规则（仅用于下方 JSON，不得出现在正文回答中）："
             f"按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
@@ -613,10 +622,16 @@ async def chat_stream(
         )
         example_fields = '"summary": "按上述规则生成的实际摘要"'
         if need_title:
-            example_fields += ', "title": "6-12 个汉字的对话标题"'
+            # 标题语言与用户一致，长度相当于 6-12 个汉字（约 20-40 个拉丁字符）
+            # Title language follows the user; length ≈ 6–12 Chinese chars (≈ 20–40 latin chars)
+            example_fields += (
+                ', "title": "conversation title in the same language as the user, '
+                'roughly 6-12 Chinese chars or 20-40 latin chars"'
+            )
         full_messages.append({
             "role": "system",
             "content": (
+                f"{language_rule}\n\n"
                 f"{summary_rules}\n\n"
                 "重要：正文回答必须使用自然语言，禁止在正文中使用 [Topic:] 格式。\n\n"
                 f"完成正文回答后，紧接输出以下 XML 元数据标签（包括完整的 {META_TAG_OPEN} "
