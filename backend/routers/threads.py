@@ -24,11 +24,11 @@ from fastapi.responses import StreamingResponse
 logger = logging.getLogger(__name__)
 
 from db.supabase import get_supabase
-from dependencies.auth import get_current_user
+from dependencies.auth import CurrentUser, get_current_user, get_current_user_full
 from models.thread import CreateThreadRequest, Thread
 from models.message import ChatRequest
 from services.llm_client import generate_title_and_suggestions
-from services.stream_manager import stream_and_save
+from services.stream_manager import ANON_TURN_LIMIT, stream_and_save
 
 router = APIRouter()
 
@@ -287,7 +287,11 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
 
 
 @router.post("/threads/{thread_id}/autostart")
-async def autostart_thread(thread_id: uuid.UUID, body: ChatRequest, auth=Depends(get_current_user)):
+async def autostart_thread(
+    thread_id: uuid.UUID,
+    body: ChatRequest,
+    user: CurrentUser = Depends(get_current_user_full),
+):
     """
     自动向子线程发送第一条消息（建议问题），流式返回 AI 回复。
     Auto-send the first message (a suggested question) to a sub-thread; stream back the AI reply.
@@ -295,17 +299,40 @@ async def autostart_thread(thread_id: uuid.UUID, body: ChatRequest, auth=Depends
     SSE 格式与 /api/threads/{id}/chat 完全一致。
     SSE format is identical to /api/threads/{id}/chat.
     """
-    _user_id, sb = auth
+    sb = user.sb
 
-    # 验证线程存在且属于当前用户（RLS 自动过滤）
+    # 验证线程存在且属于当前用户（RLS 自动过滤）；同时取 session_id 做匿名额度判定 + 记账
+    # Verify thread exists + belongs to user (RLS); also grab session_id for quota gating + accounting.
     thread_res = await _db(lambda: (
-        sb.table("threads").select("id").eq("id", str(thread_id)).maybe_single().execute()
+        sb.table("threads").select("id, session_id").eq("id", str(thread_id)).maybe_single().execute()
     ))
     if not thread_res or not thread_res.data:
         raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
 
+    session_id: str | None = thread_res.data.get("session_id")
+
+    # 匿名用户额度检查（与 /chat 一致逻辑）
+    # Anonymous quota check (same logic as /chat).
+    if user.is_anonymous and session_id:
+        session_res = await _db(lambda: (
+            sb.table("sessions").select("turn_count").eq("id", session_id).maybe_single().execute()
+        ))
+        turn_count = (session_res.data or {}).get("turn_count", 0) if session_res else 0
+        if turn_count >= ANON_TURN_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "anon_quota_exceeded",
+                    "limit": ANON_TURN_LIMIT,
+                    "message": (
+                        "已达到免费试用上限，登录后继续对话（已有消息会保留）。"
+                        " / Free-trial limit reached. Sign in to continue — your conversation will be kept."
+                    ),
+                },
+            )
+
     return StreamingResponse(
-        stream_and_save(str(thread_id), body.content),
+        stream_and_save(str(thread_id), body.content, session_id=session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
