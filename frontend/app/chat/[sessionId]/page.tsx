@@ -455,6 +455,17 @@ export default function ChatPage() {
     }
   }, [sessions.length]);
 
+  // ── 新建对话：匿名用户弹登录引导，登录用户直接跳新 UUID ───────────
+  // New chat: anon users get the sign-in prompt; signed-in users go straight to a fresh UUID.
+  const handleNewChat = useCallback(() => {
+    if (isAnon) {
+      setQuotaModal({ variant: "session" });
+      return;
+    }
+    const id = crypto.randomUUID();
+    router.push(`/chat/${id}`);
+  }, [isAnon, router]);
+
   const handleDeleteSession = useCallback(async (sid: string) => {
     if (!window.confirm(t.confirmDelete)) return;
     try {
@@ -677,6 +688,7 @@ export default function ChatPage() {
         lang={lang}
         onToggleLang={toggleLang}
         onOpenSessions={handleOpenSessions}
+        onNewChat={handleNewChat}
       />
 
       {/* drawable area — SVG 在此范围内，不包含 InputBar，避免引导线污染输入框 */}
@@ -1079,6 +1091,7 @@ export default function ChatPage() {
         t={t}
         onDelete={handleDeleteSession}
         isAnon={isAnon}
+        onAnonNewChat={() => setQuotaModal({ variant: "session" })}
       />
 
       <QuotaExceededModal

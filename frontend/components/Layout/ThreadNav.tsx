@@ -22,6 +22,9 @@ interface Props {
   lang: Lang;
   onToggleLang: () => void;
   onOpenSessions: () => void;
+  /** 顶栏「新对话」按钮的点击回调；匿名用户在上层弹登录引导，登录用户直接 router.push 新 UUID。
+   *  Handler for the topbar "new chat" button; parent branches on isAnon. */
+  onNewChat: () => void;
 }
 
 export default function ThreadNav({
@@ -34,6 +37,7 @@ export default function ThreadNav({
   onSelect,
   onToggleLang,
   onOpenSessions,
+  onNewChat,
 }: Props) {
   const t = useT();
   const router = useRouter();
@@ -81,6 +85,18 @@ export default function ThreadNav({
           <line x1="3" y1="6" x2="21" y2="6" />
           <line x1="3" y1="12" x2="21" y2="12" />
           <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* 新对话按钮 — 登录用户直接新建；匿名用户由上层弹登录引导 */}
+      {/* New chat — signed-in goes straight to a new UUID; anon triggers the sign-in modal in the parent */}
+      <button
+        onClick={onNewChat}
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group cursor-pointer"
+        title={t.newChat}
+      >
+        <svg className="w-3.5 h-3.5 text-faint group-hover:text-md transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
 

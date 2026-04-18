@@ -264,7 +264,7 @@ export default function HomePage() {
       </div>
 
       {/* 抽屉 */}
-      <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} isAnon={isAnon} />
+      <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} isAnon={isAnon} onAnonNewChat={() => setQuotaModal({})} />
 
       {/* 顶栏 */}
       <header className="relative z-10 border-b border-subtle px-4 py-3 flex items-center justify-between">

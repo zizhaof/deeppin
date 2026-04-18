@@ -23,20 +23,29 @@ interface Props {
   currentSessionId?: string;
   t: T;
   onDelete?: (sessionId: string) => void;
-  /** 匿名用户只能开 1 个 session，隐藏「新对话」按钮免得点了就弹配额窗。
-   *  Anon users are capped at 1 session — hide the "new chat" button to avoid dead-end clicks. */
+  /** 当前用户是否匿名；匿名点「新对话」时走 onAnonNewChat（通常弹登录引导）。
+   *  Anon flag — clicks on "new chat" delegate to onAnonNewChat (typically a sign-in modal). */
   isAnon?: boolean;
+  /** 匿名用户点「新对话」时的回调；不传则按默认逻辑新建（会撞 402）。
+   *  Handler for anon "new chat" clicks; falls through to default create if omitted. */
+  onAnonNewChat?: () => void;
 }
 
-export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t, onDelete, isAnon = false }: Props) {
+export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t, onDelete, isAnon = false, onAnonNewChat }: Props) {
   const router = useRouter();
 
   // 对话中直接新建：生成 UUID → 跳 /chat/<id>，由目标页 init() 走 getSession→404→createSession 流程。
   // 不绕主页，避免打断「我正在某个对话里，想马上开新对话」的体感。
   // In-chat new session: pre-generate a UUID and jump straight to /chat/<id>.
   // The target page's init() handles the DB create on 404, so we skip the home-page detour.
+  // 匿名用户先走父组件的 onAnonNewChat（展示登录引导），避免硬撞 1-session 上限。
+  // Anon users delegate to onAnonNewChat (sign-in prompt) instead of hitting the 1-session cap.
   const handleNewChat = () => {
     onClose();
+    if (isAnon && onAnonNewChat) {
+      onAnonNewChat();
+      return;
+    }
     const id = crypto.randomUUID();
     router.push(`/chat/${id}`);
   };
@@ -131,21 +140,19 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
           )}
         </div>
 
-        {/* 底部：新对话按钮（匿名用户隐藏，避免点了就撞 1-session 上限）
-         *  New-chat button — hidden for anon users since they're capped at 1 session */}
-        {!isAnon && (
-          <div className="px-3 py-3 border-t border-subtle flex-shrink-0">
-            <button
-              onClick={handleNewChat}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-dim hover:text-md hover:bg-glass border border-subtle hover:border-base transition-all"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              {t.newChat}
-            </button>
-          </div>
-        )}
+        {/* 底部：新对话按钮（对所有用户可见；匿名点击由父组件弹登录引导）
+         *  New-chat button — visible to all; anon clicks trigger the sign-in prompt via parent */}
+        <div className="px-3 py-3 border-t border-subtle flex-shrink-0">
+          <button
+            onClick={handleNewChat}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-dim hover:text-md hover:bg-glass border border-subtle hover:border-base transition-all"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {t.newChat}
+          </button>
+        </div>
       </div>
     </>
   );
