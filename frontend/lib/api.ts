@@ -18,22 +18,46 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
+ * 带结构化 detail 的 API 错误（402/403 匿名配额相关路径用）。
+ * API error carrying structured detail (used by 402/403 anon-quota paths).
+ */
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/**
  * 检查响应状态，401 时跳转登录页（token 在长会话中过期时触发）。
  * Check response status; redirect to login on 401 (fires when token expires during a long session).
- * 读取 JSON body 中的 detail 字段，给用户展示有意义的错误信息。
- * Reads the detail field from the JSON body to surface meaningful error messages to the user.
+ * 读取 JSON body 中的 detail 字段。detail 可能是字符串，也可能是 {code, message, ...} 结构体
+ * （匿名配额相关的 402/403 走后者）。
+ * Reads the detail field; it may be a string or a {code, message, ...} object
+ * (anon-quota 402/403 uses the object form).
  */
 async function assertOk(res: Response, errorMessage: string): Promise<void> {
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined") {
       window.location.href = "/login";
     }
-    let detail = "";
+    let message = `${errorMessage}: ${res.status}`;
+    let code: string | undefined;
     try {
       const body = await res.json();
-      detail = body?.detail ?? "";
+      const detail = body?.detail;
+      if (detail && typeof detail === "object") {
+        code = (detail as { code?: string }).code;
+        message = (detail as { message?: string }).message ?? message;
+      } else if (typeof detail === "string" && detail) {
+        message = detail;
+      }
     } catch { /* ignore parse errors */ }
-    throw new Error(detail || `${errorMessage}: ${res.status}`);
+    throw new ApiError(message, res.status, code);
   }
 }
 
@@ -41,6 +65,7 @@ export interface Session {
   id: string;
   title: string | null;
   created_at: string;
+  turn_count?: number;
   threads?: Thread[];
 }
 

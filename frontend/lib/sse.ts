@@ -18,13 +18,35 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
-/** 检查 SSE 响应状态，401 时跳转登录页。*/
-function assertSseOk(res: Response, onError: (msg: string) => void): boolean {
+/** 非 SSE 路径的错误信息（被 onError 附带返回给调用方）。
+ *  Structured error info emitted alongside the message (for quota-type 402/403 handling).
+ */
+export type SseErrorInfo = { status?: number; code?: string };
+
+/** 检查 SSE 响应状态，401 跳登录；402/403 解析结构化 detail 传回调用方。
+ *  On non-2xx: parse detail for a `code` so the caller can trigger quota modal etc.
+ */
+async function assertSseOk(
+  res: Response,
+  onError: (msg: string, info?: SseErrorInfo) => void,
+): Promise<boolean> {
   if (!res.ok || !res.body) {
     if (res.status === 401 && typeof window !== "undefined") {
       window.location.href = "/login";
     }
-    onError(`HTTP ${res.status}`);
+    let message = `HTTP ${res.status}`;
+    let code: string | undefined;
+    try {
+      const body = await res.clone().json();
+      const detail = body?.detail;
+      if (detail && typeof detail === "object") {
+        code = (detail as { code?: string }).code;
+        message = (detail as { message?: string }).message ?? message;
+      } else if (typeof detail === "string" && detail) {
+        message = detail;
+      }
+    } catch { /* ignore */ }
+    onError(message, { status: res.status, code });
     return false;
   }
   return true;
@@ -64,7 +86,7 @@ export async function sendMergeStream(
     }),
   });
 
-  if (!assertSseOk(res, onError)) return;
+  if (!(await assertSseOk(res, onError))) return;
 
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
@@ -113,7 +135,7 @@ export async function sendSearchStream(
     body: JSON.stringify({ query }),
   });
 
-  if (!assertSseOk(res, onError)) return;
+  if (!(await assertSseOk(res, onError))) return;
 
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
@@ -144,7 +166,7 @@ export async function sendMessageStream(
   content: string,
   onChunk: (chunk: string) => void,
   onDone: (fullText: string, messageId: string | null, model?: string | null) => void,
-  onError: (message: string) => void,
+  onError: (message: string, info?: SseErrorInfo) => void,
   onThreadTitle?: (threadId: string, title: string) => void,
   onStatus?: (text: string) => void,
   attachmentFilename?: string,
@@ -158,7 +180,7 @@ export async function sendMessageStream(
     }),
   });
 
-  if (!assertSseOk(res, onError)) return;
+  if (!(await assertSseOk(res, onError))) return;
 
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();

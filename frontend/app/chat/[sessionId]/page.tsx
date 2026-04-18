@@ -4,9 +4,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession, flattenSession } from "@/lib/api";
+import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession, flattenSession, ApiError } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { sendMessageStream } from "@/lib/sse";
+import type { SseErrorInfo } from "@/lib/sse";
+import QuotaExceededModal from "@/components/QuotaExceededModal";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT, useLangStore } from "@/stores/useLangStore";
 import MessageList from "@/components/MainThread/MessageList";
@@ -197,6 +199,12 @@ export default function ChatPage() {
   const scrollFrameRef = useRef<number | null>(null);
   const [sideMetrics, setSideMetrics] = useState({ offset: 0, height: 600, mainHeight: 600 });
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  /** 当前登录用户是否匿名；影响「新对话」按钮可见性 + 配额弹窗文案。
+   *  Whether the current user is anonymous — gates in-chat "new session" button + quota modal. */
+  const [isAnon, setIsAnon] = useState(false);
+  /** 额度用尽弹窗。variant 决定是 20 轮用尽 (quota) 还是多开 session (session)。
+   *  Quota-exceeded modal; variant picks between trial-turns vs session-cap copy. */
+  const [quotaModal, setQuotaModal] = useState<{ variant: "quota" | "session"; message?: string } | null>(null);
 
   const mainThread = threads.find((t) => t.parent_thread_id === null);
   const activeThread = activeThreadId ? threads.find((t) => t.id === activeThreadId) : null;
@@ -227,6 +235,9 @@ export default function ChatPage() {
         return;
       }
       setUserAvatarUrl(authSession.user.user_metadata?.avatar_url ?? null);
+      // is_anonymous 可能不存在（老版本 supabase-js），缺失则按「非匿名」处理
+      // is_anonymous may be absent on older supabase-js; treat missing as non-anon
+      setIsAnon(Boolean((authSession.user as { is_anonymous?: boolean }).is_anonymous));
 
       try {
         // 若 session 尚未写入 DB（首页预热只生成了 UUID），先创建再加载。
@@ -236,7 +247,17 @@ export default function ChatPage() {
           await getSession(sessionId);
         } catch {
           // 404（或其他错误）：用预生成的 sessionId 在 DB 中创建 session
-          await createSession({ id: sessionId });
+          // 匿名用户已有 1 个 session 时会 402 anon_session_limit
+          // Anon users hitting the 1-session cap get 402 anon_session_limit here
+          try {
+            await createSession({ id: sessionId });
+          } catch (err) {
+            if (err instanceof ApiError && err.code === "anon_session_limit") {
+              if (!cancelled) setQuotaModal({ variant: "session", message: err.message });
+              return;
+            }
+            throw err;
+          }
         }
 
         // session（含 threads）和全部消息并行加载，1 次网络往返
@@ -368,6 +389,22 @@ export default function ChatPage() {
   // 注意：所有消息都走 sendMessageStream（存库路径）。
   // 联网搜索由后端 classify_search_intent 自动判断，前端不再路由到无状态的 /api/search。
   // 这样确保所有对话（包括搜索类查询）都能持久化，刷新后不丢失。
+  // 统一处理流式错误：匿名额度用尽 → 弹配额登录弹窗；其他 → 常规错误显示。
+  // Unified stream error handler: quota exceeded opens the sign-in modal; others fall back to existing error UI.
+  const makeStreamErrorHandler = useCallback(
+    (threadId: string, surfaceError: boolean) =>
+      (msg: string, info?: SseErrorInfo) => {
+        if (info?.code === "anon_quota_exceeded") {
+          finalizeStream(threadId, "");
+          setQuotaModal({ variant: "quota", message: msg });
+          return;
+        }
+        finalizeStream(threadId, `${t.streamError} ${msg}`);
+        if (surfaceError) setError(msg);
+      },
+    [finalizeStream, t.streamError],
+  );
+
   const handleSend = async (content: string, display?: string, ragFilename?: string) => {
     if (!activeThreadId || isStreaming) return;
     addUserMessage(activeThreadId, display ?? content);
@@ -379,7 +416,7 @@ export default function ChatPage() {
       content,
       (chunk) => appendChunk(threadId, chunk),
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
-      (msg) => { finalizeStream(threadId, `${t.streamError} ${msg}`); setError(msg); },
+      makeStreamErrorHandler(threadId, true),
       (tid, title) => updateThreadTitle(tid, title),
       (text) => setStreamStatus(threadId, text),
       ragFilename,
@@ -395,11 +432,11 @@ export default function ChatPage() {
       question,
       (chunk) => appendChunk(threadId, chunk),
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
-      (msg) => finalizeStream(threadId, `${t.streamError} ${msg}`),
+      makeStreamErrorHandler(threadId, false),
       undefined,
       (text) => setStreamStatus(threadId, text),
     );
-  }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus]);
+  }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler]);
 
   // ── 点击锚点进入子线程 ──────────────────────────────────────────
   const handleAnchorClick = useCallback((threadId: string) => {
@@ -1041,6 +1078,14 @@ export default function ChatPage() {
         currentSessionId={sessionId}
         t={t}
         onDelete={handleDeleteSession}
+        isAnon={isAnon}
+      />
+
+      <QuotaExceededModal
+        open={quotaModal !== null}
+        variant={quotaModal?.variant ?? "quota"}
+        message={quotaModal?.message}
+        onClose={() => setQuotaModal(null)}
       />
     </>
   );

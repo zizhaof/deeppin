@@ -126,6 +126,13 @@ const zh = {
   flattenSuccess: "扁平化完成：合并 {count} 条针",
   flattenAlready: "已扁平化，无需重复操作",
   flattenError: "扁平化失败：",
+  // 匿名试用
+  anonQuotaTitle: "免费试用已达上限",
+  anonQuotaDesc: "登录后即可继续对话，已有消息会保留。",
+  anonSessionLimitTitle: "试用仅支持 1 个对话",
+  anonSessionLimitDesc: "登录后可开启任意多个对话，历史消息不会丢失。",
+  signInGoogle: "用 Google 登录",
+  later: "稍后",
 } as const;
 
 const en = {
@@ -231,6 +238,12 @@ const en = {
   flattenSuccess: "Flattened: merged {count} pin(s)",
   flattenAlready: "Already flattened",
   flattenError: "Flatten failed: ",
+  anonQuotaTitle: "Free trial limit reached",
+  anonQuotaDesc: "Sign in to keep chatting — your conversation will be kept.",
+  anonSessionLimitTitle: "Free trial: 1 conversation",
+  anonSessionLimitDesc: "Sign in to start as many conversations as you want — nothing is lost.",
+  signInGoogle: "Sign in with Google",
+  later: "Later",
 } as const;
 
 export const translations = { zh, en } as const;

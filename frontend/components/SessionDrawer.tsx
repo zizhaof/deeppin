@@ -23,10 +23,23 @@ interface Props {
   currentSessionId?: string;
   t: T;
   onDelete?: (sessionId: string) => void;
+  /** 匿名用户只能开 1 个 session，隐藏「新对话」按钮免得点了就弹配额窗。
+   *  Anon users are capped at 1 session — hide the "new chat" button to avoid dead-end clicks. */
+  isAnon?: boolean;
 }
 
-export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t, onDelete }: Props) {
+export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t, onDelete, isAnon = false }: Props) {
   const router = useRouter();
+
+  // 对话中直接新建：生成 UUID → 跳 /chat/<id>，由目标页 init() 走 getSession→404→createSession 流程。
+  // 不绕主页，避免打断「我正在某个对话里，想马上开新对话」的体感。
+  // In-chat new session: pre-generate a UUID and jump straight to /chat/<id>.
+  // The target page's init() handles the DB create on 404, so we skip the home-page detour.
+  const handleNewChat = () => {
+    onClose();
+    const id = crypto.randomUUID();
+    router.push(`/chat/${id}`);
+  };
 
   return (
     <>
@@ -118,18 +131,21 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
           )}
         </div>
 
-        {/* 底部：新对话按钮 */}
-        <div className="px-3 py-3 border-t border-subtle flex-shrink-0">
-          <button
-            onClick={() => { onClose(); router.push("/"); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-dim hover:text-md hover:bg-glass border border-subtle hover:border-base transition-all"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            {t.newChat}
-          </button>
-        </div>
+        {/* 底部：新对话按钮（匿名用户隐藏，避免点了就撞 1-session 上限）
+         *  New-chat button — hidden for anon users since they're capped at 1 session */}
+        {!isAnon && (
+          <div className="px-3 py-3 border-t border-subtle flex-shrink-0">
+            <button
+              onClick={handleNewChat}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-dim hover:text-md hover:bg-glass border border-subtle hover:border-base transition-all"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              {t.newChat}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
