@@ -116,6 +116,16 @@ const zh = {
   // MergeDemo
   pinsReady: "根针已就绪",
   mergeOutput: "合并输出",
+  // 扁平化（破坏性：把所有子线程并回主线，删除所有针）
+  flattenButton: "扁平化",
+  flattenConfirmTitle: "扁平化此会话？",
+  flattenConfirmBody: "所有子线程的对话将按 preorder 合并回主线，所有插针会被移除。\n\n此操作无法撤销。",
+  flattenConfirmCta: "确认扁平化",
+  flattenCancel: "取消",
+  flattening: "正在扁平化…",
+  flattenSuccess: "扁平化完成：合并 {count} 条针",
+  flattenAlready: "已扁平化，无需重复操作",
+  flattenError: "扁平化失败：",
 } as const;
 
 const en = {
@@ -212,6 +222,15 @@ const en = {
   confirmDelete: "Delete this session? This cannot be undone.",
   pinsReady: "pins ready",
   mergeOutput: "Merge Output",
+  flattenButton: "Flatten",
+  flattenConfirmTitle: "Flatten this session?",
+  flattenConfirmBody: "All sub-thread messages will be merged back into the main thread in preorder, and every pin will be removed.\n\nThis cannot be undone.",
+  flattenConfirmCta: "Confirm flatten",
+  flattenCancel: "Cancel",
+  flattening: "Flattening…",
+  flattenSuccess: "Flattened: merged {count} pin(s)",
+  flattenAlready: "Already flattened",
+  flattenError: "Flatten failed: ",
 } as const;
 
 export const translations = { zh, en } as const;

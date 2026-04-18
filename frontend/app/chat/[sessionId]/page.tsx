@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession } from "@/lib/api";
+import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession, flattenSession } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { sendMessageStream } from "@/lib/sse";
 import { useThreadStore } from "@/stores/useThreadStore";
@@ -85,6 +85,9 @@ export default function ChatPage() {
   const [webSearch, setWebSearch] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [showFlattenConfirm, setShowFlattenConfirm] = useState(false);
+  const [flattening, setFlattening] = useState(false);
+  const [flattenToast, setFlattenToast] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
@@ -112,6 +115,47 @@ export default function ChatPage() {
     navigateTo(threadId);
     localStorage.setItem(`deeppin:last-thread:${sessionId}`, threadId);
   }, [navigateTo, sessionId]);
+
+  // 扁平化：调用后端，重新加载 session（threads 列表只剩主线，主线消息按 preorder 重排）
+  // Flatten: call backend, reload session (threads list collapses to main only, main messages reordered by preorder)
+  const handleFlatten = useCallback(async () => {
+    setFlattening(true);
+    setFlattenToast(null);
+    try {
+      const result = await flattenSession(sessionId);
+      const [refreshed, msgMap] = await Promise.all([
+        getSession(sessionId),
+        getAllMessages(sessionId),
+      ]);
+      const allThreads = refreshed.threads ?? [];
+      setThreads(allThreads);
+      for (const t of allThreads) {
+        setMessages(t.id, msgMap[t.id] ?? []);
+      }
+      const main = allThreads.find((t) => t.parent_thread_id === null);
+      if (main) {
+        navigateTo(main.id);
+        localStorage.setItem(`deeppin:last-thread:${sessionId}`, main.id);
+      }
+      setShowFlattenConfirm(false);
+      setFlattenToast(
+        result.already_flattened
+          ? t.flattenAlready
+          : t.flattenSuccess.replace("{count}", String(result.flattened_thread_count)),
+      );
+    } catch (e) {
+      setFlattenToast(t.flattenError + (e instanceof Error ? e.message : t.unknownError));
+    } finally {
+      setFlattening(false);
+    }
+  }, [sessionId, setThreads, setMessages, navigateTo, t]);
+
+  // toast 自动消失 / Auto-dismiss the flatten toast
+  useEffect(() => {
+    if (!flattenToast) return;
+    const id = setTimeout(() => setFlattenToast(null), 3500);
+    return () => clearTimeout(id);
+  }, [flattenToast]);
 
   // 侧栏宽度（可拖拽调整）
   const [leftW, setLeftW] = useState(() =>
@@ -714,6 +758,19 @@ export default function ChatPage() {
                   <span className="text-[10px] font-medium">{t.mergeButton}</span>
                 </button>
               )}
+              {pinCount > 0 && (
+                <button
+                  onClick={() => setShowFlattenConfirm(true)}
+                  disabled={flattening}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-400/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="扁平化：把所有子线程并回主线（不可逆） / Flatten: merge all sub-threads back into main (irreversible)"
+                >
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" />
+                  </svg>
+                  <span className="text-[10px] font-medium">{t.flattenButton}</span>
+                </button>
+              )}
             </div>
             {rightView === "dots" ? (
               <ThreadTree
@@ -927,6 +984,53 @@ export default function ChatPage() {
           pinCount={pinCount}
           onClose={() => setShowMerge(false)}
         />
+      )}
+
+      {/* 扁平化确认弹窗 — 破坏性操作，必须二次确认 */}
+      {/* Flatten confirmation — destructive, requires second-step confirmation */}
+      {showFlattenConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => !flattening && setShowFlattenConfirm(false)}
+        >
+          <div
+            className="max-w-md w-[90vw] rounded-lg border border-amber-500/40 bg-surface-95 shadow-xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM9.75 3.75L1.5 18a1.5 1.5 0 001.31 2.25h18.38A1.5 1.5 0 0022.5 18L14.25 3.75a1.5 1.5 0 00-2.5 0z" />
+              </svg>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-md">{t.flattenConfirmTitle}</h3>
+                <p className="mt-2 text-xs text-dim whitespace-pre-line leading-relaxed">{t.flattenConfirmBody}</p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowFlattenConfirm(false)}
+                disabled={flattening}
+                className="px-3 py-1.5 text-xs rounded-md text-dim hover:text-md hover:bg-glass-md transition-colors disabled:opacity-50"
+              >
+                {t.flattenCancel}
+              </button>
+              <button
+                onClick={handleFlatten}
+                disabled={flattening}
+                className="px-3 py-1.5 text-xs rounded-md font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {flattening ? t.flattening : t.flattenConfirmCta}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* toast：扁平化结果提示 / flatten result toast */}
+      {flattenToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-md bg-surface-95 border border-subtle shadow-lg text-xs text-md">
+          {flattenToast}
+        </div>
       )}
 
       <SessionDrawer

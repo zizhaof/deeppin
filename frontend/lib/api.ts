@@ -219,6 +219,25 @@ export async function deleteAccount(): Promise<void> {
   }
 }
 
+/**
+ * 扁平化 session：把所有子线程消息按 preorder DFS 合并回主线，子线程标记为 flattened（tombstone）。
+ * Flatten the session: merge all sub-thread messages back into the main thread via preorder DFS;
+ * mark sub-threads as flattened (tombstone). **不可逆 / Irreversible.**
+ */
+export async function flattenSession(sessionId: string): Promise<{
+  main_thread_id: string;
+  flattened_thread_count: number;
+  message_count: number;
+  already_flattened: boolean;
+}> {
+  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/flatten`, {
+    method: "POST",
+    headers: await getAuthHeaders(),
+  });
+  await assertOk(res, "扁平化失败");
+  return res.json();
+}
+
 /** 上传附件，后端异步提取文本并向量化（不返回文本内容，通过 RAG 检索注入 context） */
 export async function uploadAttachment(
   sessionId: string,
