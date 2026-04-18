@@ -118,7 +118,7 @@ export const articles: Article[] = [
           { type: "p", text: "路由层负责接请求、返响应；服务层负责真正的业务逻辑。7 个服务模块是后端的核心。" },
 
           { type: "h2", text: "3.1 llm_client.py — SmartRouter 智能路由" },
-          { type: "p", text: "系统中所有 LLM 调用的统一入口。内置 SmartRouter，管理 4 家 Provider（Groq、Cerebras、SambaNova、Gemini）的多个模型和多个 API key。" },
+          { type: "p", text: "系统中所有 LLM 调用的统一入口。内置 SmartRouter，管理 5 家 Provider（Groq、Cerebras、SambaNova、Gemini、OpenRouter）共 15 个模型和多个 API key。" },
           { type: "code", text: "调用方（stream_manager / search / merge）\n        │\n        ▼\n  SmartRouter._pick_slot(group)\n        │\n        ├── 按 score 排序所有 slot\n        ├── score = min(RPM剩余%, TPM剩余%, RPD剩余%)\n        ├── 最近失败的 slot 额外惩罚（30s半衰期）\n        └── 全部耗尽 → 选恢复最快的 slot\n        │\n        ▼\n  litellm.acompletion(model, messages, api_key)\n        │\n        ├── 成功 → record_success()\n        └── 失败 → record_failure() → 重试下一个 slot\n                    └── 当前 group 全部失败 → fallback 链" },
           { type: "p", text: "模型按用途分为 4 组：chat（主对话）、merge（合并输出）、summarizer（摘要/分类）、vision（图片理解）。Fallback 链：chat→summarizer，merge→chat→summarizer。" },
           { type: "p", text: "何时工作：系统中每一次 LLM 调用都经过 SmartRouter——主对话、摘要、合并、搜索意图分类、子线程标题生成、相关性评估。" },
@@ -190,12 +190,13 @@ export const articles: Article[] = [
           { type: "h1", text: "六、外部 AI 服务" },
 
           { type: "h2", text: "6.1 LLM Provider 池" },
-          { type: "p", text: "SmartRouter 管理 4 家 Provider，全部使用免费 tier：" },
+          { type: "p", text: "SmartRouter 管理 5 家 Provider，全部使用免费 tier：" },
           { type: "ul", items: [
-            "Groq — 主力 Provider，7 个模型（llama-3.3-70b、llama-4-scout、qwen3-32b 等），速度快",
-            "Cerebras — 1 个模型（llama3.1-8b），60K TPM，适合 summarizer",
+            "Groq — 主力 Provider，5 个模型（llama-3.3-70b、llama-4-scout、qwen3-32b、gpt-oss-120b、llama-3.1-8b-instant），速度快",
+            "Cerebras — 2 个模型（qwen-3-235b、llama3.1-8b），60K TPM，适合 summarizer 和大上下文",
             "SambaNova — 2 个模型（Llama-3.3-70B、Llama-4-Maverick），100K TPM，高吞吐",
-            "Gemini — 2 个模型（gemini-2.5-flash/flash-lite），250K TPM，超大吞吐量",
+            "Gemini — 2 个模型（gemini-2.5-flash/flash-lite），250K TPM，日限额按 Pacific Time 00:00 重置",
+            "OpenRouter — 4 个 :free 模型（nemotron、gpt-oss-120b、llama-3.3-70b、hermes-3-405b），作为兜底 slot",
           ]},
           { type: "p", text: "所有 Provider 通过 LiteLLM 统一调用格式（provider/model_id），SmartRouter 根据实时用量打分选择最优 slot。" },
 
@@ -213,7 +214,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "八、一次完整请求的组件调用链" },
           { type: "p", text: "用户在子线程中发送一条消息，涉及的全部组件：" },
-          { type: "code", text: "浏览器 InputBar\n  → lib/sse.ts（建立 SSE 连接）\n    → Nginx（TLS 终止 + 转发）\n      → stream.py（路由入口）\n        → stream_manager.py（编排）\n          ├── Supabase：保存用户消息\n          ├── context_builder.py：构建上下文\n          │    ├── Supabase：读祖先链 + 摘要 + 历史消息\n          │    └── memory_service.py：RAG 检索\n          │         ├── embedding_service.py：查询向量化（bge-m3）\n          │         └── Supabase：pgvector 相似度搜索\n          ├── llm_client.py → SmartRouter\n          │    → LiteLLM → Groq/Cerebras/SambaNova/Gemini\n          ├── Supabase：保存 assistant 消息\n          └── 后台任务：\n               ├── Supabase：写摘要\n               └── embedding_service → Supabase：写对话记忆" },
+          { type: "code", text: "浏览器 InputBar\n  → lib/sse.ts（建立 SSE 连接）\n    → Nginx（TLS 终止 + 转发）\n      → stream.py（路由入口）\n        → stream_manager.py（编排）\n          ├── Supabase：保存用户消息\n          ├── context_builder.py：构建上下文\n          │    ├── Supabase：读祖先链 + 摘要 + 历史消息\n          │    └── memory_service.py：RAG 检索\n          │         ├── embedding_service.py：查询向量化（bge-m3）\n          │         └── Supabase：pgvector 相似度搜索\n          ├── llm_client.py → SmartRouter\n          │    → LiteLLM → Groq/Cerebras/SambaNova/Gemini/OpenRouter\n          ├── Supabase：保存 assistant 消息\n          └── 后台任务：\n               ├── Supabase：写摘要\n               └── embedding_service → Supabase：写对话记忆" },
           { type: "p", text: "一条消息，12 个组件协作，全部在 2-5 秒内完成。用户看到的是流式逐字出现的 AI 回复。" },
         ],
       },
@@ -298,7 +299,7 @@ export const articles: Article[] = [
           { type: "p", text: "The route layer handles requests and responses; the service layer handles the actual business logic. The 7 service modules are the backend's core." },
 
           { type: "h2", text: "3.1 llm_client.py — SmartRouter" },
-          { type: "p", text: "The unified entry point for every LLM call in the system. Houses the SmartRouter, which manages models and API keys across 4 providers (Groq, Cerebras, SambaNova, Gemini)." },
+          { type: "p", text: "The unified entry point for every LLM call in the system. Houses the SmartRouter, which manages 15 models and multiple API keys across 5 providers (Groq, Cerebras, SambaNova, Gemini, OpenRouter)." },
           { type: "code", text: "Caller (stream_manager / search / merge)\n        |\n        v\n  SmartRouter._pick_slot(group)\n        |\n        |-- Score all slots by availability\n        |-- score = min(RPM_remaining%, TPM_remaining%, RPD_remaining%)\n        |-- Recently failed slots get extra penalty (30s half-life)\n        +-- All exhausted -> pick slot with soonest recovery\n        |\n        v\n  litellm.acompletion(model, messages, api_key)\n        |\n        |-- Success -> record_success()\n        +-- Failure -> record_failure() -> retry next slot\n                        +-- All slots in group failed -> fallback chain" },
           { type: "p", text: "Models are grouped into 4 tiers: chat (main conversations), merge (merge output), summarizer (summaries/classification), vision (image understanding). Fallback chain: chat->summarizer, merge->chat->summarizer." },
           { type: "p", text: "When it works: every single LLM call goes through SmartRouter — main chat, summaries, merge, search intent classification, sub-thread title generation, relevance assessment." },
@@ -370,12 +371,13 @@ export const articles: Article[] = [
           { type: "h1", text: "Part 6 — External AI services" },
 
           { type: "h2", text: "6.1 LLM provider pool" },
-          { type: "p", text: "SmartRouter manages 4 providers, all on free tiers:" },
+          { type: "p", text: "SmartRouter manages 5 providers, all on free tiers:" },
           { type: "ul", items: [
-            "Groq — Primary provider, 7 models (llama-3.3-70b, llama-4-scout, qwen3-32b, etc.), fast inference",
-            "Cerebras — 1 model (llama3.1-8b), 60K TPM, great for summarizer tasks",
+            "Groq — Primary provider, 5 models (llama-3.3-70b, llama-4-scout, qwen3-32b, gpt-oss-120b, llama-3.1-8b-instant), fast inference",
+            "Cerebras — 2 models (qwen-3-235b, llama3.1-8b), 60K TPM, great for summarizer and long-context tasks",
             "SambaNova — 2 models (Llama-3.3-70B, Llama-4-Maverick), 100K TPM, high throughput",
-            "Gemini — 2 models (gemini-2.5-flash/flash-lite), 250K TPM, highest throughput",
+            "Gemini — 2 models (gemini-2.5-flash/flash-lite), 250K TPM, daily quota resets at Pacific Time 00:00",
+            "OpenRouter — 4 :free models (nemotron, gpt-oss-120b, llama-3.3-70b, hermes-3-405b), used as backup slots",
           ]},
           { type: "p", text: "All providers are called through LiteLLM's unified format (provider/model_id). SmartRouter scores each slot based on real-time usage and picks the best one." },
 
@@ -393,7 +395,7 @@ export const articles: Article[] = [
 
           { type: "h1", text: "Part 8 — Full request call chain" },
           { type: "p", text: "When a user sends a message in a sub-thread, every component involved:" },
-          { type: "code", text: "Browser InputBar\n  -> lib/sse.ts (establish SSE connection)\n    -> Nginx (TLS termination + forwarding)\n      -> stream.py (route entry)\n        -> stream_manager.py (orchestration)\n          |-- Supabase: save user message\n          |-- context_builder.py: build context\n          |    |-- Supabase: read ancestor chain + summaries + history\n          |    +-- memory_service.py: RAG retrieval\n          |         |-- embedding_service.py: vectorize query (bge-m3)\n          |         +-- Supabase: pgvector similarity search\n          |-- llm_client.py -> SmartRouter\n          |    -> LiteLLM -> Groq/Cerebras/SambaNova/Gemini\n          |-- Supabase: save assistant message\n          +-- Background tasks:\n               |-- Supabase: write summary\n               +-- embedding_service -> Supabase: write conversation memory" },
+          { type: "code", text: "Browser InputBar\n  -> lib/sse.ts (establish SSE connection)\n    -> Nginx (TLS termination + forwarding)\n      -> stream.py (route entry)\n        -> stream_manager.py (orchestration)\n          |-- Supabase: save user message\n          |-- context_builder.py: build context\n          |    |-- Supabase: read ancestor chain + summaries + history\n          |    +-- memory_service.py: RAG retrieval\n          |         |-- embedding_service.py: vectorize query (bge-m3)\n          |         +-- Supabase: pgvector similarity search\n          |-- llm_client.py -> SmartRouter\n          |    -> LiteLLM -> Groq/Cerebras/SambaNova/Gemini/OpenRouter\n          |-- Supabase: save assistant message\n          +-- Background tasks:\n               |-- Supabase: write summary\n               +-- embedding_service -> Supabase: write conversation memory" },
           { type: "p", text: "One message, 12 components working together, all completing within 2–5 seconds. What the user sees is an AI reply streaming in character by character." },
         ],
       },
@@ -2083,14 +2085,14 @@ export const articles: Article[] = [
 
           { type: "h2", text: "聚合健康检查（/health）" },
           { type: "p", text: "整个部署流程的核心是 /health 端点。Docker healthcheck 每 15 秒调用它，它并发探测所有外部依赖：" },
-          { type: "code", text: "# health.py — 并发检查所有组件\nsearxng_ok, supabase_ok, embedding_info, groq_info = await asyncio.gather(\n    _check_searxng(),      # SearXNG 搜索引擎可达\n    _check_supabase(),     # Supabase 数据库连接正常\n    _check_embedding(),    # bge-m3 模型加载成功，维度 1024，语义相似度 > 0.5\n    _check_groq(),         # Groq API key 有效，能发请求\n)\n\nall_ok = searxng_ok and supabase_ok and embedding_info[\"ok\"] and groq_info[\"ok\"]\n# 200 = healthy, 503 = degraded → Docker 标记 unhealthy" },
+          { type: "code", text: "# health.py — 并发检查所有组件\n# 2026-04-16 起移除 LLM 探测：provider 侧限流经常让这层误报 unhealthy，\n# 拖垮 nginx depends_on 的启动链；改由零 quota 的 /health/providers/keys 覆盖 key 合法性。\nsearxng_ok, supabase_ok, embedding_info = await asyncio.gather(\n    _check_searxng(),      # SearXNG 搜索引擎可达\n    _check_supabase(),     # Supabase 数据库连接正常\n    _check_embedding(),    # bge-m3 模型加载成功，维度 1024，语义相似度 > 0.5\n)\n\nall_ok = searxng_ok and supabase_ok and embedding_info[\"ok\"]\n# 200 = healthy, 503 = degraded → Docker 标记 unhealthy" },
           { type: "p", text: "Nginx 的 depends_on 设为 condition: service_healthy，意味着只有当 backend + 所有依赖都正常时，Nginx 才启动接收流量。用户永远不会看到半启动的服务。" },
 
           { type: "h2", text: "Smoke Test" },
           { type: "p", text: "部署完成后立即运行一个 bash 脚本，从外部 HTTPS 入口验证端到端连通性：" },
           { type: "ul", items: [
             "HTTPS 可达 + 返回合法 JSON",
-            "backend / searxng / supabase / embedding / groq 各组件状态为 true",
+            "backend / searxng / supabase / embedding 各组件状态为 true（LLM key 合法性由零 quota 的 /health/providers/keys 单独覆盖）",
             "嵌入模型维度 1024、模型名包含 bge-m3",
             "未授权请求正确返回 401",
           ]},
@@ -2185,14 +2187,14 @@ export const articles: Article[] = [
 
           { type: "h2", text: "Aggregated health check (/health)" },
           { type: "p", text: "The entire deployment flow hinges on the /health endpoint. Docker healthcheck calls it every 15 seconds, and it concurrently probes all external dependencies:" },
-          { type: "code", text: "# health.py — concurrent component checks\nsearxng_ok, supabase_ok, embedding_info, groq_info = await asyncio.gather(\n    _check_searxng(),      # SearXNG search engine reachable\n    _check_supabase(),     # Supabase database connection healthy\n    _check_embedding(),    # bge-m3 model loaded, dim=1024, similarity > 0.5\n    _check_groq(),         # Groq API key valid, can make requests\n)\n\nall_ok = searxng_ok and supabase_ok and embedding_info[\"ok\"] and groq_info[\"ok\"]\n# 200 = healthy, 503 = degraded → Docker marks unhealthy" },
+          { type: "code", text: "# health.py — concurrent component checks\n# LLM probe removed 2026-04-16: provider-side rate limits caused spurious unhealthy\n# flags that tripped nginx's depends_on chain. Key validity now lives in the zero-quota\n# /health/providers/keys endpoint instead.\nsearxng_ok, supabase_ok, embedding_info = await asyncio.gather(\n    _check_searxng(),      # SearXNG search engine reachable\n    _check_supabase(),     # Supabase database connection healthy\n    _check_embedding(),    # bge-m3 model loaded, dim=1024, similarity > 0.5\n)\n\nall_ok = searxng_ok and supabase_ok and embedding_info[\"ok\"]\n# 200 = healthy, 503 = degraded → Docker marks unhealthy" },
           { type: "p", text: "Nginx's depends_on is set to condition: service_healthy, meaning it only starts accepting traffic when the backend and all its dependencies are healthy. Users never see a half-initialized service." },
 
           { type: "h2", text: "Smoke test" },
           { type: "p", text: "Immediately after deployment, a bash script verifies end-to-end connectivity from the external HTTPS endpoint:" },
           { type: "ul", items: [
             "HTTPS reachable + returns valid JSON",
-            "backend / searxng / supabase / embedding / groq all report true",
+            "backend / searxng / supabase / embedding all report true (LLM key validity is covered separately by the zero-quota /health/providers/keys)",
             "Embedding model dimension is 1024, model name contains bge-m3",
             "Unauthenticated request correctly returns 401",
           ]},
@@ -2549,6 +2551,482 @@ export const articles: Article[] = [
           { type: "h1", text: "6. Closing" },
           { type: "p", text: "Monitoring has a characteristic ROI curve: all investment upfront (instrumentation, stack setup, dashboard tuning) with no direct value for a long time. Then one day there's an incident and it saves you. After that, every subsequent incident compounds the value." },
           { type: "p", text: "That's what SOPs are for: they turn \"monitoring can save you\" from \"if you happen to remember where to look that day\" into \"follow the procedure, locate the issue in three minutes\". Dashboards are the tool; the SOP is the muscle memory." },
+        ],
+      },
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // 流式与协议 / Streaming & protocol
+  // ─────────────────────────────────────────────────────────────
+
+  {
+    slug: "meta-tag-streaming",
+    title: {
+      zh: "把结构化元数据夹在正文里：<deeppin_meta> 是怎么替掉 <<<META>>> 的",
+      en: "Smuggling Structured Metadata Through the Reply: Why <deeppin_meta> Replaced <<<META>>>",
+    },
+    date: "2026-04-18",
+    summary: {
+      zh: "Deeppin 让模型在正文末尾紧跟一段 JSON（summary + title），省掉「正文一次、摘要再一次」的双调用。但免费 tier 的弱模型把 <<<META>>> 当成占位符吞了，改成 <deeppin_meta> 才稳住。顺便讲清楚流式解析里 tail-buffer 的防偷跑技巧。",
+      en: "Deeppin has the model append a JSON block (summary + title) right after the main reply, collapsing two LLM calls into one. Free-tier models mangled <<<META>>> by treating chevrons as placeholder syntax, so we swapped to <deeppin_meta>. Along the way: the tail-buffer trick that prevents the sentinel from leaking to the client mid-stream.",
+    },
+    tags: ["streaming", "SSE", "prompt-engineering"],
+    content: {
+      zh: {
+        title: "把结构化元数据夹在正文里：<deeppin_meta> 是怎么替掉 <<<META>>> 的",
+        body: [
+          { type: "p", text: "每轮对话结束后，Deeppin 要做两件事：更新线程摘要、（主线首轮时）生成会话标题。最直接的实现是——正文流完之后再起一轮 LLM 调用，让它吐出 summary + title。这会把用户感知到的响应时间直接翻倍，而且摘要模型和主对话的上下文不一致，摘要质量还更差。" },
+          { type: "p", text: "Deeppin 走的是另一条路：让主对话模型在正文末尾紧接一段 JSON 元数据，stream_manager 在流式传输时实时把这段 JSON 从输出里截掉，用户看不到，后端拿到之后直接写库。一次调用、两份输出、零额外延迟。" },
+
+          { type: "h1", text: "一、Prompt 层：告诉模型怎么输出" },
+          { type: "p", text: "chat_stream() 在 messages 数组末尾追加一条 system 消息，指令很简洁：" },
+          { type: "code", text: "内部摘要规则（仅用于下方 JSON，不得出现在正文回答中）：\n按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；\n话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 <= {summary_budget} 字。\n\n重要：正文回答必须使用自然语言，禁止在正文中使用 [Topic:] 格式。\n\n完成正文回答后，紧接输出以下 XML 元数据标签\n（包括完整的 <deeppin_meta> 起始标签和 </deeppin_meta> 结束标签，\n标签名一字不漏，标签外不要输出任何字符）：\n<deeppin_meta>{\"summary\": \"...\", \"title\": \"6-12 个汉字的对话标题\"}</deeppin_meta>" },
+          { type: "p", text: "核心约束三条：正文是自然语言、不带 Topic 标签；JSON 只在 XML 标签内；标签之外什么都不许说。" },
+
+          { type: "h1", text: "二、为什么原来的 <<<META>>> 不行" },
+          { type: "p", text: "最早的版本用的是 <<<META>>> 三尖括号作为分隔符，看上去挺醒目。生产上跑一阵后发现一类诡异故障——偶尔有几条对话的末尾，会直接把裸 JSON 暴露给用户看到，像这样：" },
+          { type: "code", text: "...正文最后一句话。\n\nMETA\n{\"summary\": \"...\", \"title\": \"...\"}" },
+          { type: "p", text: "翻日志对照，这些问题都发生在免费 tier 的弱模型上（llama-3.3-70b-versatile、某些 OpenRouter :free 模型）。模型把 <<<META>>> 这种 chevron 包裹的 token 当成了「占位符语法」，自作主张把三个尖括号塞掉了，只剩下中间的 META 字样——和它前面的 sentinel 对不上，stream_manager 不认识，当成正文放出去。" },
+          { type: "p", text: "换成 XML 标签后这个问题消失。`<deeppin_meta>` 是独有标识符，不在模型训练数据的任何 placeholder 模板里；开闭成对，模型把它当普通 XML 处理，不会擅自简化。老的 <<<META>>> 和 <<<END>>> 在 _parse_meta 里还留着兜底 replace，怕历史记录里还有残留。" },
+
+          { type: "h1", text: "三、流式截断的 tail-buffer 技巧" },
+          { type: "p", text: "让模型输出 sentinel 不难，难的是流式环节。SSE 的本质是「每收到一点 token 立即推给前端」，但如果前端先看到 `<deepp` 再看到 `in_meta>{...`，用户就会在屏幕上看见一截 XML 尖头再被清掉——视觉上像闪烁。" },
+          { type: "p", text: "stream_manager 的解法：每轮只 yield 「绝对不可能是 sentinel 起始」的前缀，末尾 (sentinel 长度 - 1) 字节永远留在 buffer 里，等下一个 chunk 拼起来再判。" },
+          { type: "code", text: "_SENTINEL_LEN = len(\"<deeppin_meta>\")  # 14\n\nbuffer = \"\"\nasync for chunk in stream:\n    buffer += chunk\n    m = _SENTINEL_RE.search(buffer)\n    if m:\n        # 命中：截断正文，进入 META 收集模式\n        before = buffer[:m.start()]\n        if before:\n            yield _sse(\"chunk\", {\"content\": before})\n        meta_str = buffer[m.end():]\n        in_meta = True\n        buffer = \"\"\n    else:\n        # 没命中：只推「末尾 13 字节之前」的部分\n        safe_len = max(0, len(buffer) - (_SENTINEL_LEN - 1))\n        if safe_len > 0:\n            yield _sse(\"chunk\", {\"content\": buffer[:safe_len]})\n            buffer = buffer[safe_len:]" },
+          { type: "p", text: "这样不管 sentinel 是整包到达还是被切成两半到达，前端永远看不到 `<deepp` 这种半截。极端情况：模型没输出 META（短回复、推理模型异常），末尾 13 字节会留在 buffer 里；loop 结束后一次性冲刷掉即可。" },
+
+          { type: "h1", text: "四、三层 JSON 兜底解析" },
+          { type: "p", text: "拿到 meta_str（闭合标签之间的原始字符串）之后，不能只信 json.loads。LLM 输出 JSON 的方差非常大——可能漏引号、可能被 max_tokens 截断、可能混入多余换行。_parse_meta 按三层兜底试：" },
+          { type: "code", text: "def _parse_meta(raw: str) -> dict:\n    raw = raw.replace(\"</deeppin_meta>\", \"\").replace(\"<<<END>>>\", \"\").strip()\n\n    # 层 1：直接 json.loads\n    try:\n        return json.loads(raw)\n    except Exception:\n        pass\n\n    # 层 2：补结尾括号再试（典型的截断情况）\n    for candidate in (raw, raw + '\"', raw + '\"}', raw + '}'):\n        try:\n            return json.loads(candidate)\n        except Exception:\n            pass\n\n    # 层 3：正则逐字段提取\n    result = {}\n    for field in (\"summary\", \"title\"):\n        m = re.search(rf'\"{field}\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"', raw)\n        if m:\n            result[field] = m.group(1)\n    return result" },
+          { type: "p", text: "层 1 能覆盖 95% 情况。层 2 专治 max_tokens 截断——补几个引号/大括号就能救回大半的 JSON。只有层 2 也拿不下时，层 3 做最后兜底：不管 JSON 是否闭合，只要 summary 或 title 那对引号还完整，就把字段掏出来。三层都没命中，_parse_meta 返回空字典，后台降级走 merge_summary 单独再调一次 LLM。" },
+
+          { type: "h1", text: "五、后台双路写摘要" },
+          { type: "p", text: "stream_manager 拿到 summary 就 fire-and-forget 进 thread_summaries 表；如果 _parse_meta 返回空，降级到 _fallback_update_summary——读现有摘要、调 merge_summary 合并本轮对话、写回。这是「尽量一次调用，失败再降级」的典型模式。日志里实测降级触发率大概 1-2%，主要发生在 max_tokens 紧的推理模型上。" },
+
+          { type: "h1", text: "六、这套设计值不值" },
+          { type: "ul", items: [
+            "一次调用完成正文 + 摘要 + 标题，节省 30-50% 的背景 LLM 开销",
+            "摘要和主对话共享同一次 context、同一个模型，摘要质量优于「单独 summarizer 事后压缩」",
+            "为代价付出的复杂度：一层 prompt 约束、一层流式 buffer 截断、一层三段式 JSON 兜底——都封装在 stream_manager 里，调用方完全无感",
+          ]},
+          { type: "p", text: "设计没有银弹——把元数据夹在正文里本质上是把 prompt 可靠性换取推理成本下降。如果跑的是闭源 SOTA 模型，单独 summarizer 调用可能更干净；但在 5 家免费 tier 叠加的路由池上，每一次少调用的 LLM 都直接变成「当天多撑几轮对话」。" },
+        ],
+      },
+      en: {
+        title: "Smuggling Structured Metadata Through the Reply: Why <deeppin_meta> Replaced <<<META>>>",
+        body: [
+          { type: "p", text: "After every conversation turn, Deeppin needs to do two things: update the thread summary, and (on the first main-thread round) generate a session title. The straightforward implementation is to fire a second LLM call after the main reply streams, asking for summary + title. That doubles the user-visible response time, and since the summary model doesn't share context with the main chat, summary quality suffers too." },
+          { type: "p", text: "Deeppin takes a different route: the main chat model appends a JSON metadata block right after its reply, and stream_manager strips that block out in real time as it streams. The user never sees it; the backend writes it to the DB after the stream completes. One call, two outputs, zero added latency." },
+
+          { type: "h1", text: "1. Prompt layer: telling the model what to emit" },
+          { type: "p", text: "chat_stream() appends one system message at the end of the messages array:" },
+          { type: "code", text: "Internal summary rules (for the JSON below only; must NOT appear in the visible reply):\nGroup by topic; each line formatted [Topic: name] + key fact/conclusion/detail.\nUnlimited topics; reuse existing topic labels verbatim; match user's language; total <= {summary_budget} characters.\n\nImportant: the visible reply must be natural language; do not use [Topic:] format in it.\n\nAfter the visible reply, append the following XML metadata tag\n(emit the full <deeppin_meta> opening and </deeppin_meta> closing tag exactly,\nno characters outside the tags):\n<deeppin_meta>{\"summary\": \"...\", \"title\": \"6-12 character conversation title\"}</deeppin_meta>" },
+          { type: "p", text: "Three constraints do the work: natural-language reply with no topic markers; JSON strictly inside the XML tags; nothing outside the tags." },
+
+          { type: "h1", text: "2. Why the old <<<META>>> sentinel broke" },
+          { type: "p", text: "The original version used <<<META>>> with triple chevrons — visually striking and unambiguous to a human reader. After a while in production, a weird failure mode showed up: some replies leaked raw JSON to the user like this:" },
+          { type: "code", text: "...final sentence of the reply.\n\nMETA\n{\"summary\": \"...\", \"title\": \"...\"}" },
+          { type: "p", text: "Cross-referencing logs: all failures happened on free-tier weaker models (llama-3.3-70b-versatile, some OpenRouter :free variants). These models treated <<<META>>> as placeholder syntax and helpfully collapsed the chevrons on their own — leaving bare `META` that stream_manager didn't recognize, so it streamed through as normal text." },
+          { type: "p", text: "Switching to XML tags fixed it. `<deeppin_meta>` is a unique identifier that doesn't appear in any placeholder template the model has seen in training; paired open/close tags are handled as ordinary XML and aren't shortened. The legacy <<<META>>> and <<<END>>> markers still live in _parse_meta's cleanup pass, just in case historical rows contain them." },
+
+          { type: "h1", text: "3. The tail-buffer trick for streaming" },
+          { type: "p", text: "Getting the model to emit a sentinel is the easy part. The hard part is the streaming layer. SSE is all about pushing tokens the instant they arrive — but if the frontend receives `<deepp` before `in_meta>{...`, the user briefly sees an XML fragment on screen before it gets wiped. It looks like a flicker." },
+          { type: "p", text: "stream_manager's solution: at each tick, only yield the prefix that couldn't possibly be the start of the sentinel. The last (sentinel length - 1) bytes stay in the buffer until the next chunk arrives." },
+          { type: "code", text: "_SENTINEL_LEN = len(\"<deeppin_meta>\")  # 14\n\nbuffer = \"\"\nasync for chunk in stream:\n    buffer += chunk\n    m = _SENTINEL_RE.search(buffer)\n    if m:\n        # Hit: truncate body, enter META collection mode\n        before = buffer[:m.start()]\n        if before:\n            yield _sse(\"chunk\", {\"content\": before})\n        meta_str = buffer[m.end():]\n        in_meta = True\n        buffer = \"\"\n    else:\n        # No hit: only emit up to (buffer - 13 bytes) from the tail\n        safe_len = max(0, len(buffer) - (_SENTINEL_LEN - 1))\n        if safe_len > 0:\n            yield _sse(\"chunk\", {\"content\": buffer[:safe_len]})\n            buffer = buffer[safe_len:]" },
+          { type: "p", text: "Regardless of whether the sentinel arrives in one chunk or split across two, the frontend never sees a fragment like `<deepp`. Edge case: if the model produces no META at all (short reply, reasoning-model hiccup), 13 tail bytes stay in the buffer and get flushed once the loop ends." },
+
+          { type: "h1", text: "4. Three-tier JSON fallback parse" },
+          { type: "p", text: "Once meta_str (the raw text between tags) is captured, blindly trusting json.loads is unwise. LLM-emitted JSON has wide variance — missing quotes, max_tokens truncation, stray newlines. _parse_meta tries three tiers:" },
+          { type: "code", text: "def _parse_meta(raw: str) -> dict:\n    raw = raw.replace(\"</deeppin_meta>\", \"\").replace(\"<<<END>>>\", \"\").strip()\n\n    # Tier 1: direct json.loads\n    try:\n        return json.loads(raw)\n    except Exception:\n        pass\n\n    # Tier 2: append closing punctuation and retry (classic truncation)\n    for candidate in (raw, raw + '\"', raw + '\"}', raw + '}'):\n        try:\n            return json.loads(candidate)\n        except Exception:\n            pass\n\n    # Tier 3: regex field-by-field extraction\n    result = {}\n    for field in (\"summary\", \"title\"):\n        m = re.search(rf'\"{field}\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"', raw)\n        if m:\n            result[field] = m.group(1)\n    return result" },
+          { type: "p", text: "Tier 1 handles ~95% of cases. Tier 2 rescues max_tokens truncation — appending a quote or brace recovers most truncated JSON. Tier 3 is last-ditch: even if the JSON never closed, as long as the quotes around summary or title are intact, the field gets pulled out. If all three tiers miss, _parse_meta returns an empty dict, and the background task falls back to a separate merge_summary call." },
+
+          { type: "h1", text: "5. Dual-path background summary writes" },
+          { type: "p", text: "When summary is non-empty, stream_manager fire-and-forgets an upsert into thread_summaries. When _parse_meta returns empty, _fallback_update_summary takes over — reads the existing summary, calls merge_summary to fold in this round's exchange, writes it back. Classic \"one-shot path with a graceful degrade.\" In production the fallback fires on roughly 1–2% of turns, mostly on reasoning models with tight max_tokens budgets." },
+
+          { type: "h1", text: "6. Is the complexity worth it?" },
+          { type: "ul", items: [
+            "One LLM call covers reply + summary + title, saving 30–50% of background LLM overhead",
+            "Summary and reply share the same context and model, so summary quality beats a separate summarizer pass",
+            "The cost: a prompt constraint layer, a streaming buffer layer, and a three-tier JSON fallback — all confined to stream_manager and invisible to callers",
+          ]},
+          { type: "p", text: "No free lunch: piggybacking metadata on the reply trades prompt reliability for lower inference cost. On closed-source frontier models, a separate summarizer call might be cleaner. But on Deeppin's pool of five stacked free tiers, every saved LLM call translates directly into more conversation turns before quotas run out." },
+        ],
+      },
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // 运维 / Ops (continued)
+  // ─────────────────────────────────────────────────────────────
+
+  {
+    slug: "image-slim-cpu-torch",
+    title: {
+      zh: "把后端镜像从 30GB 瘦到 4GB：CPU-only torch + HuggingFace 缓存共享卷",
+      en: "Shrinking the Backend Image from 30GB to 4GB: CPU-Only Torch and a Shared HF Cache Volume",
+    },
+    date: "2026-04-18",
+    summary: {
+      zh: "sentence-transformers 默认会装整套 CUDA/cuDNN/Triton，在 Oracle 无 GPU 的 ARM 实例上全是死重。换成 CPU-only torch 瘦身 ~10GB；再把 bge-m3 的 HuggingFace 缓存做成外部共享卷，prod + staging 共用同一份 ~4.3GB 模型文件。",
+      en: "sentence-transformers pulls the full CUDA/cuDNN/Triton stack by default — dead weight on Oracle's GPU-less ARM instance. Swapping to the CPU-only torch wheel saves ~10GB. Promoting the bge-m3 HuggingFace cache to an external shared volume lets prod + staging share one ~4.3GB on-disk copy.",
+    },
+    tags: ["docker", "cost-optimization", "deployment"],
+    content: {
+      zh: {
+        title: "把后端镜像从 30GB 瘦到 4GB：CPU-only torch + HuggingFace 缓存共享卷",
+        body: [
+          { type: "p", text: "Deeppin 后端第一次上线那天，docker build 完的镜像是 30GB 出头。ARM Oracle Free Tier 的块存储只有 200GB，跑 docker image prune 已经是日常操作，再这样下去每次部署都要担心磁盘满。两刀下去瘦到 4GB：一刀砍 torch，一刀重新组织 HuggingFace 缓存。" },
+
+          { type: "h1", text: "一、30GB 都在哪里" },
+          { type: "p", text: "docker history 扒一下，罪魁祸首很明显：" },
+          { type: "code", text: "$ docker history deeppin-backend --no-trunc\n...\n<missing>  pip install -r requirements.txt     26.3 GB\n<missing>  COPY . .                             85 MB\n<missing>  apt-get install libmagic1 curl       18 MB\n<missing>  FROM python:3.11-slim                100 MB" },
+          { type: "p", text: "requirements.txt 里就一行关键依赖 `sentence-transformers`，为什么装出 26GB？pip 会把它所有传递依赖里的 `torch` 当作主 torch 处理——pypi 上默认的 torch wheel 是带 CUDA 的，安装后自动拖下 nvidia-cudnn-cu12、nvidia-cublas-cu12、nvidia-cusparse-cu12、triton、一堆 nvidia-* 包，全部加起来大概 10GB。" },
+          { type: "p", text: "问题是 Oracle Free Tier 的 ARM 实例压根没有 GPU。这 10GB 装了之后永远不会被调用，纯粹是死重。" },
+
+          { type: "h1", text: "二、第一刀：手动先装 CPU-only torch" },
+          { type: "p", text: "PyTorch 的 CPU-only wheel 放在一个独立的 index：download.pytorch.org/whl/cpu。关键技巧是在 requirements.txt 之前先装好 torch，这样后面 pip install -r requirements.txt 的时候 sentence-transformers 看到 torch 已经满足约束，就不会重新解析依赖去拉带 CUDA 的版本。" },
+          { type: "code", text: "# Dockerfile\nFROM python:3.11-slim\n\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    libmagic1 curl \\\n    && rm -rf /var/lib/apt/lists/*\n\n# 先装 CPU-only torch（~200MB），\n# 避免后面 sentence-transformers 默认拖下 ~10GB CUDA 死重\nRUN pip install --no-cache-dir torch==2.10.0 \\\n    --index-url https://download.pytorch.org/whl/cpu\n\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY . .\nEXPOSE 8000\nCMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]" },
+          { type: "p", text: "顺序很关键。`--index-url` 只作用于这一次 pip install 调用，后面的 pip install 默认走 pypi——但此时 torch 已经本地装好了，pip 在解析 requirements 时直接标成「已满足」，不会去 pypi 重装。" },
+          { type: "p", text: "这一刀下去镜像从 30GB 变 ~8GB。" },
+
+          { type: "h1", text: "三、第二刀：bge-m3 模型不进镜像" },
+          { type: "p", text: "剩下 8GB 里大头是 bge-m3 的模型文件——tokenizer、config、多份 safetensors，加起来 ~4.3GB。一开始是在 Dockerfile 里 `RUN python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')\"` 预下载进镜像层。好处是容器启动快；坏处是镜像巨大、每次模型更新都要重新 build。" },
+          { type: "p", text: "改造思路：把模型放进 Docker named volume，从镜像里挪出来。容器启动时检查 volume 有没有模型，没有才从 HuggingFace 下载——一次下载，永久复用。" },
+          { type: "code", text: "# docker-compose.yml\nservices:\n  backend:\n    volumes:\n      - hf-cache:/root/.cache/huggingface\n\nvolumes:\n  hf-cache:\n    external: true\n    name: deeppin-hf-cache   # 必须先手动 docker volume create deeppin-hf-cache" },
+          { type: "p", text: "注意 external: true + 显式 name。Docker Compose 默认会给 volume 加上 project 前缀（变成 deeppin_hf-cache 和 deeppin-staging_hf-cache，两份独立）。加上 external: true 是告诉 compose：这个 volume 由我管，你别动，不要加前缀。" },
+
+          { type: "h1", text: "四、意料之外的好处：prod 和 staging 共享同一份模型" },
+          { type: "p", text: "把 hf-cache 做成外部 volume 之后，prod（compose project = deeppin）和 staging（compose project = deeppin-staging）都挂这个同一物理卷。结果：两个环境共用同一份 bge-m3 模型文件，磁盘上 4.3GB 而不是 8.6GB。" },
+          { type: "p", text: "读冲突？不会。HuggingFace cache 是 read-only 访问模式（模型文件一旦下好就不会改），多容器并发读 mmap 文件完全 OK。写冲突？只有第一次启动才会写，这时也只可能一个容器在下载（另一个还没跑）。" },
+          { type: "p", text: "docker-compose.staging.yml 里不用重新声明这个 volume——compose 的 array merge 会把两个文件的 volume 合并起来，沿用主文件的定义。" },
+
+          { type: "h1", text: "五、启动时间代价" },
+          { type: "p", text: "把模型从镜像里挪出去，第一次启动会多一段「首次下载」的时间。Docker healthcheck 的 start_period 拉到 45s 覆盖这段：" },
+          { type: "code", text: "backend:\n  healthcheck:\n    test: [\"CMD-SHELL\", \"curl -sf http://localhost:8000/health | grep -q 'ok'\"]\n    interval: 15s\n    retries: 5\n    start_period: 45s   # bge-m3 ~4.3GB，首次下载需要时间\n  depends_on: {}" },
+          { type: "p", text: "但共享 volume 之后，「首次」只会发生一次——prod 第一次装完，staging 启动时发现 volume 里已经有模型了，直接 mmap 进内存，启动速度和老方案的镜像内置一样快。" },
+
+          { type: "h1", text: "六、最终账单" },
+          { type: "ul", items: [
+            "镜像大小：30GB → 4GB（-87%）",
+            "磁盘占用（prod + staging 合计）：60GB 镜像 + 8.6GB 模型 → 8GB 镜像 + 4.3GB 模型",
+            "docker push / pull 时间：~15min → ~2min",
+            "构建缓存友好度：改代码不动 torch 层，layer 缓存命中率显著提升",
+          ]},
+          { type: "p", text: "Oracle Free Tier 给了 200GB 块存储，听起来很多，但当你在一台机器上跑 prod + staging + prometheus + grafana + searxng 一堆东西，再加上 docker 自动生成的 overlay2 层和偶尔残留的未清理镜像，空间消耗比想象快得多。镜像瘦身不是为了好看，是为了每次部署不用紧张地盯着 `df -h`。" },
+        ],
+      },
+      en: {
+        title: "Shrinking the Backend Image from 30GB to 4GB: CPU-Only Torch and a Shared HF Cache Volume",
+        body: [
+          { type: "p", text: "On Deeppin's first backend deploy, the built image weighed in at over 30GB. Oracle Free Tier's ARM block storage is 200GB, and I was already running docker image prune daily — another few deploys and I'd be watching df -h nervously. Two cuts brought it down to 4GB: one at torch, one at the HuggingFace cache." },
+
+          { type: "h1", text: "1. Where the 30GB was hiding" },
+          { type: "p", text: "docker history made the culprit obvious:" },
+          { type: "code", text: "$ docker history deeppin-backend --no-trunc\n...\n<missing>  pip install -r requirements.txt     26.3 GB\n<missing>  COPY . .                             85 MB\n<missing>  apt-get install libmagic1 curl       18 MB\n<missing>  FROM python:3.11-slim                100 MB" },
+          { type: "p", text: "The only heavyweight dependency in requirements.txt is `sentence-transformers` — why does it weigh 26GB? pip resolves `torch` as a transitive dependency, and the default torch wheel on pypi is the CUDA build. Installing it drags in nvidia-cudnn-cu12, nvidia-cublas-cu12, nvidia-cusparse-cu12, triton, and a small forest of nvidia-* packages — roughly 10GB combined." },
+          { type: "p", text: "Oracle Free Tier's ARM instance has no GPU. Those 10GB will never be executed — pure dead weight." },
+
+          { type: "h1", text: "2. Cut 1: install the CPU-only torch wheel manually first" },
+          { type: "p", text: "PyTorch publishes a CPU-only wheel on a separate index at download.pytorch.org/whl/cpu. The trick is installing it *before* requirements.txt — when pip later resolves sentence-transformers, torch is already satisfied, so it doesn't re-resolve against pypi and pull CUDA." },
+          { type: "code", text: "# Dockerfile\nFROM python:3.11-slim\n\nWORKDIR /app\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n    libmagic1 curl \\\n    && rm -rf /var/lib/apt/lists/*\n\n# CPU-only torch (~200MB), installed first so the later\n# sentence-transformers install doesn't drag ~10GB of CUDA in\nRUN pip install --no-cache-dir torch==2.10.0 \\\n    --index-url https://download.pytorch.org/whl/cpu\n\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY . .\nEXPOSE 8000\nCMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]" },
+          { type: "p", text: "Ordering is load-bearing. --index-url only applies to that one pip call; later pip installs default back to pypi — but torch is already satisfied locally at that point, so pip marks it as done and doesn't re-fetch." },
+          { type: "p", text: "Cut 1 shrinks the image from 30GB to ~8GB." },
+
+          { type: "h1", text: "3. Cut 2: keep bge-m3 out of the image" },
+          { type: "p", text: "Most of the remaining 8GB is bge-m3 — tokenizer, config, and several safetensors shards totaling ~4.3GB. The original Dockerfile pre-downloaded the model into a layer via `RUN python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')\"`. Pros: fast container startup. Cons: huge image, and every model-swap forces a full rebuild." },
+          { type: "p", text: "New plan: move the model into a Docker named volume. On startup the container checks whether the volume has the model; if not, it downloads from HuggingFace — once, then reused forever." },
+          { type: "code", text: "# docker-compose.yml\nservices:\n  backend:\n    volumes:\n      - hf-cache:/root/.cache/huggingface\n\nvolumes:\n  hf-cache:\n    external: true\n    name: deeppin-hf-cache   # requires: docker volume create deeppin-hf-cache" },
+          { type: "p", text: "Note external: true plus an explicit name. Without them, Docker Compose prefixes volumes with the project name (becoming deeppin_hf-cache for prod and deeppin-staging_hf-cache for staging — two separate volumes). external: true tells compose: hands off, don't prefix it, don't create or delete it." },
+
+          { type: "h1", text: "4. Unplanned win: prod and staging share one model copy" },
+          { type: "p", text: "Once hf-cache is external, prod (compose project deeppin) and staging (compose project deeppin-staging) both mount the same physical volume. Net effect: one 4.3GB bge-m3 on disk serves both environments instead of 8.6GB." },
+          { type: "p", text: "Read contention? None. HuggingFace cache files are read-only post-download; multiple containers mmap them concurrently without issue. Write contention? Only at first-ever boot, and only one container can be the first — by definition the other isn't running yet." },
+          { type: "p", text: "docker-compose.staging.yml doesn't need to redeclare the volume. Compose array-merges the two files, inheriting the main file's definition." },
+
+          { type: "h1", text: "5. Startup time tradeoff" },
+          { type: "p", text: "Taking the model out of the image means the very first boot pays a download cost. Docker's healthcheck start_period is set to 45s to absorb that:" },
+          { type: "code", text: "backend:\n  healthcheck:\n    test: [\"CMD-SHELL\", \"curl -sf http://localhost:8000/health | grep -q 'ok'\"]\n    interval: 15s\n    retries: 5\n    start_period: 45s   # bge-m3 ~4.3GB first download\n  depends_on: {}" },
+          { type: "p", text: "But with a shared volume, \"first ever\" is truly once. After prod completes the initial download, staging (started later) finds the model already present in the volume, mmaps it in, and boots as fast as the old baked-in approach." },
+
+          { type: "h1", text: "6. Final bill" },
+          { type: "ul", items: [
+            "Image size: 30GB → 4GB (-87%)",
+            "Disk usage (prod + staging combined): 60GB images + 8.6GB models → 8GB images + 4.3GB model",
+            "docker push / pull time: ~15min → ~2min",
+            "Build-cache friendliness: code changes don't touch the torch layer, so layer-cache hit rate is much higher",
+          ]},
+          { type: "p", text: "200GB of Oracle block storage sounds like plenty until you're running prod + staging + prometheus + grafana + searxng on the same machine, plus docker's overlay2 layers, plus the occasional orphaned image. Slimming the image isn't cosmetic — it's the difference between casual deploys and glancing at `df -h` before every push." },
+        ],
+      },
+    },
+  },
+
+  {
+    slug: "llm-failure-reasons",
+    title: {
+      zh: "把 LLM 失败分成 6 类：可报警的信号、可观测的 quota、可信的零 quota 校验",
+      en: "Classifying LLM Failures Into 6 Reasons: Actionable Alerts, Observable Quotas, Trusted Zero-Quota Checks",
+    },
+    date: "2026-04-18",
+    summary: {
+      zh: "一个裸 errors 计数器告诉你「出问题了」，但告诉不了你 key 坏了、provider 宕了还是纯粹限流。Deeppin 把 LLM 失败打成 6 类标签，配上零 quota 的 key/catalog 校验端点 + 时区对齐的 RPD 重置，把「429 是噪音还是信号」这件事讲清楚。",
+      en: "A single errors counter tells you \"something's wrong\" but never whether your key broke, the provider is down, or it's just rate limiting. Deeppin labels LLM failures with one of six reasons, pairs them with a zero-quota key/catalog endpoint and timezone-aligned RPD resets, and turns \"is this 429 noise or signal?\" into a well-defined question.",
+    },
+    tags: ["monitoring", "prometheus", "smartrouter", "observability"],
+    content: {
+      zh: {
+        title: "把 LLM 失败分成 6 类：可报警的信号、可观测的 quota、可信的零 quota 校验",
+        body: [
+          { type: "p", text: "SmartRouter 跑在 5 家免费 Provider 的 15 个模型 slot 上，每天承接上千次 LLM 调用，其中一定会有一部分失败。问题是——失败率从 0.5% 涨到 3%，值得起夜吗？要看是什么在失败。Deeppin 在 Prometheus 层给每一次 LLM 失败打上 reason 标签，让「429 是噪音还是信号」变成可查询的问题。" },
+
+          { type: "h1", text: "一、裸 counter 讲不了的故事" },
+          { type: "p", text: "早期 LLM_FAILURES 只有 provider/model/key_prefix 三个标签，counter 加一。看 Grafana 的时候只能得到一个时间序列——「过去一小时总失败数」。这个指标的问题是：" },
+          { type: "ul", items: [
+            "涨了不知道要不要管——可能只是有人故意打满了某个 key 的 RPD，没事",
+            "更可能是某个 key 被 revoke 了，每一次打过去都是 401，需要立刻换 key",
+            "也可能是 provider 宕了（5xx），这时任何重试都无意义",
+            "还可能是网络抖动 / 超时，重试就好",
+          ]},
+          { type: "p", text: "四种场景的处理方式完全不同，但在一个 counter 里面全混在一起。加了 reason 标签之后，Grafana 里直接一张「按 reason 分组」的堆积柱状图，一眼看出今天的失败到底是哪种。" },
+
+          { type: "h1", text: "二、6 类 reason 的定义" },
+          { type: "p", text: "classify_llm_failure 是一个小函数，把任意异常映射到 6 个低基数标签之一：" },
+          { type: "code", text: "def classify_llm_failure(exc: BaseException) -> str:\n    status = getattr(exc, \"status_code\", None)\n    if status == 429:         return \"rate_limit\"\n    if status in (401, 403):  return \"auth\"\n    if isinstance(status, int) and 500 <= status < 600:\n        return \"server_error\"\n\n    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):\n        return \"timeout\"\n    if isinstance(exc, ConnectionError):\n        return \"network\"\n\n    type_name = type(exc).__name__.lower()\n    if \"timeout\" in type_name:  return \"timeout\"\n    if \"connect\" in type_name:  return \"network\"\n\n    return \"other\"" },
+          { type: "ul", items: [
+            "rate_limit（429）— quota 打满，预期之内，会在 seconds_until_recovery 后自动恢复",
+            "auth（401/403）— key 不合法，不会自愈，需要人介入",
+            "server_error（5xx）— provider 宕了，等就行",
+            "timeout — 超时，网络层故障或模型真的太慢，重试下一个 slot",
+            "network — DNS/TCP 层错误，本地网络问题",
+            "other — 兜底，上面都不匹配",
+          ]},
+          { type: "p", text: "分类优先级：先读 HTTP 状态码（最可信），再看内置异常类型（TimeoutError 这种），最后才按异常类名字做子串匹配——这层是为了兜住 httpx.ConnectError、asyncio.CancelledError 这类子类，不用显式 import 所有库的异常类型。" },
+
+          { type: "h1", text: "三、低基数约束" },
+          { type: "p", text: "Prometheus 标签基数爆炸是常见的坑——如果 reason 字段可以是任意字符串（比如 exception 的 message），每个唯一错误都会创建一个新的时间序列，内存会线性增长。" },
+          { type: "code", text: "_VALID_REASONS = frozenset({\n    \"rate_limit\", \"server_error\", \"auth\",\n    \"timeout\", \"network\", \"other\",\n})\n\ndef record_llm_failure(*, provider, model, key_prefix, reason) -> None:\n    if reason not in _VALID_REASONS:\n        reason = \"other\"\n    LLM_FAILURES.labels(provider, model, key_prefix, reason).inc()" },
+          { type: "p", text: "record_llm_failure 在入口处强制折叠：不在白名单里的 reason 全部归为 other。标签基数上限 = provider 数 × model 数 × key 数 × 6 = 小几百，完全可控。" },
+
+          { type: "h1", text: "四、配套：零 quota 的 key 合法性校验" },
+          { type: "p", text: "reason=auth 说明 key 不合法——但 prod 场景下，光等有人打到 401 才知道 key 坏了已经太晚。CI 要在部署前就发现「key 被 revoke」。一个直觉的做法是给每个 key 发一个最小的 LLM 请求验活，但这会消耗 quota——CI 每小时跑一次，一天下来吃掉几百个 RPD 配额。" },
+          { type: "p", text: "GET /health/providers/keys 是零 quota 的替代方案：每个 provider 都有 GET /v1/models 端点（OpenAI 兼容格式）或等价端点（Gemini 的 ?key= query），返回可用模型清单。这个端点不消耗 LLM quota，只校验 key。顺带比对一下 ALL_MODELS 里的 model_id 是不是都还在 provider 清单里。" },
+          { type: "code", text: "_MODELS_ENDPOINTS = {\n    \"groq\":       (\"https://api.groq.com/openai/v1/models\",           \"bearer\"),\n    \"cerebras\":   (\"https://api.cerebras.ai/v1/models\",               \"bearer\"),\n    \"sambanova\":  (\"https://api.sambanova.ai/v1/models\",              \"bearer\"),\n    \"openrouter\": (\"https://openrouter.ai/api/v1/models\",             \"bearer\"),\n    \"gemini\":     (\"https://generativelanguage.googleapis.com/v1beta/models\", \"query\"),\n}\n\n# 每个 (provider, key) 对拉一次 /models：\n#   401/403 → key_valid=False\n#   200 → 比对 configured_model_ids - available 差集\n# 返回 { total, ok, failed, results: [...] }" },
+          { type: "p", text: "Gemini 不是 OpenAI 兼容：它的 auth 是 ?key= query 参数、响应 schema 是 {\"models\": [{\"name\": \"models/...\"}]}。_extract_model_ids 针对 provider 分别解析。返回字段 missing_models 能直接告诉你哪些配置里的模型已经从 provider 端下架——过去几个月我们经历过 SambaNova 批量下架模型、Cerebras 免费 tier 把 gpt-oss 下架，全靠这个端点在 daily CI 里第一时间报警。" },
+
+          { type: "h1", text: "五、配套：时区对齐的 RPD 重置" },
+          { type: "p", text: "reason=rate_limit 的 noise 一部分来自「quota 到底什么时候重置」这件事搞错了。Gemini 的 RPD 按 Pacific Time 00:00 重置，不是 UTC。如果本地窗口是 UTC，晚上 8 点（PT 下午 1 点）看到的剩余配额还很充裕，到 UTC 次日 8 点（PT 凌晨 1 点）才真重置——中间有一段 16 小时都可能误判为耗尽。" },
+          { type: "code", text: "@dataclass\nclass ModelSpec:\n    ...\n    reset_tz: str = \"UTC\"     # Groq/Cerebras/SambaNova/OpenRouter\n    # Gemini：reset_tz=\"America/Los_Angeles\"\n\nclass UsageBucket:\n    def __init__(self, spec: ModelSpec):\n        self._day_date = datetime.now(ZoneInfo(spec.reset_tz)).date()\n\n    def _maybe_reset(self):\n        today = datetime.now(ZoneInfo(self._spec.reset_tz)).date()\n        if today != self._day_date:\n            self.rpd_used = 0\n            self.tpd_used = 0\n            self._day_date = today" },
+          { type: "p", text: "关键是存 date 对象（不是 timestamp）。夏令时切换、UTC 偏移这些场景下，用 date 对象比较永远不会出错——不管钟怎么跳，今天就是今天、昨天就是昨天。比较 timestamp 的话，DST 那一天可能会多出一小时或少一小时，导致本该重置的没重置。" },
+
+          { type: "h1", text: "六、落到 Grafana 上" },
+          { type: "p", text: "按 reason 分组的 panel 几个 PromQL 例子：" },
+          { type: "code", text: "# 过去 5 分钟每 reason 的失败速率\nsum by (reason) (rate(deeppin_llm_failures_total[5m]))\n\n# 某个 key 今天的 auth 失败（用来揪坏 key）\nsum by (key_prefix) (\n  increase(deeppin_llm_failures_total{reason=\"auth\"}[24h])\n)\n\n# 429 率：失败中 rate_limit 的占比\nsum(rate(deeppin_llm_failures_total{reason=\"rate_limit\"}[15m]))\n  / sum(rate(deeppin_llm_failures_total[15m]))" },
+          { type: "p", text: "告警规则现在还没接 Alertmanager，但准备好的规则大概长这样——auth 失败 5 分钟内 > 3 次立刻 page（key 坏了是 unactionable error，必须人介入）；rate_limit 不 page（预期之内）；server_error 持续 15 分钟 > 10% page（provider 出事）。" },
+
+          { type: "h1", text: "七、为什么值得做这一层抽象" },
+          { type: "p", text: "SmartRouter 的设计目标是「任何单点失败不影响可用性」——一个 slot 耗尽 quota 自动切下一个，一个 provider 宕了自动切下一家。但这种设计对 ops 的副作用是：单点失败被消化在路由层内部，外部看起来什么都没发生。reason 标签是把这些「被掩盖的失败」重新拿出来做可观测——它们每一次都在消耗 slot 的重试预算，累积到一定程度会把延迟拖高、把 RPM 打满、甚至让所有 slot 同时耗尽（fallback 链也救不回来）。" },
+          { type: "p", text: "一句话：自愈的系统更需要监控，不然它自愈不下去的那一天你完全不知道为什么。" },
+        ],
+      },
+      en: {
+        title: "Classifying LLM Failures Into 6 Reasons: Actionable Alerts, Observable Quotas, Trusted Zero-Quota Checks",
+        body: [
+          { type: "p", text: "SmartRouter runs across 15 model slots spanning 5 free-tier providers, handling thousands of LLM calls a day. Some fraction always fails. The question is — when the failure rate climbs from 0.5% to 3%, is it worth waking up for? It depends on what's failing. Deeppin tags each LLM failure with a reason label in Prometheus, making \"is this 429 noise or signal?\" a query you can actually answer." },
+
+          { type: "h1", text: "1. What a bare counter can't tell you" },
+          { type: "p", text: "Early on, LLM_FAILURES had three labels: provider, model, key_prefix. Each failure incremented the counter. The Grafana panel showed a single time series — \"total failures in the last hour.\" The problem:" },
+          { type: "ul", items: [
+            "A rising number doesn't tell you whether to care — someone might have just saturated one key's RPD, and that's fine",
+            "Or maybe a key got revoked and every request is returning 401 — urgent, needs a new key",
+            "Or the provider is having a 5xx outage, in which case retrying is pointless",
+            "Or it's a transient network blip and retries work fine",
+          ]},
+          { type: "p", text: "Four scenarios, four completely different responses, all mashed into one counter. With a reason label, a \"by reason\" stacked bar chart immediately shows what kind of failure today's failures actually are." },
+
+          { type: "h1", text: "2. The 6 reasons" },
+          { type: "p", text: "classify_llm_failure is a short function that maps any exception to one of six low-cardinality labels:" },
+          { type: "code", text: "def classify_llm_failure(exc: BaseException) -> str:\n    status = getattr(exc, \"status_code\", None)\n    if status == 429:         return \"rate_limit\"\n    if status in (401, 403):  return \"auth\"\n    if isinstance(status, int) and 500 <= status < 600:\n        return \"server_error\"\n\n    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):\n        return \"timeout\"\n    if isinstance(exc, ConnectionError):\n        return \"network\"\n\n    type_name = type(exc).__name__.lower()\n    if \"timeout\" in type_name:  return \"timeout\"\n    if \"connect\" in type_name:  return \"network\"\n\n    return \"other\"" },
+          { type: "ul", items: [
+            "rate_limit (429) — quota exhausted, expected, recovers automatically after seconds_until_recovery",
+            "auth (401/403) — key rejected, won't self-heal, needs human intervention",
+            "server_error (5xx) — provider-side outage, just wait",
+            "timeout — network-layer failure or model genuinely slow, try the next slot",
+            "network — DNS/TCP errors, local network issue",
+            "other — catch-all for anything unmatched",
+          ]},
+          { type: "p", text: "Classification priority: HTTP status code first (most trustworthy), then built-in exception types (TimeoutError, etc.), then case-insensitive substring matching on the type name — the last layer catches things like httpx.ConnectError and asyncio.CancelledError without needing to import every library's exception hierarchy." },
+
+          { type: "h1", text: "3. Bounded cardinality" },
+          { type: "p", text: "Prometheus cardinality explosions are a classic foot-gun: if the reason field could be any string (say, the exception message), each unique error spawns a new time series and memory grows linearly with variety." },
+          { type: "code", text: "_VALID_REASONS = frozenset({\n    \"rate_limit\", \"server_error\", \"auth\",\n    \"timeout\", \"network\", \"other\",\n})\n\ndef record_llm_failure(*, provider, model, key_prefix, reason) -> None:\n    if reason not in _VALID_REASONS:\n        reason = \"other\"\n    LLM_FAILURES.labels(provider, model, key_prefix, reason).inc()" },
+          { type: "p", text: "record_llm_failure enforces the allowlist at the entry point — anything outside the fixed set collapses to other. Total cardinality = providers × models × keys × 6 = low hundreds. Bounded." },
+
+          { type: "h1", text: "4. Companion: zero-quota key validation" },
+          { type: "p", text: "reason=auth means a key is bad — but waiting for production traffic to hit a 401 is too late. CI wants to catch revoked keys before deploy. The intuitive approach is to send each key a minimal LLM request for liveness; problem is, that eats quota. CI running hourly chews through hundreds of RPD per day." },
+          { type: "p", text: "GET /health/providers/keys is the zero-quota alternative. Every provider exposes a GET /v1/models endpoint (OpenAI-compatible) or equivalent (Gemini's ?key= query). It returns the available model catalog, consumes no LLM quota, and validates the key. As a bonus, we diff the configured ALL_MODELS against the returned catalog." },
+          { type: "code", text: "_MODELS_ENDPOINTS = {\n    \"groq\":       (\"https://api.groq.com/openai/v1/models\",           \"bearer\"),\n    \"cerebras\":   (\"https://api.cerebras.ai/v1/models\",               \"bearer\"),\n    \"sambanova\":  (\"https://api.sambanova.ai/v1/models\",              \"bearer\"),\n    \"openrouter\": (\"https://openrouter.ai/api/v1/models\",             \"bearer\"),\n    \"gemini\":     (\"https://generativelanguage.googleapis.com/v1beta/models\", \"query\"),\n}\n\n# For each (provider, key) pair, fetch /models once:\n#   401/403 → key_valid=False\n#   200 → compute configured_model_ids - available as missing_models\n# Returns { total, ok, failed, results: [...] }" },
+          { type: "p", text: "Gemini isn't OpenAI-compatible: auth goes in ?key= and the schema is {\"models\": [{\"name\": \"models/...\"}]}. _extract_model_ids branches per provider. The missing_models field catches silent upstream catalog drift — over the past few months we've seen SambaNova bulk-retire models and Cerebras yank gpt-oss from the free tier, and this endpoint caught each drift in the daily CI the morning after." },
+
+          { type: "h1", text: "5. Companion: timezone-aligned RPD reset" },
+          { type: "p", text: "Part of the noise in reason=rate_limit comes from getting \"when does the quota reset\" wrong. Gemini resets RPD at Pacific Time 00:00, not UTC. If the local counter rolls over at UTC midnight, you'll see \"quota healthy\" at UTC 8pm (PT 1pm) but hit the real reset at UTC 8am the following day (PT 1am) — a 16-hour window where slot state can mismatch reality." },
+          { type: "code", text: "@dataclass\nclass ModelSpec:\n    ...\n    reset_tz: str = \"UTC\"     # Groq/Cerebras/SambaNova/OpenRouter\n    # Gemini: reset_tz=\"America/Los_Angeles\"\n\nclass UsageBucket:\n    def __init__(self, spec: ModelSpec):\n        self._day_date = datetime.now(ZoneInfo(spec.reset_tz)).date()\n\n    def _maybe_reset(self):\n        today = datetime.now(ZoneInfo(self._spec.reset_tz)).date()\n        if today != self._day_date:\n            self.rpd_used = 0\n            self.tpd_used = 0\n            self._day_date = today" },
+          { type: "p", text: "Key detail: store a date object, not a timestamp. Date comparisons are immune to DST transitions and UTC-offset weirdness — today is today, yesterday is yesterday, regardless of clock jumps. Timestamp comparisons on DST days can be off by an hour, which is how \"reset didn't happen when it should have\" bugs sneak in." },
+
+          { type: "h1", text: "6. Translating to Grafana" },
+          { type: "p", text: "A few PromQL queries for by-reason panels:" },
+          { type: "code", text: "# Failure rate per reason, last 5 minutes\nsum by (reason) (rate(deeppin_llm_failures_total[5m]))\n\n# Auth failures per key today (catches revoked keys)\nsum by (key_prefix) (\n  increase(deeppin_llm_failures_total{reason=\"auth\"}[24h])\n)\n\n# 429 ratio: rate_limit as fraction of all failures\nsum(rate(deeppin_llm_failures_total{reason=\"rate_limit\"}[15m]))\n  / sum(rate(deeppin_llm_failures_total[15m]))" },
+          { type: "p", text: "Alertmanager isn't wired yet, but the planned rules are: auth failures > 3 in 5 minutes → page (unactionable-by-system error, needs human); rate_limit → never page (expected); server_error sustained > 10% for 15 minutes → page (provider is down)." },
+
+          { type: "h1", text: "7. Why this abstraction is worth its weight" },
+          { type: "p", text: "SmartRouter is designed so no single slot failure affects availability — one slot exhausted, pick another; one provider down, fall back to the next. The ops-side side effect is that failures get absorbed invisibly inside the router. The reason label pulls those hidden failures back into view. Each one consumes retry budget, and enough of them compound into higher latency, saturated RPM, or worst case every slot exhausted at once (where even the fallback chain can't save you)." },
+          { type: "p", text: "The short version: self-healing systems need more monitoring, not less. Otherwise the day they stop self-healing, you have no idea why." },
+        ],
+      },
+    },
+  },
+
+  {
+    slug: "staging-asymmetry",
+    title: {
+      zh: "前后端 preview 不对称：Vercel 每分支一个，Oracle 后端只有一个 staging slot",
+      en: "Frontend and Backend Previews Aren't Symmetric: Vercel Per-Branch, Oracle Single Slot",
+    },
+    date: "2026-04-18",
+    summary: {
+      zh: "Vercel 给每个 push 的分支自动起一个 preview，任意并发。Oracle Free Tier 的 24G 内存塞不下几个 bge-m3 后端副本，staging 只有一个坑。这篇讲这种不对称带来的工作流约束——以及为了让 staging 能用，绕了多少个 CI 坑（inputs.branch 必填无默认、PAT 强推 staging 分支让 Vercel 感知、docker compose 多文件叠加）。",
+      en: "Vercel auto-spins a preview for every branch push, any number in parallel. Oracle Free Tier's 24GB RAM can't fit multiple bge-m3 backend copies, so staging has exactly one slot. This post covers the workflow constraints that asymmetry produces — and the CI-side contortions to make staging usable (required-no-default inputs.branch, PAT-pushed staging ref so Vercel's webhook fires, docker compose file overlays).",
+    },
+    tags: ["CI/CD", "staging", "deployment", "docker-compose"],
+    content: {
+      zh: {
+        title: "前后端 preview 不对称：Vercel 每分支一个，Oracle 后端只有一个 staging slot",
+        body: [
+          { type: "p", text: "Deeppin 的部署模型很简单：main 分支 = 线上真源，push 即部 prod。但「合 main 之前在真环境验一下」这件事，前后端的成本完全不同——所以做出来的 preview 机制也完全不对称。这篇讲这种不对称、为什么只能这样、以及怎么在它的约束下工作。" },
+
+          { type: "h1", text: "一、不对称的本质" },
+          { type: "code", text: "                  前端 (Vercel)        后端 (Oracle Free Tier)\n分支独立 URL      ✅ 每个 push 一份     ❌ 只有一个 staging slot\n并发数            ✅ 无上限             ❌ 后部署的覆盖前一个\n触发方式          ✅ push 自动           ❌ 手动 dispatch（GitHub UI / bot / gh CLI）\n冷启动时间        ~20s lambda            ~45s（bge-m3 mmap）\n成本增量（每分支） ≈ 0                   ≈ 4GB RAM + port + subdomain" },
+          { type: "p", text: "为什么差这么多？前端的 preview 本质上是在 Vercel 的 serverless 平台上起一个新 lambda + 加一条 CDN 路由，计算和存储都按需弹。一条分支预览对 Vercel 来说成本几乎为零。后端的 preview 是一个完整的 Docker 容器（FastAPI + bge-m3 4GB 模型加载进内存 + asyncio event loop + SmartRouter），加上独立端口、独立 nginx server block、独立 duckdns 子域——Oracle 24GB 内存最多塞 2-3 个，再加自动化配置管理，一个人做的项目实际上撑不住。" },
+          { type: "p", text: "面对这个约束，选择很简单：后端只留一个 staging slot。好处是复杂度可控，代价是「同一时间只能验一个分支」——多人协作要先约好谁占着 staging。单人开发不是问题。" },
+
+          { type: "h1", text: "二、staging 架构：同机复用" },
+          { type: "p", text: "整个 staging 环境跟 prod 是同一台 Oracle 实例，区别在 Docker Compose project name 和端口：" },
+          { type: "code", text: "Oracle 同一台：\n├── /home/ubuntu/deeppin              # prod\n│   └── compose project: deeppin\n│       └── backend 容器 :8000\n│           nginx 容器 :443 → deeppin.duckdns.org\n│\n└── /home/ubuntu/deeppin-staging      # staging\n    └── compose project: deeppin-staging\n        └── backend 宿主机 127.0.0.1:8001\n            （prod 的 nginx 通过 host.docker.internal 转发）\n            searxng 宿主机 127.0.0.1:8081" },
+          { type: "p", text: "共享的东西：Supabase（同一项目、同一组 API keys），Let's Encrypt 证书目录，主 nginx 容器（复用 prod 的，加一个 server block 走 staging），HuggingFace 缓存 volume（prod + staging 共用 bge-m3 的一份 4.3GB 模型）。" },
+          { type: "p", text: "独立的东西：代码目录，compose project（避免容器同名冲突），宿主机端口。" },
+
+          { type: "h1", text: "三、docker compose 多文件叠加" },
+          { type: "p", text: "staging 不想维护第二份 docker-compose.yml——prod 改了什么，staging 要手动同步一遍，容易漂移。Docker Compose 的 -f 多文件模式解决这个：" },
+          { type: "code", text: "docker compose -p deeppin-staging \\\n  --env-file compose.staging.env \\\n  -f docker-compose.yml -f docker-compose.staging.yml \\\n  up -d --build backend searxng" },
+          { type: "p", text: "docker-compose.staging.yml 只写差异——端口映射不同、labels 不同、不跑 nginx（共用 prod 的）。其他（volume 声明、healthcheck、depends_on、environment）全部继承 docker-compose.yml。" },
+          { type: "p", text: "一个容易忘的约定：`docker compose restart <svc>` 不重读 env_file——环境变量在容器 create 的时候烘进去的，restart 只是 SIGKILL 重启 entrypoint，沿用旧 env。改 .env 要让新值生效得用 `up -d --force-recreate <svc>`。" },
+
+          { type: "h1", text: "四、CI 坑一：inputs.branch 必填无默认" },
+          { type: "p", text: "GitHub Actions 的 workflow_dispatch 默认允许给 input 设默认值。最早 deploy-staging.yml 是这样的：" },
+          { type: "code", text: "# 早期（有坑）\non:\n  workflow_dispatch:\n    inputs:\n      branch:\n        description: \"Branch to deploy\"\n        default: \"main\"     # ← 就是这个 default\n        required: false" },
+          { type: "p", text: "想用 gh CLI 部某个分支时常见的命令是：" },
+          { type: "code", text: "# 直觉是这样\ngh workflow run deploy-staging.yml -r feat/my-branch" },
+          { type: "p", text: "这条命令的意图是「用 feat/my-branch 的代码部 staging」。但 -r 参数实际上只决定「从哪个分支加载 workflow YAML 文件」，**不会**被传入 inputs——inputs 会沉默地走 default=\"main\"。结果：每次都把 main 部进了 staging，feat 分支的改动一次都没验证过。" },
+          { type: "p", text: "修法是把 default 去掉、required 改 true：" },
+          { type: "code", text: "# 现在\non:\n  workflow_dispatch:\n    inputs:\n      branch:\n        description: \"Branch to deploy to staging (required, no default)\"\n        required: true\n        # 没有 default，必须显式传入" },
+          { type: "p", text: "现在 gh workflow run 必须带 -f branch=... 否则 GitHub 直接拒绝。多打一个字的成本，换掉一个「沉默部错分支」的 footgun，完全划算。" },
+
+          { type: "h1", text: "五、CI 坑二：Vercel 要看到 staging 分支的 push" },
+          { type: "p", text: "前端 staging 预览 URL 期望是稳定的：https://deeppin-git-staging-zizhaofs-projects.vercel.app。Vercel 的 git 别名机制是「名叫 staging 的分支自动获得 git-staging 别名域名」。所以后端部到某个分支后，前端需要把那个分支的代码也同步到 staging 分支，Vercel 才会构建对应的 preview。" },
+          { type: "p", text: "最简单的做法：deploy-staging workflow 在最后一步 force-push deploy 的分支到 staging 引用：" },
+          { type: "code", text: "sync-staging-branch:\n  needs: integration-test\n  runs-on: ubuntu-latest\n  steps:\n    - uses: actions/checkout@v4\n      with:\n        ref: ${{ inputs.branch }}\n        token: ${{ secrets.PAT_FOR_STAGING_PUSH }}\n    - name: Force-push to 'staging' branch\n      run: git push -f origin HEAD:staging" },
+          { type: "p", text: "注意 token 用的是 PAT（personal access token），不是默认的 GITHUB_TOKEN。GitHub 有一条防死循环规则：GITHUB_TOKEN 发出的 push 不会触发任何外部 webhook——包括 Vercel 的 webhook。如果用 GITHUB_TOKEN 推 staging 分支，Git 上分支会更新，但 Vercel 完全不知道有新 commit，不会起 preview。PAT 不受这个限制。" },
+
+          { type: "h1", text: "六、CI 坑三：workflow 自身改动要自己触发自己" },
+          { type: "p", text: "deploy-backend.yml 的路径过滤器里有 backend/**、compose、nginx、scripts——但最早没有它自己。如果改的是这个 workflow 文件本身，PR 合并后不会触发任何 workflow，旧的部署脚本继续跑，改了跟没改一样。" },
+          { type: "code", text: "# 自引用路径触发\non:\n  push:\n    branches: [main]\n    paths:\n      - 'backend/**'\n      - 'docker-compose.yml'\n      - 'nginx/**'\n      - 'scripts/**'\n      - '.github/workflows/deploy-backend.yml'   # 它自己" },
+          { type: "p", text: "加上自引用路径后，改 workflow 的 PR 合并 → workflow 自己检测到 workflow 变了 → 触发一次部署 → 下次再改就能真的跑新逻辑。这是自举的一次性代价，加上以后就稳了。" },
+
+          { type: "h1", text: "七、staging 到底覆盖哪些场景" },
+          { type: "p", text: "CLAUDE.md 里写得很直白——单测跑在 GitHub runner 上，**不测 nginx、不测 docker-compose、不测 CI 本身**。能让这三件事挂掉的改动，必须先走 staging：" },
+          { type: "ul", items: [
+            "改后端逻辑 / 新 endpoint / 改 context_builder 等任何 backend/** 业务代码",
+            "改 Docker / docker-compose / Dockerfile / nginx / CI workflow / scripts/**",
+            "改 Supabase schema / migration",
+          ]},
+          { type: "p", text: "可以直接推 main 的只有：改注释、改 docstring、改 CLAUDE.md / README / 纯文档。规则制定的动机是——一旦 prod 挂了，现场就是 502 全站 + 要 ssh 上 Oracle 手动救，staging 是唯一能真正验证 infra 改动的环境。" },
+
+          { type: "h1", text: "八、日常流程" },
+          { type: "code", text: "# 1. 开 feat/xxx 分支改代码\n# 2. push → test-backend.yml 自动跑单测（门禁）\n# 3. 想在真环境跑一遍 → 发 bot /deploy feat/xxx → staging 更新\n#    （也可以 gh workflow run deploy-staging.yml -f branch=feat/xxx）\n# 4. 访问 https://staging-deeppin.duckdns.org/health 验证\n# 5. 开 PR 合 main → 合并后 deploy-backend.yml 自动部 prod" },
+          { type: "p", text: "手机上开发的时候最常用是步骤 3：正在地铁里想到一个 fix，Telegram bot 收到指令，SSH 到 Oracle 上 gh workflow run，staging 8-10 分钟内更新。回家从 laptop 打开 staging 验一眼，合 main 就完事了。" },
+
+          { type: "h1", text: "九、没做的事" },
+          { type: "ul", items: [
+            "多 staging slot：Oracle 24GB 内存塞不下更多 backend，要做得换更贵的 VM，不值得",
+            "每分支后端 preview：同上，而且自动化复杂度（nginx 动态 server block、duckdns 动态子域、port 分配）比收益大",
+            "staging 独立 Supabase：共享 prod Supabase 意味着 staging 的测试数据会污染 prod schema 和用户列表；解决办法是在测试数据前加前缀 + 写了就删，目前够用",
+          ]},
+          { type: "p", text: "不对称不是 bug，是约束下的最优解。认识到约束、围绕它设计工作流，比硬凑一个「对称」的架构省心很多。" },
+        ],
+      },
+      en: {
+        title: "Frontend and Backend Previews Aren't Symmetric: Vercel Per-Branch, Oracle Single Slot",
+        body: [
+          { type: "p", text: "Deeppin's deploy model is simple: main is the source of truth, push-to-main auto-deploys prod. But the cost of \"verify this in a real environment before merging main\" is completely different on the two sides — so the preview mechanism is completely asymmetric. This post walks through that asymmetry, why it has to be this way, and how to work within its constraints." },
+
+          { type: "h1", text: "1. The asymmetry" },
+          { type: "code", text: "                    Frontend (Vercel)    Backend (Oracle Free Tier)\nPer-branch URL      ✅ one per push       ❌ single staging slot\nConcurrency         ✅ unlimited          ❌ latest deploy overwrites\nTrigger             ✅ auto on push        ❌ manual dispatch (UI / bot / gh CLI)\nCold start          ~20s lambda            ~45s (bge-m3 mmap)\nCost per branch     ≈ zero                ≈ 4GB RAM + port + subdomain" },
+          { type: "p", text: "Why the gap? A frontend preview is a Vercel-side lambda plus a CDN route — compute and storage scale on demand, cost per branch ≈ zero. A backend preview is a full Docker container (FastAPI + bge-m3 4GB loaded into memory + asyncio loop + SmartRouter), plus dedicated ports, an nginx server block, and a duckdns subdomain. Oracle's 24GB instance fits maybe 2–3, and the automation cost of dynamic ports/domains isn't worth it for a solo project." },
+          { type: "p", text: "The decision follows: keep exactly one staging slot on the backend. The price is \"only one branch can be in staging at a time\" — which needs coordination for multi-person teams but is no issue for solo work." },
+
+          { type: "h1", text: "2. Staging architecture: co-located reuse" },
+          { type: "p", text: "Staging runs on the same Oracle box as prod. The separation is Docker Compose project name + ports:" },
+          { type: "code", text: "Same Oracle host:\n├── /home/ubuntu/deeppin              # prod\n│   └── compose project: deeppin\n│       └── backend container :8000\n│           nginx container :443 → deeppin.duckdns.org\n│\n└── /home/ubuntu/deeppin-staging      # staging\n    └── compose project: deeppin-staging\n        └── backend on host 127.0.0.1:8001\n            (prod's nginx forwards via host.docker.internal)\n            searxng on host 127.0.0.1:8081" },
+          { type: "p", text: "Shared: Supabase (same project, same API keys), Let's Encrypt cert dir, the main nginx container (reused from prod with an extra server block for staging), the HuggingFace cache volume (prod + staging share one 4.3GB bge-m3 model file on disk)." },
+          { type: "p", text: "Separate: code directories, compose project (so containers don't name-collide), host ports." },
+
+          { type: "h1", text: "3. Docker compose file overlay" },
+          { type: "p", text: "Maintaining two separate docker-compose.yml files — one for prod, one for staging — drifts fast. Docker Compose's multi-file mode solves it:" },
+          { type: "code", text: "docker compose -p deeppin-staging \\\n  --env-file compose.staging.env \\\n  -f docker-compose.yml -f docker-compose.staging.yml \\\n  up -d --build backend searxng" },
+          { type: "p", text: "docker-compose.staging.yml only contains deltas — different port mappings, different labels, no nginx (reuses prod's). Everything else (volume declarations, healthchecks, depends_on, environment) inherits from docker-compose.yml." },
+          { type: "p", text: "An easy-to-forget gotcha: `docker compose restart <svc>` does NOT re-read env_file. Environment variables are baked into the container at create time; restart just SIGKILLs and re-runs the entrypoint with the old env. To pick up a changed .env: `up -d --force-recreate <svc>`." },
+
+          { type: "h1", text: "4. CI trap 1: inputs.branch must be required with no default" },
+          { type: "p", text: "GitHub Actions' workflow_dispatch allows setting defaults on inputs. The original deploy-staging.yml had:" },
+          { type: "code", text: "# Old (broken)\non:\n  workflow_dispatch:\n    inputs:\n      branch:\n        description: \"Branch to deploy\"\n        default: \"main\"     # ← this default\n        required: false" },
+          { type: "p", text: "The intuitive way to deploy a branch via gh CLI:" },
+          { type: "code", text: "# Intuitively\ngh workflow run deploy-staging.yml -r feat/my-branch" },
+          { type: "p", text: "The intent is \"deploy feat/my-branch to staging.\" But -r only selects which branch the workflow YAML is loaded from — it does NOT populate inputs. inputs.branch silently falls back to default=\"main\". Net effect: every invocation deployed main to staging, and feat branches were never actually tested." },
+          { type: "p", text: "The fix is to drop the default and make it required:" },
+          { type: "code", text: "# Current\non:\n  workflow_dispatch:\n    inputs:\n      branch:\n        description: \"Branch to deploy to staging (required, no default)\"\n        required: true\n        # no default — must be explicit" },
+          { type: "p", text: "Now gh workflow run must include -f branch=... or GitHub rejects the call. Slightly more typing, in exchange for closing the \"silently deploys the wrong branch\" footgun. Worth it." },
+
+          { type: "h1", text: "5. CI trap 2: Vercel needs to see the push to the staging branch" },
+          { type: "p", text: "The staging frontend preview URL needs to be stable: https://deeppin-git-staging-zizhaofs-projects.vercel.app. Vercel's git alias mechanism auto-assigns a git-staging alias to any branch named staging. So whenever the backend deploys a branch, the frontend needs the same branch's code pushed to the staging ref so Vercel can build it." },
+          { type: "p", text: "Cleanest implementation: deploy-staging's final job force-pushes the deployed branch to the staging ref:" },
+          { type: "code", text: "sync-staging-branch:\n  needs: integration-test\n  runs-on: ubuntu-latest\n  steps:\n    - uses: actions/checkout@v4\n      with:\n        ref: ${{ inputs.branch }}\n        token: ${{ secrets.PAT_FOR_STAGING_PUSH }}\n    - name: Force-push to 'staging' branch\n      run: git push -f origin HEAD:staging" },
+          { type: "p", text: "Note: token is a PAT (personal access token), not the default GITHUB_TOKEN. GitHub has an anti-loop rule — pushes authenticated with GITHUB_TOKEN do NOT trigger any external webhooks, including Vercel's. Using GITHUB_TOKEN would update the staging branch in git but leave Vercel oblivious; no preview build. A PAT isn't subject to that restriction." },
+
+          { type: "h1", text: "6. CI trap 3: workflow changes must trigger themselves" },
+          { type: "p", text: "deploy-backend.yml's path filter originally covered backend/**, compose, nginx, scripts — but not itself. If the change is to the workflow file itself, merging the PR wouldn't trigger anything — the old deploy script keeps running, and the change effectively never shipped." },
+          { type: "code", text: "# Self-referencing path trigger\non:\n  push:\n    branches: [main]\n    paths:\n      - 'backend/**'\n      - 'docker-compose.yml'\n      - 'nginx/**'\n      - 'scripts/**'\n      - '.github/workflows/deploy-backend.yml'   # itself\n" },
+          { type: "p", text: "With the self-reference, a workflow PR merges → workflow notices its own file changed → triggers a deploy → future runs execute the new logic. One-time bootstrap cost; stable thereafter." },
+
+          { type: "h1", text: "7. What staging actually covers" },
+          { type: "p", text: "CLAUDE.md puts it plainly: unit tests run on GitHub runners, where they **don't exercise nginx, don't exercise docker-compose, and don't exercise the CI itself**. Changes that can break any of those three must go through staging first:" },
+          { type: "ul", items: [
+            "Backend logic / new endpoints / context_builder / anything in backend/**",
+            "Docker / docker-compose / Dockerfile / nginx / CI workflows / scripts/**",
+            "Supabase schema / migrations",
+          ]},
+          { type: "p", text: "What can push directly to main: comments, docstrings, CLAUDE.md / README / pure docs. The motivation: if prod breaks, the scene is a 502 across the whole app plus an emergency SSH session to Oracle. Staging is the only environment where infra changes get real validation." },
+
+          { type: "h1", text: "8. Everyday flow" },
+          { type: "code", text: "# 1. Work on feat/xxx branch\n# 2. push → test-backend.yml runs unit tests (gatekeeper)\n# 3. Want to run it in a real env → tell the bot /deploy feat/xxx → staging updates\n#    (or: gh workflow run deploy-staging.yml -f branch=feat/xxx)\n# 4. Hit https://staging-deeppin.duckdns.org/health to verify\n# 5. Open a PR into main → on merge, deploy-backend.yml auto-deploys prod" },
+          { type: "p", text: "From the phone, step 3 is the most-used path: thought of a fix on the subway, Telegram bot receives the command, SSHes into Oracle and runs gh workflow, staging updates within 8–10 minutes. Back on laptop, open staging to smoke-test, then merge to main." },
+
+          { type: "h1", text: "9. What isn't built" },
+          { type: "ul", items: [
+            "Multiple staging slots: Oracle 24GB can't fit more backends; moving to a bigger VM isn't worth it",
+            "Per-branch backend previews: same reason, plus automation cost (dynamic nginx blocks, dynamic duckdns subdomains, port assignment) exceeds the benefit",
+            "Separate staging Supabase: sharing prod's Supabase means staging tests pollute prod schema/user list; the workaround is prefix test data + clean up after, which is good enough",
+          ]},
+          { type: "p", text: "The asymmetry isn't a bug — it's the optimal solution under real constraints. Recognizing the constraint and designing the workflow around it saves a lot of effort vs. forcing a symmetric architecture that the infrastructure won't actually support." },
         ],
       },
     },
