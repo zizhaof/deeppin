@@ -2852,4 +2852,198 @@ export const articles: Article[] = [
     },
   },
 
+  {
+    slug: "worktree-concurrent-claude",
+    title: {
+      zh: "多个 Claude 并发跑同一个仓库：用 git worktree 隔离、rebase 合流",
+      en: "Running Multiple Claude Agents on One Repo: git worktree for Isolation, rebase for Convergence",
+    },
+    date: "2026-04-18",
+    summary: {
+      zh: "Mac CLI + 好几个 Telegram chat 同时让 Claude 改同一个 repo，谁也不知道对方在干什么——直接共享 clone 必然炸。git worktree 把每个 chat 钉在自己的分支和目录上，.git 对象存储还是同一份，磁盘几乎零增量；配上 rebase-onto-main 的启动前同步和 PR 合流，并发 Claude 从「不可能」变成「没感觉」。",
+      en: "Mac CLI plus a handful of Telegram chats, all pointing Claude at the same repo, none aware of each other — sharing one clone is guaranteed to blow up. git worktree pins each chat to its own branch and directory while keeping .git object storage shared, so disk cost is near-zero; pair that with rebase-onto-main at session start and PR merges at the end, and concurrent Claude agents go from \"impossible\" to \"unremarkable\".",
+    },
+    tags: ["workflow", "git", "claude-code", "concurrency"],
+    content: {
+      zh: {
+        title: "多个 Claude 并发跑同一个仓库：用 git worktree 隔离、rebase 合流",
+        body: [
+          { type: "p", text: "上一篇讲了 Mac CLI 和 Telegram bot 两个 Claude 入口怎么分工，那篇解决的是「哪里用哪个」。这篇解决另一个问题：一台 Oracle 上实际同时有 3-5 个 Claude 进程在改同一个 deeppin 仓——Mac 通过 ssh 跑一个，Telegram 每个 chat 开一个——**它们之间怎么不互相踩？**" },
+          { type: "p", text: "现在打开 git worktree list 随手看一眼，deeppin 仓同时挂着 4 个工作树：主 clone 停在 main，另外三个分别是三个 Telegram chat 的 worktree，各自停在各自的分支上。这个结构不是事后补的——是从 Telegram bot 第一版就这么设计的，因为没有它，并发 Claude 基本做不起来。" },
+
+          { type: "h1", text: "一、不隔离会炸在哪" },
+          { type: "p", text: "最直觉的方案是「所有 Claude 共享一个 clone」。两秒就会出问题。Claude 的每次 turn 都会做这些事：" },
+          { type: "ul", items: [
+            "读文件 / 写文件",
+            "跑 shell 命令（pytest、git status、ls）",
+            "git add / git commit / 有时 git push",
+          ]},
+          { type: "p", text: "两个 session 并发就有一堆竞争：" },
+          { type: "ul", items: [
+            "A 正在改 file.py，B 同时在读 file.py——B 看到的可能是半改好的中间状态",
+            "A 跑完改动想 git commit，B 已经 git add 了别的东西——A 的 commit 会带上 B 的文件",
+            "A checkout 了分支 x，B 也想 checkout 分支 y——HEAD 只有一个，后来者把先到者的工作上下文冲掉",
+          ]},
+          { type: "p", text: "Claude 不擅长等锁。如果在每次 shell 调用前排队、git commit 前等对方释放，它整个工作流会变得无比慢，而且任何一个 session 卡住都会让其他全部停摆。锁不是答案。" },
+
+          { type: "h1", text: "二、每个 chat 一个独立 clone？磁盘不够" },
+          { type: "p", text: "第二个直觉方案：给每个 chat 开一个完整的 git clone。物理隔离彻底。代价：" },
+          { type: "code", text: "# 单个 clone 的成本估算\ndeeppin 源码         ~ 80 MB\nnode_modules（前端）  ~ 600 MB\n.git 全量对象库       ~ 50 MB\n─────────────────────────────\n每个 clone 约         ~ 730 MB\n\n# 3-5 个 Claude 并发 → 2-4 GB 额外磁盘\n# 加上各自独立 fetch → 带宽线性膨胀" },
+          { type: "p", text: "Oracle Free Tier 200GB 听起来够，但这台机器还要跑 prod + staging + prometheus + grafana + searxng + HuggingFace cache。几轮 chat 加进去就捉襟见肘，而且每个 clone 的 git fetch 都在重复拉同一份对象，浪费带宽。还有一个更要命的问题：几份 clone 之间完全不共享对象，任何代码改动都得显式 push/pull 才能在 clone 之间流动——你在 chat A 里提交了一段代码，chat B 要看到它就得先 push 到 GitHub 再从 origin fetch 回来。这就不是「并发 Claude」了，这是「异地多活 Claude」。" },
+
+          { type: "h1", text: "三、git worktree：一份对象库，多个工作目录" },
+          { type: "p", text: "git worktree 是 git 2.5+ 内置的原语，它允许一个仓库有多个工作目录（working tree）：" },
+          { type: "ul", items: [
+            "每个 worktree 是一个独立的目录 + 独立的 HEAD + 独立的 index",
+            "所有 worktree 共享同一份 .git 对象存储（branches、commits、blobs 全部复用）",
+            "一个分支同一时间只能被一个 worktree 签出——天然互斥",
+          ]},
+          { type: "p", text: "磁盘账一下就正了：主 clone 80MB 源码 + 50MB .git，追加的 worktree 每个只要 80MB 源码（.git 是个 .git 文件而不是目录，指向主仓库）。对象库永远一份。" },
+          { type: "code", text: "$ git worktree list\n/home/ubuntu/deeppin                                 341a05c [main]\n/home/ubuntu/claude-telegram/.../chat--5105727107    341a05c [chat--5105727107]\n/home/ubuntu/claude-telegram/.../chat--5183801015    4c145db [chat--5183801015]\n/home/ubuntu/claude-telegram/.../chat-7133002692     7963c9a [chat-7133002692]" },
+          { type: "p", text: "四个目录、四个分支、一份 .git。任何一个 worktree 里新 commit 的对象会立刻出现在其他 worktree 的 git log（只要切换到那个分支）——不是因为推拉，是因为本来就共享对象库。" },
+
+          { type: "h1", text: "四、Telegram bot 里的 worktree 生命周期" },
+          { type: "p", text: "claude-telegram/bot/worktree.py 提供三个核心函数。结构很小，逻辑的核心就下面这几行：" },
+          { type: "code", text: "async def ensure_worktree(source: Path, chat_id: int, root: Path) -> Path:\n    \"\"\"保证 chat_id 对应的 worktree 存在可用，返回它的绝对路径。\"\"\"\n    if not await _is_git_repo(source):\n        raise WorktreeError(f\"{source} is not a git repository\")\n\n    target = root / f\"chat-{chat_id}\"\n    branch = f\"chat-{chat_id}\"\n\n    if target.exists():\n        # 已存在：验证确实是 source 的 worktree，然后复用\n        return target.resolve()\n\n    # 分支不存在就从 HEAD 建\n    if not branch_exists(source, branch):\n        run_git(source, \"branch\", branch)\n\n    # worktree add：把分支 check out 到 target\n    run_git(source, \"worktree\", \"add\", str(target), branch)\n    return target.resolve()" },
+          { type: "p", text: "每个 Telegram chat 第一次发消息时，bot 调 ensure_worktree。分支命名规则就是 chat-<id>，Telegram chat_id 本身就是唯一且稳定的整数。第二次再收到同一个 chat 的消息，目标目录已存在，直接复用。" },
+          { type: "p", text: "Claude 进程启动时，cwd 参数传的是这个 worktree 的绝对路径。Claude 看到的文件系统就从这个根目录开始；它完全不知道 /home/ubuntu/deeppin 或者别的 chat-*/ 存在。" },
+
+          { type: "h1", text: "五、启动前同步：rebase_onto_main" },
+          { type: "p", text: "worktree 隔离解决了并发写同一个工作树的问题，但带来另一个问题：chat-<id> 分支会跟 main 越漂越远。我在 chat A 里改了 backend 逻辑合了 PR，几天后打开 chat B 继续写东西——chat B 的 base 还是几天前的 main，它完全不知道 A 合过什么。" },
+          { type: "p", text: "每次新 session 启动前同步一下：" },
+          { type: "code", text: "async def rebase_onto_main(worktree: Path, main_branch=\"main\"):\n    # 先 fetch origin 拉最新 main\n    run_git(worktree, \"fetch\", \"origin\", main_branch)\n\n    # rebase 当前分支到 origin/main\n    code, _, err = run_git(worktree, \"rebase\", f\"origin/{main_branch}\")\n    if code != 0:\n        # 冲突：直接 abort，让人去解\n        run_git(worktree, \"rebase\", \"--abort\")\n        return False, f\"rebase failed (aborted): {err}\"\n    return True, \"rebased onto origin/main\"" },
+          { type: "p", text: "冲突时不试图自动解决——`rebase --abort` 回滚，返回错误让用户手动处理。Claude 能改代码但不应该在冲突决策上做判断，那种事一不小心就丢改动。" },
+          { type: "p", text: "结果：每个 Claude session 开始干活时，它看到的 base 永远是最新 main + 自己这个分支之前积累的工作。不会写出一堆基于过期 base 的改动。" },
+
+          { type: "h1", text: "六、合流：PR 模型" },
+          { type: "p", text: "chat-<id> 分支干完一件事，走 GitHub PR 合到 main。这跟普通工作流一样——就是普通的 feature branch，只不过分支名是由 bot 自动管的 chat-<id>。" },
+          { type: "p", text: "合并之后那个分支「还在」但已过时。两种处理：" },
+          { type: "ul", items: [
+            "保留：下次这个 chat 继续聊，ensure_worktree 会复用同一个 worktree + 分支，rebase_onto_main 把它拉到最新 main，干净利落",
+            "清理：/wt-reset 删 worktree 但保留分支（有历史，什么时候想看「当时这个 chat 在写什么」还能 git checkout 查）",
+          ]},
+          { type: "p", text: "我倾向留着。同一个 chat 下次聊的往往是相关话题，接着上次的分支继续写比新建一个干净很多；反正 rebase_onto_main 会把它刷新到最新 base。" },
+
+          { type: "h1", text: "七、对 Claude Code 来说意味着什么" },
+          { type: "p", text: "Claude 本身对这套并发机制毫无感知。它启动时 cwd 指向一个目录，它就在这个目录里干活：" },
+          { type: "ul", items: [
+            "所有 Read / Edit / Write / Bash 的路径解析都以 cwd 为根，Claude 看不见其他 worktree",
+            "git status / git log / git diff 调用都只看当前 worktree 的视角",
+            "git commit 提交到 worktree 绑定的那个分支上（chat-<id>），不会污染 main",
+            "跑 pytest / build 完全独立——不同 worktree 里的 node_modules / __pycache__ 互不影响",
+          ]},
+          { type: "p", text: "没有任何跨会话的锁、队列、信号量。隔离是文件系统 + git 分支两层 hard-fence——设计上就不可能踩到对方。" },
+
+          { type: "h1", text: "八、和 Mac 工作流的配合" },
+          { type: "p", text: "Mac 这一端我不用 worktree，直接在 /Users/.../deeppin 上开 feat 分支 commit push。两条路径都终结在 GitHub PR：" },
+          { type: "code", text: "              main (GitHub)\n               ▲\n               │ PR / merge\n               │\n  ┌────────────┴────────────┐\n  │                         │\nfeat/xxx (Mac)        chat-<id> (Oracle worktree)\n  │                         │\n  │ 本地 commit push        │ bot 自动 commit push\n  │                         │\nMacBook                  Oracle" },
+          { type: "p", text: "合流点是 PR。如果 Mac 的 feat 和某个 chat-<id> 动了相同文件，GitHub 会在 PR 阶段标冲突，让人集中解。早期暴露总比合进 main 之后发现要好。" },
+          { type: "p", text: "有个隐性协议：任何一个 Claude session 干的活都应该走 PR，不直接改 main。这条规则在前面几篇（特别是 CI/CD 和 staging-asymmetry 那节工作流表）已经贯彻了；worktree 模型天然强化它——chat-<id> 分支跟 main 分离，想推 main 得多做一步显式操作。" },
+
+          { type: "h1", text: "九、几个非显而易见的细节" },
+          { type: "ul", items: [
+            "分支名用 chat-<telegram_id> 直接——不需要人起名字，保证全局唯一，且稳定（同一个 chat 会话的分支名永远一致）",
+            "ff_pull vs. rebase_onto_main：主 clone（/home/ubuntu/deeppin）永远在 main 上，用 fast-forward pull 保持线性；worktree 分支用 rebase 因为它们可能已经偏离 main 有几个 commit",
+            "主 clone 留着不参与 chat：CI/CD 和 docker compose 指向的是它；它不被 Claude 写入，减少意外扰动",
+            "worktree 目录布局按 workspace 分层：workspaces/<workspace>/chat-<id>/，支持多项目（一个 bot 管多个 repo，每个项目一个 workspace 根）",
+          ]},
+
+          { type: "h1", text: "十、为什么值得花功夫搭这套" },
+          { type: "p", text: "单看技术并不难——git worktree 是 10 年前就有的特性，bot/worktree.py 的核心逻辑 100 行都不到。难的是意识到「并发 Claude 需要文件系统级隔离」这个需求。" },
+          { type: "p", text: "一旦意识到了，剩下的就是工程组装。而它解锁的是一个在别的地方看不到的工作模式：一个人同时有 N 个 Claude agent 在干不同的活，每个 agent 独立推进、独立合流，互不干扰。Mac 上写着大的 refactor，Telegram 上同时让 Claude 处理几个小的 fix，地铁上再随口扔一个新的 feature。全并发，零协调。" },
+          { type: "p", text: "对独立开发者来说，这是把「一个人多线程运行」从口号变成现实的前提。没有 worktree，上面这一切都得排队。" },
+        ],
+      },
+      en: {
+        title: "Running Multiple Claude Agents on One Repo: git worktree for Isolation, rebase for Convergence",
+        body: [
+          { type: "p", text: "The previous post covered how the Mac CLI and the Telegram bot split Claude's workload — that's \"which one for which situation.\" This post solves a different problem: at any moment there are 3–5 Claude processes on the same Oracle instance editing the same deeppin repo — one via ssh from the Mac, one per active Telegram chat — **how do they not step on each other?**" },
+          { type: "p", text: "`git worktree list` right now shows the deeppin repo with four working trees attached: the main clone on main, and three others — one per Telegram chat — each pinned to its own branch. This structure wasn't bolted on later. The Telegram bot has done it this way since v1, because without it, concurrent Claude agents basically don't work." },
+
+          { type: "h1", text: "1. What breaks without isolation" },
+          { type: "p", text: "The intuitive approach is \"all Claude sessions share one clone.\" It breaks within seconds. Every Claude turn does some combination of:" },
+          { type: "ul", items: [
+            "Reading and writing files",
+            "Running shell commands (pytest, git status, ls)",
+            "git add / git commit / sometimes git push",
+          ]},
+          { type: "p", text: "Two concurrent sessions produce a swarm of races:" },
+          { type: "ul", items: [
+            "A is mid-edit of file.py; B reads file.py and sees a half-written intermediate state",
+            "A commits; B has staged unrelated files — A's commit accidentally includes B's changes",
+            "A checks out branch x; B tries to check out branch y — HEAD is a single slot, whoever lands second clobbers the other's working context",
+          ]},
+          { type: "p", text: "Claude doesn't queue well. If you force every shell call to acquire a lock and every git commit to wait for its peer to release, the whole workflow becomes painful, and a single stuck session stalls everyone. Locks aren't the answer." },
+
+          { type: "h1", text: "2. One clone per chat? Disk runs out" },
+          { type: "p", text: "Second idea: full git clone per chat. Physical isolation, clean. Cost:" },
+          { type: "code", text: "# Per-clone cost estimate\ndeeppin source        ~ 80 MB\nnode_modules (frontend) ~ 600 MB\n.git full object store ~ 50 MB\n──────────────────────────────\nPer clone             ~ 730 MB\n\n# 3–5 concurrent Claude sessions → 2–4 GB extra disk\n# Each independently fetches from origin → bandwidth multiplies" },
+          { type: "p", text: "Oracle Free Tier's 200GB sounds like a lot, but the same machine also runs prod + staging + prometheus + grafana + searxng + the HuggingFace cache. A few chat clones chew through that quickly. Bigger problem: separate clones don't share objects. A commit in chat A isn't visible in chat B until A pushes to GitHub and B fetches — that's not concurrent editing, it's distributed multi-region replication." },
+
+          { type: "h1", text: "3. git worktree: one object store, many working trees" },
+          { type: "p", text: "git worktree is a native primitive since git 2.5. One repo can have multiple working trees:" },
+          { type: "ul", items: [
+            "Each worktree is a separate directory with its own HEAD and index",
+            "All worktrees share the same .git object store (branches, commits, blobs)",
+            "A branch can be checked out in only one worktree at a time — built-in mutual exclusion",
+          ]},
+          { type: "p", text: "Disk math works out: the primary clone has 80MB of source + 50MB of .git; each additional worktree costs just ~80MB of source. The .git dir in a linked worktree is a file, not a directory — it just points back to the main repo's object store. One copy of history forever." },
+          { type: "code", text: "$ git worktree list\n/home/ubuntu/deeppin                                 341a05c [main]\n/home/ubuntu/claude-telegram/.../chat--5105727107    341a05c [chat--5105727107]\n/home/ubuntu/claude-telegram/.../chat--5183801015    4c145db [chat--5183801015]\n/home/ubuntu/claude-telegram/.../chat-7133002692     7963c9a [chat-7133002692]" },
+          { type: "p", text: "Four directories, four branches, one .git. A commit in any worktree is immediately visible in git log from the others (after checking out the branch) — not via push/pull, but because they physically share storage." },
+
+          { type: "h1", text: "4. Worktree lifecycle in the Telegram bot" },
+          { type: "p", text: "claude-telegram/bot/worktree.py exposes three core functions. The structure is small; the essence is just this:" },
+          { type: "code", text: "async def ensure_worktree(source: Path, chat_id: int, root: Path) -> Path:\n    \"\"\"Ensure a worktree exists for chat_id; return its absolute path.\"\"\"\n    if not await _is_git_repo(source):\n        raise WorktreeError(f\"{source} is not a git repository\")\n\n    target = root / f\"chat-{chat_id}\"\n    branch = f\"chat-{chat_id}\"\n\n    if target.exists():\n        # Already there: validate it's a worktree of `source`, then reuse\n        return target.resolve()\n\n    # Branch doesn't exist → create from HEAD\n    if not branch_exists(source, branch):\n        run_git(source, \"branch\", branch)\n\n    # worktree add: check out branch into target\n    run_git(source, \"worktree\", \"add\", str(target), branch)\n    return target.resolve()" },
+          { type: "p", text: "On the first message from a Telegram chat, the bot calls ensure_worktree. The branch name is simply chat-<id> — Telegram chat_id is already unique and stable. On subsequent messages, target exists and we reuse it." },
+          { type: "p", text: "When the bot spawns the Claude process, it passes cwd = the worktree's absolute path. Claude's entire filesystem view starts there; it has no knowledge of /home/ubuntu/deeppin or the other chat-*/ directories." },
+
+          { type: "h1", text: "5. Sync at session start: rebase_onto_main" },
+          { type: "p", text: "Worktree isolation stops two sessions from colliding on one working tree, but it introduces a new problem: chat-<id> drifts away from main over time. If I shipped a PR from chat A, then open chat B a few days later, chat B's base is still days-old main — it doesn't know what A merged." },
+          { type: "p", text: "Sync at session start:" },
+          { type: "code", text: "async def rebase_onto_main(worktree: Path, main_branch=\"main\"):\n    # Fetch latest main from origin\n    run_git(worktree, \"fetch\", \"origin\", main_branch)\n\n    # Rebase current branch onto origin/main\n    code, _, err = run_git(worktree, \"rebase\", f\"origin/{main_branch}\")\n    if code != 0:\n        # Conflict: abort and let the human handle it\n        run_git(worktree, \"rebase\", \"--abort\")\n        return False, f\"rebase failed (aborted): {err}\"\n    return True, \"rebased onto origin/main\"" },
+          { type: "p", text: "On conflict, don't try to auto-resolve — `rebase --abort` rolls back and the function returns an error for the human to handle. Claude can edit code fine, but conflict resolution is the kind of judgment call where silent mistakes mean lost work." },
+          { type: "p", text: "Net effect: every Claude session starts with base = latest main plus whatever this branch had already accumulated. No more writing changes on top of stale assumptions." },
+
+          { type: "h1", text: "6. Convergence: the PR model" },
+          { type: "p", text: "When a chat-<id> branch is done with a piece of work, ship it via a normal GitHub PR into main. Same as any feature branch — the only wrinkle is that the branch name is auto-managed by the bot." },
+          { type: "p", text: "After merge, the branch still exists but is now stale. Two choices:" },
+          { type: "ul", items: [
+            "Keep it: next time this chat continues, ensure_worktree reuses the same worktree + branch, and rebase_onto_main brings it back to latest main — clean continuity",
+            "Clean up: /wt-reset removes the worktree but preserves the branch (so there's still a record of \"what was this chat working on?\" via git checkout)",
+          ]},
+          { type: "p", text: "I lean toward keeping. Continuations are usually related topics, and picking up the same branch is cleaner than opening a new one — rebase_onto_main refreshes the base anyway." },
+
+          { type: "h1", text: "7. What it means for Claude Code itself" },
+          { type: "p", text: "Claude has no awareness of this concurrency setup. It boots up with cwd pointing at a directory and works within it:" },
+          { type: "ul", items: [
+            "All Read / Edit / Write / Bash path resolution is rooted at cwd — other worktrees are invisible",
+            "git status / git log / git diff calls see only the current worktree's perspective",
+            "git commit targets the branch bound to this worktree (chat-<id>) — main is untouchable by accident",
+            "pytest / build runs are fully independent — node_modules / __pycache__ in different worktrees don't cross-pollute",
+          ]},
+          { type: "p", text: "No cross-session locks, queues, or semaphores. Isolation lives in two hard fences — filesystem and git branch — and by construction sessions can't step on each other." },
+
+          { type: "h1", text: "8. Coordination with the Mac workflow" },
+          { type: "p", text: "On the Mac I don't use worktrees — I just open feat branches in /Users/.../deeppin, commit, push. Both paths converge at GitHub PR:" },
+          { type: "code", text: "              main (GitHub)\n               ▲\n               │ PR / merge\n               │\n  ┌────────────┴────────────┐\n  │                         │\nfeat/xxx (Mac)        chat-<id> (Oracle worktree)\n  │                         │\n  │ local commit + push     │ bot commits + pushes\n  │                         │\nMacBook                  Oracle" },
+          { type: "p", text: "The merge point is the PR. If a Mac feat/ branch and some chat-<id> touched the same files, GitHub flags the conflict during PR review — surfaced centrally, resolved by a human. Better there than after merging into main." },
+          { type: "p", text: "Implicit contract: every Claude session's output goes through a PR, never directly to main. Earlier posts (CI/CD, staging-asymmetry's workflow table) already codify this; the worktree model strengthens it — chat-<id> branches are structurally divorced from main, and pushing to main takes explicit extra steps." },
+
+          { type: "h1", text: "9. A few non-obvious details" },
+          { type: "ul", items: [
+            "Branch name = chat-<telegram_id> directly — no naming needed from users, globally unique, stable across sessions for the same chat",
+            "ff_pull vs. rebase_onto_main: the main clone stays on main and uses fast-forward pull to keep history linear; worktree branches may have diverged by several commits, so rebase is the right shape",
+            "The primary clone isn't a chat workspace: CI/CD and docker compose point at it, and Claude never writes to it — reduces accidental interference",
+            "Worktree directory layout is workspace-scoped: workspaces/<workspace>/chat-<id>/, so one bot can manage multiple repos (one workspace root per project)",
+          ]},
+
+          { type: "h1", text: "10. Why it's worth building" },
+          { type: "p", text: "The tech isn't hard — git worktree has been around for a decade, and bot/worktree.py is under 100 lines. The hard part is recognizing \"concurrent Claude needs filesystem-level isolation\" as the problem to solve." },
+          { type: "p", text: "Once you see it, the rest is assembly. What it unlocks is a working mode that doesn't exist elsewhere: one person with N Claude agents, each on independent tracks, merging independently, no coordination overhead. Big refactor on the Mac while small fixes run in Telegram, plus a new feature dropped in from the subway. Fully concurrent, zero coordination." },
+          { type: "p", text: "For a solo developer, this is what makes \"one person running multi-threaded\" more than a slogan. Without worktree, all of the above has to queue." },
+        ],
+      },
+    },
+  },
+
 ];
