@@ -342,7 +342,20 @@ async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
         .execute()
     ))
 
-    return messages_res.data or []
+    # position-aware 排序：扁平化后主线消息按 position 重排，未扁平化时回落到 created_at
+    # Position-aware sort: post-flatten main thread messages sort by position; otherwise created_at order is preserved
+    msgs = messages_res.data or []
+    msgs.sort(key=_message_sort_key)
+    return msgs
+
+
+def _message_sort_key(m: dict) -> tuple:
+    """
+    扁平化后排序键：先按 position（null 排最后），再按 created_at。
+    Sort key after flatten: position first (nulls last), then created_at as tiebreaker.
+    """
+    pos = m.get("position")
+    return (0, pos, m.get("created_at") or "") if pos is not None else (1, 0, m.get("created_at") or "")
 
 
 @router.post("/threads/{thread_id}/messages", status_code=201)

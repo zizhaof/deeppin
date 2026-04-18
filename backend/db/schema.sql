@@ -20,6 +20,7 @@ create table if not exists threads (
   title               text,
   suggestions         jsonb,
   depth int not null default 0 check (depth >= 0),
+  status text not null default 'active' check (status in ('active', 'flattened')),
   created_at timestamptz default now()
 );
 
@@ -30,6 +31,7 @@ create table if not exists messages (
   content text not null,
   token_count int,
   model text,  -- 生成该消息的 LLM（含 provider 前缀），如 "groq/llama-3.3-70b-versatile"
+  position int,  -- 扁平化后的 preorder 序号；未扁平化为 null
   created_at timestamptz default now()
 );
 
@@ -45,6 +47,7 @@ create index if not exists idx_threads_session_id        on threads(session_id);
 create index if not exists idx_threads_parent_thread_id  on threads(parent_thread_id);
 create index if not exists idx_messages_thread_id        on messages(thread_id);
 create index if not exists idx_messages_thread_created   on messages(thread_id, created_at);
+create index if not exists idx_messages_thread_position  on messages(thread_id, position) where position is not null;
 
 -- Add FK from threads.anchor_message_id → messages.id (separate because of ordering)
 DO $$ BEGIN
