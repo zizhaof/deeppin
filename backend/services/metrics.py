@@ -83,8 +83,8 @@ LLM_TOKENS = Counter(
 )
 LLM_FAILURES = Counter(
     "deeppin_llm_failures_total",
-    "LLM call failures (429 / 5xx / router fallback)",
-    ["provider", "model", "key_prefix"],
+    "LLM call failures by reason (rate_limit / server_error / auth / timeout / network / other)",
+    ["provider", "model", "key_prefix", "reason"],
 )
 
 
@@ -182,6 +182,60 @@ def record_llm_call(*, provider: str, model: str, key_prefix: str, group: str, t
         LLM_TOKENS.labels(provider, model, key_prefix).inc(tokens)
 
 
-def record_llm_failure(*, provider: str, model: str, key_prefix: str) -> None:
-    """在 LLM 失败（429/5xx）时调用 / Call when an LLM request fails."""
-    LLM_FAILURES.labels(provider, model, key_prefix).inc()
+_VALID_REASONS = frozenset(
+    {"rate_limit", "server_error", "auth", "timeout", "network", "other"}
+)
+
+
+def classify_llm_failure(exc: BaseException) -> str:
+    """
+    把异常映射到低基数的 reason 标签，方便 Prometheus 聚合。
+    Map an exception to a low-cardinality reason label for Prometheus aggregation.
+
+    优先读 HTTP 状态码 / Prefer HTTP status code:
+      429      → rate_limit
+      401/403  → auth
+      5xx      → server_error
+    其次按异常类型 / Then by exception type:
+      TimeoutError / asyncio.TimeoutError / "timeout" in type name → timeout
+      ConnectionError / "connection" in type name                 → network
+    其它 / Otherwise → other
+    """
+    import asyncio
+
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return "rate_limit"
+    if status in (401, 403):
+        return "auth"
+    if isinstance(status, int) and 500 <= status < 600:
+        return "server_error"
+
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return "timeout"
+    if isinstance(exc, ConnectionError):
+        return "network"
+
+    type_name = type(exc).__name__.lower()
+    if "timeout" in type_name:
+        return "timeout"
+    if "connect" in type_name:
+        # 涵盖 httpx.ConnectError / ConnectionError / ConnectResetError 等
+        # Covers httpx.ConnectError / ConnectionError / ConnectResetError, etc.
+        return "network"
+
+    return "other"
+
+
+def record_llm_failure(
+    *, provider: str, model: str, key_prefix: str, reason: str
+) -> None:
+    """在 LLM 失败时调用 / Call when an LLM request fails.
+
+    reason 必须是 _VALID_REASONS 里的一个，未知值折叠成 "other"，避免标签爆炸。
+    reason must be one of _VALID_REASONS; unknown values collapse to "other"
+    to keep label cardinality bounded.
+    """
+    if reason not in _VALID_REASONS:
+        reason = "other"
+    LLM_FAILURES.labels(provider, model, key_prefix, reason).inc()

@@ -412,11 +412,15 @@ class SmartRouter:
                 except Exception as exc:
                     slot.usage.record_failure()
                     try:
-                        from services.metrics import record_llm_failure
+                        from services.metrics import (
+                            classify_llm_failure,
+                            record_llm_failure,
+                        )
                         record_llm_failure(
                             provider=slot.spec.provider,
                             model=slot.spec.model_id,
                             key_prefix=(slot.api_key or "")[:8],
+                            reason=classify_llm_failure(exc),
                         )
                     except Exception:
                         pass
