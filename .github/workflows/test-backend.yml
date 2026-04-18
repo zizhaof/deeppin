@@ -1,6 +1,12 @@
 name: Test Backend
 
 # 所有 PR 和非 main 分支 push 都跑单测。main 的测试由 deploy-backend.yml 内联跑。
+# 优化：若同一 SHA 已被 Deploy Staging 验过（且绿），跳过 pytest —— 避免同一份代码
+# 在 test-backend + deploy-staging + deploy-backend 里跑三遍。Job 仍 success，PR
+# required check 不受影响。
+# Optimization: skip pytest when Deploy Staging already validated this exact SHA.
+# Avoids running the same tests three times. The job still reports success so any
+# branch protection requiring this check still passes.
 on:
   pull_request:
     branches: [main]
@@ -11,23 +17,58 @@ on:
     paths:
       - 'backend/**'
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   unit-test:
     runs-on: ubuntu-latest
     steps:
+      - name: Check if Deploy Staging already validated this SHA
+        id: staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # PR 事件用 head SHA（PR 分支 tip），push 事件用 github.sha
+          # PR events: PR head SHA; push events: github.sha.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # deploy-staging.yml 的 sync-staging-branch job 会把成功部署的 SHA 强制
+          # 推到 staging 分支。所以「staging 分支 tip == 当前 SHA」即可判定本 SHA
+          # 已被 staging 完整 pipeline（unit + deploy + integration）验证过。
+          # 注：用 workflow_dispatch 的 head_sha 不行，那记录的是触发分支（main）的
+          # SHA，不是 inputs.branch 的 SHA。
+          # The staging branch tip is the last SHA that completed the full staging
+          # pipeline (unit + deploy + integration). If it matches the current SHA,
+          # the same tests will pass again — skip pytest.
+          STAGING_SHA=$(gh api \
+            "/repos/${{ github.repository }}/git/ref/heads/staging" \
+            --jq '.object.sha' 2>/dev/null || echo "")
+          if [ "$STAGING_SHA" = "$SHA" ]; then
+            echo "passed=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA ${SHA:0:7} 已通过完整 staging 验证，跳过 pytest / SHA matches staging tip, skipping pytest"
+          else
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+            echo "Staging tip=${STAGING_SHA:0:7}, current=${SHA:0:7} —— 正常跑 pytest / does not match, running pytest"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.staging.outputs.passed == '0'
 
       - uses: actions/setup-python@v5
+        if: steps.staging.outputs.passed == '0'
         with:
           python-version: "3.11"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
+        if: steps.staging.outputs.passed == '0'
         run: pip install -r requirements.txt
         working-directory: backend
 
       - name: Run unit tests
+        if: steps.staging.outputs.passed == '0'
         run: pytest tests/ --ignore=tests/integration -q
         working-directory: backend
         env:
