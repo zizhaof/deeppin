@@ -1778,14 +1778,42 @@ export const articles: Article[] = [
         body: [
           { type: "p", text: "单个 LLM Provider 的免费额度有限——Groq 每分钟 30 个请求，Gemini 每分钟 10 个。但不同 Provider 的额度是完全独立的。SmartRouter 的核心思路：把所有 Provider 的额度池化成一个统一的资源池，用实时用量追踪选最优路径。" },
 
-          { type: "h1", text: "一、为什么不用 LiteLLM Router" },
+          { type: "h1", text: "一、聚合算力：自托管的话得多少张 GPU" },
+          { type: "p", text: "先看数字。15 个 slot 按生产配置（3 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 2 OpenRouter = 10 keys，共 33 slots）全量跑时：" },
+          { type: "ul", items: [
+            "峰值吞吐 ~1.34M TPM ≈ 22,000 tokens/sec sustained",
+            "日额度 ~210M tokens/day，按每条消息 2.5K tokens 算，可支撑约 84K 条/天",
+            "最大可调用模型规模：405B（OpenRouter 的 hermes-3-llama-3.1-405b:free）",
+          ]},
+          { type: "p", text: "换算成自托管硬件：22K tok/s sustained 吞吐相当于一台满载的 8×H100 DGX（硬件 ~$400K + 机房 / 电 / 冷却 / 运维 ~$10K/月），按 3 年折旧每月约 $20K。Deeppin 的实际月账单：$0——因为 5 家 provider 的免费 tier 叠加起来刚好覆盖这个量级。" },
+          { type: "p", text: "模型多样性另算。本池子最大的模型是 405B 稠密（hermes-3）；如果自己跑 405B，光装权重就要 8 张 H100 FP8（$200K+ 硬件就只为这一个模型），租是 $30-60/小时。这里是「免费 + 按需」。" },
+          { type: "note", text: "22K tok/s 是所有 slot 同时跑满的理论峰值。实际日内用量分布不均，单次并发能打到 2-5K tok/s，已经远超单人/小团队的真实需求。Deeppin 当前日活个位数，算力利用率不到 1%。" },
+
+          { type: "h1", text: "二、怎么扩容（和为什么大概率不用扩）" },
+          { type: "p", text: "如果哪天真打满这套池子，扩容路径从便宜到贵：" },
+          { type: "h2", text: "2.1 水平扩容：加 key（加账号）" },
+          { type: "p", text: "backend/.env 里每个 provider 的 API_KEYS 是 JSON 数组，`llm_client.py` 的 `_load_keys` 会解析它，每个 key 展开成独立的 slot 集合。加一个 Groq key → 5 个模型各多一个 slot → chat/merge/summarizer 全组吞吐直接翻倍。" },
+          { type: "code", text: "# 例：Groq 从 1 key 扩到 3 key\n# backend/.env\nGROQ_API_KEYS=[\"gsk_key1\",\"gsk_key2\",\"gsk_key3\"]\n\n# SmartRouter 启动时看到 3 个 key × 5 个模型 = 15 个 slot\n# RPM/TPM/RPD/TPD 每维度线性扩 3 倍" },
+          { type: "p", text: "约束：需要新账号（Groq/SambaNova 要邮箱 + 手机号，Gemini 要新 Google 账号，OpenRouter 要新账号）。OpenRouter :free 有上游全局节流，加多个 key 收益递减。" },
+          { type: "h2", text: "2.2 垂直扩容：付费升级" },
+          { type: "ul", items: [
+            "OpenRouter 充 $10 credit → RPD 从 200 升到 1000（5× 提升），永久生效",
+            "Groq 开 paid tier → RPM/TPM 翻几个数量级，按 token 付费",
+            "Gemini 开 paid tier → RPD 上限从 1000 升到 10000+，按 token 付费",
+            "SmartRouter 不区分免费/付费 slot——改完 ModelSpec 的 rpm/tpm/rpd 即可，路由逻辑不变",
+          ]},
+          { type: "h2", text: "2.3 加新 provider" },
+          { type: "p", text: "LiteLLM 兼容 100+ 家 provider。往 `llm_client.py` 的 ModelSpec 列表加一行新 provider 的模型定义，再在 `_load_keys` 那段加对应的 env 读取即可。例：DeepInfra（便宜 70B 推理）、Together（400B+ 模型）、Fireworks、Anthropic、OpenAI 本家都能无缝接入。" },
+          { type: "p", text: "但——一个人项目 DAU 个位数，当前架构理论容量是实际使用量的 1000×+。扩容路径写在这里是因为「知道天花板在哪 + 捅破要 5 分钟」比「真的扩」重要得多。下面几节讲现在这个结构怎么撑起这个数量级的。" },
+
+          { type: "h1", text: "三、为什么不用 LiteLLM Router" },
           { type: "p", text: "之前的方案是 LiteLLM 内置的 Router，问题是它是被动的——发请求 → 收到 429 → 重试下一个。每次 429 都浪费一次往返延迟（200-500ms），用户能感知到卡顿。SmartRouter 改为主动选择：发请求之前就根据用量数据选最优 slot，大幅减少 429 的发生。" },
 
-          { type: "h1", text: "二、数据结构" },
+          { type: "h1", text: "四、数据结构" },
           { type: "p", text: "SmartRouter 的核心有三层数据结构：" },
           { type: "code", text: "ModelSpec — 模型规格（静态配置）\n  provider: \"groq\" | \"cerebras\" | \"sambanova\" | \"gemini\" | \"openrouter\"\n  model_id: \"llama-3.3-70b-versatile\"\n  rpm / tpm / rpd / tpd: 速率限制\n  groups: [\"chat\", \"merge\"]  ← 属于哪些分组\n\nSlot = ModelSpec + API Key + UsageBucket\n  一个 slot 是路由的最小单位\n  例：(groq/llama-3.3-70b, gsk_key1, 用量桶)\n  例：(groq/llama-3.3-70b, gsk_key2, 用量桶)  ← 同模型不同 key = 不同 slot\n\nUsageBucket — 用量追踪（每个 slot 独立）\n  rpm_used / tpm_used → 每 60 秒自动清零\n  rpd_used / tpd_used → 按 spec.reset_tz 时区跨日时归零（Gemini=PT，其它=UTC）\n  fail_count / last_fail_ts → 失败惩罚" },
 
-          { type: "h1", text: "三、五家 Provider × 15 模型 — 按场景分类排序" },
+          { type: "h1", text: "五、五家 Provider × 15 模型 — 按场景分类排序" },
           { type: "p", text: "15 个模型按使用场景分到 4 个分组（chat / merge / summarizer / vision）。每个组内按该任务的「能力」排序：chat 看模型规模，merge 看一次能塞下的最大输入（TPM 主导），summarizer 看出 token 速度，vision 看多模态质量。下面表里的 RPM/TPM/RPD/TPD 是 per-slot 的，乘上 key 数才是这个槽位贡献的总额度。" },
 
           { type: "h2", text: "chat（主对话）— 按模型规模降序" },
@@ -1804,16 +1832,16 @@ export const articles: Article[] = [
 
           { type: "note", text: "关键互补：Gemini 单 key 250K TPM 是 merge 的主力；SambaNova 双 100K TPM 撑住 merge 备份和 70B chat；Cerebras 跑 235B MoE 拿到「大模型 + 60K TPM + 极快速度」三合一；OpenRouter 包含独家 405B（hermes-3）和 nvidia/nemotron 推理模型；Groq 速度快、RPD 最高（14.4K/模型）但单模型 TPM 最小，适合高频小请求。" },
 
-          { type: "h1", text: "四、评分机制" },
+          { type: "h1", text: "六、评分机制" },
           { type: "p", text: "每个 slot 的「可用性得分」由 UsageBucket 实时计算：" },
           { type: "code", text: "def score(self, spec: ModelSpec) -> float:\n    # 各维度剩余比例\n    rpm_r = (spec.rpm - self.rpm_used) / spec.rpm\n    tpm_r = (spec.tpm - self.tpm_used) / spec.tpm\n    rpd_r = (spec.rpd - self.rpd_used) / spec.rpd\n\n    # 取最小值——木桶效应，最紧的维度决定可用性\n    s = min(rpm_r, tpm_r, rpd_r)\n\n    # 最近 60 秒内失败过，额外惩罚（30 秒半衰期）\n    if self._fail_count > 0:\n        elapsed = now - self._last_fail_ts\n        penalty = 0.5 ** (elapsed / 30)\n        s *= (1 - penalty)\n\n    return s  # 0 = 耗尽，1.0 = 满额" },
           { type: "p", text: "评分粒度是 provider + model + key。同一个 Groq key 的 llama-70b 和 qwen3-32b 有独立的用量桶，因为 Groq 的速率限制是 per-model per-key 的。" },
 
-          { type: "h1", text: "五、选择与 Fallback 流程" },
+          { type: "h1", text: "七、选择与 Fallback 流程" },
           { type: "p", text: "完整的请求路由流程：" },
           { type: "code", text: "router.completion(group=\"chat\", messages=...)\n│\n├── 第一步：从 chat 组取所有 slot\n│   按 score 降序排列，选最高分发起请求\n│   （加少量随机扰动避免所有请求集中打一个 slot）\n│\n├── 成功 → 返回结果\n│\n├── 失败（429/5xx）→ 标记失败，尝试下一个 slot\n│   ... 所有 chat slot 都失败 ...\n│\n├── 进入 fallback 链\n│   chat → summarizer\n│   merge → chat → summarizer\n│   summarizer → chat\n│\n└── 全部耗尽 → 选恢复最快的 slot\n    slot A: rpm 打满，还要等 45 秒\n    slot B: rpd 打满，还要等 8 小时\n    → 选 slot A" },
 
-          { type: "h1", text: "六、时间窗口自动重置" },
+          { type: "h1", text: "八、时间窗口自动重置" },
           { type: "p", text: "UsageBucket 的计数器：分钟窗口基于 time.monotonic() 滚动 60s；日窗口对齐 spec.reset_tz 时区的自然日 00:00 边界（Gemini=America/Los_Angeles，其它 provider=UTC），跨日时归零，与 provider 真实重置时点对齐。" },
           { type: "ul", items: [
             "rpm_used / tpm_used：距上次重置 ≥ 60 秒时自动清零",
@@ -1822,20 +1850,20 @@ export const articles: Article[] = [
             "无需定时器或后台线程——惰性重置，零开销",
           ]},
 
-          { type: "h1", text: "七、主动 vs 被动" },
+          { type: "h1", text: "九、主动 vs 被动" },
           { type: "p", text: "这是 SmartRouter 和传统路由方案的核心区别：" },
           { type: "code", text: "旧方案（LiteLLM Router，被动）：\n  发请求 → 收到 429 → 重试下一个 → 又 429 → 再重试\n  每次 429 浪费 200-500ms 往返\n  用户体验：偶尔明显卡顿\n\n新方案（SmartRouter，主动）：\n  算分 → 选最优 slot → 发请求\n  score=0 的 slot 不会被选中，429 概率大幅降低\n  用户体验：几乎无感知的路由切换" },
 
-          { type: "h1", text: "八、部署配置" },
+          { type: "h1", text: "十、部署配置" },
           { type: "p", text: "新增 Provider 只需添加环境变量，SmartRouter 自动识别：" },
           { type: "code", text: "# backend/.env — 每个值是 JSON 数组，支持多 key 叠加\nGROQ_API_KEYS=[\"gsk_key1\", \"gsk_key2\"]\nCEREBRAS_API_KEYS=[\"csk_key1\", \"csk_key2\"]\nSAMBANOVA_API_KEYS=[\"sk_key1\", \"sk_key2\"]\nGEMINI_API_KEYS=[\"AIza_key1\"]\nOPENROUTER_API_KEYS=[\"sk-or-v1-key1\", \"sk-or-v1-key2\"]\n\n# 未配置的 Provider 不产生任何 slot，不影响运行\n# 新增 key 后重启即生效" },
           { type: "p", text: "GitHub Actions 部署时通过 Secrets 自动同步 key 到服务器，无需手动 SSH。" },
 
-          { type: "h1", text: "九、健康检查" },
+          { type: "h1", text: "十一、健康检查" },
           { type: "p", text: "GET /health/providers 逐个验证每个 (provider, key) 组合是否可用，CI/CD 集成测试自动检测失效的 key：" },
           { type: "code", text: "GET /health/providers\n{\n  \"total\": 8,\n  \"ok\": 7,\n  \"failed\": 1,\n  \"results\": [\n    {\"provider\": \"groq\", \"model\": \"llama-3.3-70b\", \"key\": \"gsk_abc1...\", \"ok\": true},\n    {\"provider\": \"cerebras\", \"model\": \"llama3.3-70b\", \"key\": \"csk_xyz...\", \"ok\": true},\n    {\"provider\": \"sambanova\", \"model\": \"...\", \"key\": \"sk_...\", \"ok\": false, \"error\": \"401 Unauthorized\"},\n    ...\n  ]\n}" },
 
-          { type: "h1", text: "十、实际容量估算" },
+          { type: "h1", text: "十二、实际容量估算" },
           { type: "p", text: "以当前生产配置为例：3 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 2 OpenRouter = 10 keys，共 33 slots（按 provider 的模型数加权：3×5 + 2×2 + 2×2 + 1×2 + 2×4）。" },
           { type: "ul", items: [
             "chat 组：28 slots，累计 ~685 RPM、~1.20M TPM、~168K RPD、~203M TPD",
@@ -1854,14 +1882,42 @@ export const articles: Article[] = [
         body: [
           { type: "p", text: "A single LLM provider's free tier is limited — Groq allows 30 requests per minute, Gemini 10. But quotas across different providers are completely independent. SmartRouter's core idea: pool all providers' quotas into a unified resource pool, using real-time usage tracking to pick the optimal path." },
 
-          { type: "h1", text: "Part 1 — Why not LiteLLM Router" },
+          { type: "h1", text: "Part 1 — Aggregate capacity: how many GPUs would this take to self-host" },
+          { type: "p", text: "The numbers first. At the current production setup (3 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 2 OpenRouter = 10 keys across 33 slots), running full tilt:" },
+          { type: "ul", items: [
+            "Peak throughput ~1.34M TPM ≈ 22,000 tokens/sec sustained",
+            "Daily budget ~210M tokens/day — roughly 84K messages at 2.5K tokens each",
+            "Largest callable model: 405B dense (OpenRouter's hermes-3-llama-3.1-405b:free)",
+          ]},
+          { type: "p", text: "Hardware equivalent: 22K tok/s sustained is what a fully loaded 8×H100 DGX delivers — that's ~$400K hardware + ~$10K/month in colo/power/cooling/ops, or ~$20K/month amortized over 3 years. Deeppin's actual monthly bill: $0. Five free tiers stacked happens to cover exactly this throughput band." },
+          { type: "p", text: "Model diversity is a separate story. The largest model in the pool is 405B dense (hermes-3). Self-hosting a 405B model needs 8 H100s just to load weights at FP8 ($200K+ of hardware for that single model), or rents at $30-60/hour. Here it's free and on-demand." },
+          { type: "note", text: "22K tok/s is the theoretical peak with every slot maxed simultaneously. Real-world load is uneven — a single concurrent burst hits 2-5K tok/s, still far beyond what a solo dev or small team needs. Deeppin's current DAU is single-digit; headroom utilization is under 1%." },
+
+          { type: "h1", text: "Part 2 — How to scale (and why you probably won't need to)" },
+          { type: "p", text: "If this pool ever actually saturates, the scale-out path from cheap to expensive:" },
+          { type: "h2", text: "2.1 Horizontal scale: add keys" },
+          { type: "p", text: "Each provider's API_KEYS env var in backend/.env is a JSON array, and `llm_client.py`'s `_load_keys` parses it — each key expands into its own set of slots. Adding one Groq key gives you 5 more slots (one per model), instantly doubling chat / merge / summarizer throughput." },
+          { type: "code", text: "# Example: Groq from 1 key to 3 keys\n# backend/.env\nGROQ_API_KEYS=[\"gsk_key1\",\"gsk_key2\",\"gsk_key3\"]\n\n# At startup SmartRouter sees 3 keys × 5 models = 15 slots\n# RPM/TPM/RPD/TPD all scale linearly 3×" },
+          { type: "p", text: "Constraint: each key requires a new account (Groq/SambaNova want email + phone, Gemini wants a new Google account, OpenRouter a new signup). OpenRouter's :free tier has upstream global throttling, so additional keys there see diminishing returns." },
+          { type: "h2", text: "2.2 Vertical scale: pay to upgrade" },
+          { type: "ul", items: [
+            "OpenRouter: add $10 credit → RPD jumps from 200 to 1000 (5×), one-time payment, permanent",
+            "Groq paid tier → RPM/TPM go up by orders of magnitude, billed per token",
+            "Gemini paid tier → RPD ceiling from 1000 to 10000+, billed per token",
+            "SmartRouter doesn't distinguish free from paid slots — bump the ModelSpec's rpm/tpm/rpd and routing logic stays identical",
+          ]},
+          { type: "h2", text: "2.3 Add a new provider" },
+          { type: "p", text: "LiteLLM is compatible with 100+ providers. Add a new row to `llm_client.py`'s ModelSpec list and a matching env read in `_load_keys`. DeepInfra (cheap 70B inference), Together (400B+ models), Fireworks, Anthropic, OpenAI itself — all plug in without further changes." },
+          { type: "p", text: "But — solo project, single-digit DAU, current architecture's theoretical capacity is 1000× over actual use. The scale-out path is documented here because knowing where the ceiling is — and that breaking through takes 5 minutes — matters more than actually scaling. The rest of this post explains how the current structure supports this order of magnitude in the first place." },
+
+          { type: "h1", text: "Part 3 — Why not LiteLLM Router" },
           { type: "p", text: "The previous approach used LiteLLM's built-in Router, which is reactive — send request → get 429 → retry next. Each 429 wastes a round-trip (200-500ms), and users notice the stutter. SmartRouter switches to proactive selection: score all slots before sending, drastically reducing 429 occurrences." },
 
-          { type: "h1", text: "Part 2 — Data structures" },
+          { type: "h1", text: "Part 4 — Data structures" },
           { type: "p", text: "SmartRouter has three layers of data structures:" },
           { type: "code", text: "ModelSpec — Model specification (static config)\n  provider: \"groq\" | \"cerebras\" | \"sambanova\" | \"gemini\" | \"openrouter\"\n  model_id: \"llama-3.3-70b-versatile\"\n  rpm / tpm / rpd / tpd: rate limits\n  groups: [\"chat\", \"merge\"]  ← which groups it belongs to\n\nSlot = ModelSpec + API Key + UsageBucket\n  A slot is the smallest routing unit\n  e.g.: (groq/llama-3.3-70b, gsk_key1, usage_bucket)\n  e.g.: (groq/llama-3.3-70b, gsk_key2, usage_bucket)  ← same model, different key = different slot\n\nUsageBucket — Usage tracking (independent per slot)\n  rpm_used / tpm_used → auto-reset every 60 seconds\n  rpd_used / tpd_used → reset on natural-day rollover in spec.reset_tz (Gemini=PT, others=UTC)\n  fail_count / last_fail_ts → failure penalty" },
 
-          { type: "h1", text: "Part 3 — Five providers × 15 models — categorized and ranked" },
+          { type: "h1", text: "Part 5 — Five providers × 15 models — categorized and ranked" },
           { type: "p", text: "15 models split into 4 use-case groups (chat / merge / summarizer / vision). Within each group, ranked by capability for that task: chat by model size, merge by maximum input it can fit (TPM-dominated), summarizer by output speed, vision by multimodal quality. Rate limits below are per-slot — multiply by key count for total contribution." },
 
           { type: "h2", text: "chat (main conversation) — sorted by model size, descending" },
@@ -1880,16 +1936,16 @@ export const articles: Article[] = [
 
           { type: "note", text: "Key complementarity: Gemini's single key contributes 250K TPM, the backbone of merge; SambaNova's dual 100K TPM keys back up merge and serve 70B chat; Cerebras packs 235B MoE with 60K TPM and ultra-fast inference all in one; OpenRouter brings exclusive 405B (hermes-3) and the nvidia/nemotron reasoning model; Groq is fastest with the highest RPD (14.4K/model) but the smallest per-model TPM, ideal for high-frequency small requests." },
 
-          { type: "h1", text: "Part 4 — Scoring mechanism" },
+          { type: "h1", text: "Part 6 — Scoring mechanism" },
           { type: "p", text: "Each slot's availability score is computed in real-time by its UsageBucket:" },
           { type: "code", text: "def score(self, spec: ModelSpec) -> float:\n    # Remaining ratio per dimension\n    rpm_r = (spec.rpm - self.rpm_used) / spec.rpm\n    tpm_r = (spec.tpm - self.tpm_used) / spec.tpm\n    rpd_r = (spec.rpd - self.rpd_used) / spec.rpd\n\n    # Minimum — bucket effect, tightest dimension determines availability\n    s = min(rpm_r, tpm_r, rpd_r)\n\n    # Penalty for recent failures (30-second half-life)\n    if self._fail_count > 0:\n        elapsed = now - self._last_fail_ts\n        penalty = 0.5 ** (elapsed / 30)\n        s *= (1 - penalty)\n\n    return s  # 0 = exhausted, 1.0 = full capacity" },
           { type: "p", text: "Scoring granularity is provider + model + key. The same Groq key's llama-70b and qwen3-32b have independent usage buckets, because Groq's rate limits are per-model per-key." },
 
-          { type: "h1", text: "Part 5 — Selection and fallback flow" },
+          { type: "h1", text: "Part 7 — Selection and fallback flow" },
           { type: "p", text: "The complete request routing flow:" },
           { type: "code", text: "router.completion(group=\"chat\", messages=...)\n│\n├── Step 1: Get all slots from the chat group\n│   Sort by score descending, pick highest for the request\n│   (add small random jitter to avoid thundering herd)\n│\n├── Success → return result\n│\n├── Failure (429/5xx) → mark failure, try next slot\n│   ... all chat slots failed ...\n│\n├── Enter fallback chain\n│   chat → summarizer\n│   merge → chat → summarizer\n│   summarizer → chat\n│\n└── All exhausted → pick soonest-recovery slot\n    slot A: rpm full, 45 seconds until reset\n    slot B: rpd full, 8 hours until reset\n    → pick slot A" },
 
-          { type: "h1", text: "Part 6 — Time-window auto-reset" },
+          { type: "h1", text: "Part 8 — Time-window auto-reset" },
           { type: "p", text: "UsageBucket counters: minute window is a rolling 60s based on time.monotonic(); day window is aligned to the natural date boundary in spec.reset_tz (Gemini=America/Los_Angeles, others=UTC), zeroing on rollover so it matches the provider's actual 00:00 reset rather than drifting from process start." },
           { type: "ul", items: [
             "rpm_used / tpm_used: auto-reset when ≥60 seconds since last reset",
@@ -1898,20 +1954,20 @@ export const articles: Article[] = [
             "No timers or background threads needed — lazy reset, zero overhead",
           ]},
 
-          { type: "h1", text: "Part 7 — Proactive vs reactive" },
+          { type: "h1", text: "Part 9 — Proactive vs reactive" },
           { type: "p", text: "This is the core difference between SmartRouter and traditional routing:" },
           { type: "code", text: "Old approach (LiteLLM Router, reactive):\n  Send request → get 429 → retry next → 429 again → retry again\n  Each 429 wastes 200-500ms round-trip\n  User experience: occasional noticeable stutter\n\nNew approach (SmartRouter, proactive):\n  Score all slots → pick best → send request\n  Slots with score=0 are never selected, 429 probability drops sharply\n  User experience: nearly invisible routing switches" },
 
-          { type: "h1", text: "Part 8 — Deployment configuration" },
+          { type: "h1", text: "Part 10 — Deployment configuration" },
           { type: "p", text: "Adding a new provider requires only an environment variable — SmartRouter auto-discovers it:" },
           { type: "code", text: "# backend/.env — each value is a JSON array, supports multi-key stacking\nGROQ_API_KEYS=[\"gsk_key1\", \"gsk_key2\"]\nCEREBRAS_API_KEYS=[\"csk_key1\", \"csk_key2\"]\nSAMBANOVA_API_KEYS=[\"sk_key1\", \"sk_key2\"]\nGEMINI_API_KEYS=[\"AIza_key1\"]\nOPENROUTER_API_KEYS=[\"sk-or-v1-key1\", \"sk-or-v1-key2\"]\n\n# Unconfigured providers produce zero slots, no impact on operation\n# Restart after adding keys to take effect" },
           { type: "p", text: "GitHub Actions deployment automatically syncs keys to the server via Secrets — no manual SSH needed." },
 
-          { type: "h1", text: "Part 9 — Health check" },
+          { type: "h1", text: "Part 11 — Health check" },
           { type: "p", text: "GET /health/providers tests each (provider, key) combination individually. CI/CD integration tests automatically detect invalid keys:" },
           { type: "code", text: "GET /health/providers\n{\n  \"total\": 8,\n  \"ok\": 7,\n  \"failed\": 1,\n  \"results\": [\n    {\"provider\": \"groq\", \"model\": \"llama-3.3-70b\", \"key\": \"gsk_abc1...\", \"ok\": true},\n    {\"provider\": \"cerebras\", \"model\": \"llama3.3-70b\", \"key\": \"csk_xyz...\", \"ok\": true},\n    {\"provider\": \"sambanova\", \"model\": \"...\", \"key\": \"sk_...\", \"ok\": false, \"error\": \"401 Unauthorized\"},\n    ...\n  ]\n}" },
 
-          { type: "h1", text: "Part 10 — Actual capacity estimate" },
+          { type: "h1", text: "Part 12 — Actual capacity estimate" },
           { type: "p", text: "Current production config: 3 Groq + 2 Cerebras + 2 SambaNova + 1 Gemini + 2 OpenRouter = 10 keys, 33 slots total (weighted by per-provider model count: 3×5 + 2×2 + 2×2 + 1×2 + 2×4)." },
           { type: "ul", items: [
             "Chat group: 28 slots, aggregate ~685 RPM, ~1.20M TPM, ~168K RPD, ~203M TPD",
