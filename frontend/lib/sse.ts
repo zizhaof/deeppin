@@ -75,6 +75,7 @@ export async function sendMergeStream(
   onError: (message: string) => void,
   onStatus?: (text: string) => void,
   customPrompt?: string,
+  lang?: string,
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/merge`, {
     method: "POST",
@@ -83,6 +84,7 @@ export async function sendMergeStream(
       format,
       ...(threadIds !== null ? { thread_ids: threadIds } : {}),
       ...(format === "custom" && customPrompt ? { custom_prompt: customPrompt } : {}),
+      ...(lang ? { lang } : {}),
     }),
   });
 

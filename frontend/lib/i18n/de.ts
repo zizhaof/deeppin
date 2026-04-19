@@ -1,0 +1,137 @@
+// lib/i18n/de.ts — Deutsche Übersetzung / German translations
+
+import type { T } from "./en";
+
+export const de: T = {
+  // Navigation
+  back: "Zurück",
+  forward: "Vor",
+  mainThread: "Haupt",
+  noTitle: "Neuer Chat",
+  switchThread: "Wechseln",
+  // Seitenleiste
+  subQuestions: "Fragen",
+  overview: "Übersicht",
+  viewList: "Liste",
+  viewGraph: "Graph",
+  // Leerzustände
+  selectToPin: "Text auswählen, um eine Frage zu öffnen",
+  noThreads: "Keine Threads",
+  // Welcome
+  welcomeTitle: "Tiefes Denken beginnt hier",
+  welcomeSub: "Frag die KI alles. Markiere Text in einer Antwort, um eine Unterfrage zu öffnen.",
+  chooseQuestion: "Wähle eine Frage zum Erkunden",
+  tagline: "Markiere beliebigen Text, um tiefer zu graben",
+  // InputBar
+  inputPlaceholder: "Nachricht schreiben… (Enter zum Senden, Shift+Enter für neue Zeile)",
+  webSearchPlaceholder: "Websuche…",
+  webSearchOn: "Websuche deaktivieren",
+  webSearchOff: "Websuche aktivieren",
+  longTextLabel: "Langer Text",
+  fileParseError: "Text konnte nicht aus der Datei extrahiert werden",
+  fileUploadError: "Datei-Upload fehlgeschlagen",
+  // Sitzungsliste
+  newChat: "Neuer Chat",
+  recentSessions: "Letzte Unterhaltungen",
+  noSessions: "Noch keine Unterhaltungen. Klick den Button, um zu starten.",
+  untitled: "Ohne Titel",
+  yesterday: "Gestern",
+  daysAgo: "Tage",
+  // Status
+  loading: "Lädt…",
+  creating: "Sitzung wird erstellt…",
+  errorPrefix: "Fehler: ",
+  processing: "Verarbeite…",
+  streamError: "[Fehler]",
+  // Threads
+  mainConversation: "Hauptunterhaltung",
+  subThread: "Unter-Thread",
+  // Pin-Menü
+  pinAction: "Frage",
+  copy: "Kopieren",
+  goToThread: "Zur Frage gehen",
+  // Vorschläge
+  suggestedQuestions: "Vorgeschlagene Fragen",
+  customQuestion: "Oder schreib deine eigene Frage…",
+  // Nachrichtenblase
+  collapse: "Einklappen",
+  expandFull: "Ausklappen",
+  chars: "Zeichen",
+  rawMode: "Raw",
+  mdMode: "MD",
+  showRaw: "Rohtext anzeigen",
+  showMd: "Markdown rendern",
+  // Anhänge
+  extracting: "Text wird extrahiert…",
+  // Merge-Ausgabe
+  mergeButton: "Zusammenführen",
+  mergeTitle: "Zusammengeführte Ausgabe",
+  mergeAngles: "Unterfragen",
+  mergeHint: "Wähle ein Format und klicke auf Generieren, um alle Pin-Inhalte zu einem Bericht zusammenzuführen",
+  mergePreparing: "Vorbereiten…",
+  mergeCopyMd: "Markdown kopieren",
+  mergeDownload: ".md herunterladen",
+  mergeGenerating: "Generiere…",
+  mergeRegenerate: "Neu generieren",
+  mergeGenerate: "Generieren",
+  mergeFormatFree: "Freie Zusammenfassung",
+  mergeFormatFreeDesc: "Fließender Text, der alle Perspektiven verbindet",
+  mergeFormatBullets: "Stichpunkte",
+  mergeFormatBulletsDesc: "Kernpunkte thematisch gruppiert",
+  mergeFormatStructured: "Strukturierte Analyse",
+  mergeFormatStructuredDesc: "Problem → Lösung → Trade-offs → Fazit",
+  mergeFormatCustom: "Benutzerdefiniert",
+  mergeFormatCustomDesc: "Auf deine Art zusammenfassen",
+  mergeFormatTranscript: "Rohes Transkript",
+  mergeFormatTranscriptDesc: "Wörtliche Ausgabe der ursprünglichen Unterhaltung",
+  mergeCustomPromptPlaceholder: "Beschreibe, wie du die Zusammenfassung willst, z. B.: als Memo für das Team, Fokus auf Aktionen…",
+  // Landing-Problem
+  problemSetup: "Wenn du eine KI-Antwort liest und einen Teil vertiefen willst, hast du meist nur zwei schlechte Optionen:",
+  badChoice1Label: "Neuen Chat starten",
+  badChoice1Desc: "du verlierst den ganzen Kontext und musst alles neu erklären",
+  badChoice2Label: "In diesem Chat fragen",
+  badChoice2Desc: "du unterbrichst den Haupt-Thread und das Thema driftet ab",
+  solutionLabel: "Deeppin",
+  solutionDesc: "Pin dieses Detail und grab so tief du willst. Der Haupt-Thread? Kein Wort unterbrochen.",
+  // Anleitung
+  howToUseTitle: "So funktioniert's",
+  step1Title: "Frag irgendetwas",
+  step1Desc: "Starte eine Unterhaltung mit der KI und erhalte eine ausführliche Antwort",
+  step2Title: "Pin zum Erkunden",
+  step2Desc: "Wähle Text in einer Antwort und klick auf 'Frage' — ein fokussierter Unter-Thread öffnet sich, der Haupt-Chat bleibt unberührt",
+  step3Title: "So tief du willst",
+  step3Desc: "Auch innerhalb von Unterfragen kannst du pinnen — keine Tiefenbegrenzung",
+  step4Title: "Alles zusammenführen",
+  step4Desc: "Fertig mit Erkunden? Kombiniere alle Threads zu einem vollständigen Bericht und exportiere ihn",
+  // Artikel
+  articles: "Artikel",
+  // Konto
+  logout: "Abmelden",
+  // Fehler
+  deleteError: "Löschen fehlgeschlagen: ",
+  unknownError: "Unbekannter Fehler",
+  confirmDelete: "Diese Sitzung löschen? Kann nicht rückgängig gemacht werden.",
+  // MergeDemo
+  pinsReady: "Pins bereit",
+  mergeOutput: "Zusammengeführte Ausgabe",
+  // Abflachen
+  flattenButton: "Abflachen",
+  flattenConfirmTitle: "Diese Sitzung abflachen?",
+  flattenConfirmBody: "Alle Nachrichten aus Unter-Threads werden in Preorder-Reihenfolge in den Haupt-Thread übernommen und alle Pins werden entfernt.\n\nKann nicht rückgängig gemacht werden.",
+  flattenConfirmCta: "Abflachen bestätigen",
+  flattenCancel: "Abbrechen",
+  flattening: "Flache ab…",
+  flattenSuccess: "Abgeflacht: {count} Pin(s) zusammengeführt",
+  flattenAlready: "Bereits abgeflacht",
+  flattenError: "Abflachen fehlgeschlagen: ",
+  // Kostenlose Testversion
+  anonQuotaTitle: "Kostenloses Testlimit erreicht",
+  anonQuotaDesc: "Melde dich an, um weiter zu chatten — deine Unterhaltung bleibt erhalten.",
+  anonSessionLimitTitle: "Kostenlose Testversion: 1 Unterhaltung",
+  anonSessionLimitDesc: "Melde dich an für unbegrenzte Unterhaltungen — nichts geht verloren.",
+  signInGoogle: "Mit Google anmelden",
+  signIn: "Anmelden",
+  later: "Später",
+  // Sprachauswahl
+  languageLabel: "Sprache",
+};

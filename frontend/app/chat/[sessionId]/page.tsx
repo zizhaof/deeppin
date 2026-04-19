@@ -37,14 +37,23 @@ import MobileChatLayout from "@/components/Mobile/MobileChatLayout";
  * 任意一轨命中即触发。
  */
 
-/** 客户端瞬时生成占位追问，供弹窗立即展示，稍后由 LLM 结果替换 */
+/**
+ * 客户端瞬时生成占位追问，供弹窗立即展示，稍后由 LLM 结果合并/替换。
+ * 占位固定英文：UI 语言跟锚点语言不匹配的组合场景下，把"未决"的那一方统一用英文兜，
+ * 避免混排歧义；LLM 返回后会用匹配锚点语言的真实追问覆盖。
+ *
+ * Client-side placeholder questions shown instantly in the pin dialog while the
+ * LLM generates real follow-ups. Kept in English on purpose: anchor language and
+ * UI language may diverge, and an English fallback keeps the transient state
+ * unambiguous until LLM results arrive.
+ */
 function makePlaceholders(anchorText: string): string[] {
   // 问题文本使用完整锚点，UI 显示由 CSS truncate 截断，发送给 AI 的内容不截断
   // Use full anchor text; CSS `truncate` handles visual clipping — never truncate what's sent to the AI
   return [
-    `请详细解释「${anchorText}」`,
-    `「${anchorText}」有哪些应用场景？`,
-    `「${anchorText}」的优缺点是什么？`,
+    `Explain "${anchorText}" in detail`,
+    `What are the use cases of "${anchorText}"?`,
+    `What are the pros and cons of "${anchorText}"?`,
   ];
 }
 
@@ -53,7 +62,6 @@ export default function ChatPage() {
   const sessionId = params.sessionId;
   const router = useRouter();
   const t = useT();
-  const toggleLang = useLangStore((s) => s.toggle);
   const lang = useLangStore((s) => s.lang);
 
   const {
@@ -698,8 +706,6 @@ export default function ChatPage() {
         onBack={navigateBack}
         onForward={navigateForward}
         onSelect={handleNavigateTo}
-        lang={lang}
-        onToggleLang={toggleLang}
         onOpenSessions={handleOpenSessions}
         onNewChat={handleNewChat}
         isAnon={isAnon}

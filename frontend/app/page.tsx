@@ -9,10 +9,11 @@ import type { Session } from "@/lib/api";
 import QuotaExceededModal from "@/components/QuotaExceededModal";
 import { createClient } from "@/lib/supabase";
 import Link from "next/link";
-import { useT, useLangStore } from "@/stores/useLangStore";
+import { useT } from "@/stores/useLangStore";
 import type { T } from "@/lib/i18n";
 import SessionDrawer from "@/components/SessionDrawer";
 import ThemeToggle from "@/components/ThemeToggle";
+import LangSelector from "@/components/LangSelector";
 import PinDemo from "@/components/PinDemo";
 
 // ── 分隔线 ────────────────────────────────────────────────────────────
@@ -118,7 +119,6 @@ function HowItWorks({ t }: { t: T }) {
 export default function HomePage() {
   const router = useRouter();
   const t = useT();
-  const toggleLang = useLangStore((s) => s.toggle);
   const [user, setUser] = useState<{ email?: string; avatar_url?: string } | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,12 +327,7 @@ export default function HomePage() {
             {t.articles}
           </Link>
           <ThemeToggle />
-          <button
-            onClick={toggleLang}
-            className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
-          >
-            {t.toggleLang}
-          </button>
+          <LangSelector />
           {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
            *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat" */}
           {isAnon ? (

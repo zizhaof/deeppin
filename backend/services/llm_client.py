@@ -691,25 +691,28 @@ async def generate_title_and_suggestions(
     context_summary: str = "",
 ) -> tuple[str, list[str]]:
     """
-    一次调用同时生成子线程标题（4-8 字）和 3 个建议追问。
-    Generate a sub-thread title (4-8 characters) and 3 suggested follow-up questions in one call.
+    一次调用同时生成子线程标题和 3 个建议追问。标题和追问的语种跟随锚点文字，不写死中文。
+    Generate a sub-thread title and 3 suggested follow-up questions in one call.
+    Title + questions follow the anchor text's language; no hard-coded Chinese.
     """
     import re
-    bg = f"\n\n【锚点所在的完整消息】\n{context_summary}" if context_summary else ""
+    bg = f"\n\n[Full message containing the anchor]\n{context_summary}" if context_summary else ""
     raw = await _summarizer_call(
         messages=[{
             "role": "user",
             "content": (
-                f"用户在阅读 AI 回复时，选中了其中这段文字作为追问锚点：\n\"{anchor_text}\"\n"
-                f"请结合锚点在原文中的上下文语境，生成标题和深度追问。{bg}\n\n"
-                "请严格按以下格式输出，不要输出其他任何内容：\n"
-                "TITLE: <4-8 个字的小标题，直接描述锚点核心概念>\n"
-                "Q1: <结合上下文，针对锚点最值得深挖的追问>\n"
-                "Q2: <针对锚点的第二个深度追问>\n"
-                "Q3: <针对锚点的第三个深度追问>"
+                f'While reading an AI reply, the user selected this span as an anchor for a follow-up:\n"{anchor_text}"\n'
+                f"Using the anchor's surrounding context, produce a short title and deep follow-up questions.{bg}\n\n"
+                "Language rule (highest priority): the TITLE and every Q must be written in the same "
+                "language/script as the anchor text above. Do not default to English or Chinese.\n\n"
+                "Output exactly in the format below and nothing else:\n"
+                "TITLE: <a short title (about 4-8 words, or 4-8 CJK characters) naming the anchor's core idea>\n"
+                "Q1: <the most worthwhile deep follow-up about the anchor, informed by context>\n"
+                "Q2: <a second deep follow-up about the anchor>\n"
+                "Q3: <a third deep follow-up about the anchor>"
             ),
         }],
-        max_tokens=150,
+        max_tokens=200,
         timeout=15,
     )
 
@@ -735,14 +738,8 @@ async def generate_title_and_suggestions(
         if m:
             title = m.group(1).strip()
 
-    if not questions:
-        short = anchor_text[:10]
-        questions = [
-            f"请详细解释「{short}」",
-            f"「{short}」有哪些应用场景？",
-            f"「{short}」的优缺点是什么？",
-        ]
-
+    # 解析失败时不再写死中文 fallback 问题（前端有多语种占位提示）。
+    # On parse failure, no hard-coded Chinese fallback questions; the frontend has localized placeholders.
     return title, questions[:3]
 
 
@@ -752,9 +749,9 @@ async def summarize(text: str, max_tokens: int) -> str:
         messages=[{
             "role": "user",
             "content": (
-                f"请将以下内容压缩为不超过 {max_tokens} tokens 的摘要，"
-                f"按话题分组，格式：[Topic: 话题名] 关键事实和具体细节。"
-                f"保留核心信息，语言与原文保持一致：\n\n{text}"
+                f"Compress the following content into a summary under {max_tokens} tokens. "
+                f"Group by topic, one line each: [Topic: <topic name>] key facts and concrete details. "
+                f"Keep the core information. Write the summary in the same language as the original text below:\n\n{text}"
             ),
         }],
         max_tokens=max_tokens,
@@ -768,12 +765,14 @@ async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: in
         messages=[{
             "role": "user",
             "content": (
-                f"以下是一段对话的现有摘要，以及刚发生的一轮新对话。\n"
-                f"请将新对话的核心内容融入摘要，按话题分组，格式：[Topic: 话题名] 关键事实和具体细节。"
-                f"已有话题严格复用原标签，不得重命名。更新后控制在 {max_tokens} tokens 以内，"
-                f"语言与原文保持一致，只输出摘要本身：\n\n"
-                f"【现有摘要】\n{existing_summary}\n\n"
-                f"【新对话】\n{new_exchange}"
+                "Below is an existing summary of a conversation, followed by one new round that just happened.\n"
+                "Merge the key content of the new round into the summary. "
+                "Group by topic, one line each: [Topic: <topic name>] key facts and concrete details. "
+                "Strictly reuse existing topic labels — do not rename them. "
+                f"Keep the updated summary under {max_tokens} tokens. "
+                "Write in the same language as the source material, and output only the summary itself:\n\n"
+                f"[Existing summary]\n{existing_summary}\n\n"
+                f"[New round]\n{new_exchange}"
             ),
         }],
         max_tokens=max_tokens,
@@ -792,7 +791,7 @@ async def assess_relevance(
     import re as _re
 
     thread_lines = "\n".join(
-        f"{i + 1}. id={t['thread_id']}, 标题={t['title']}: {t['summary'][:200]}"
+        f"{i + 1}. id={t['thread_id']}, title={t['title']}: {t['summary'][:200]}"
         for i, t in enumerate(threads)
     )
 
@@ -800,12 +799,12 @@ async def assess_relevance(
         messages=[{
             "role": "user",
             "content": (
-                "你是一个分析助手。以下是主线对话摘要，以及若干子问题的摘要。\n"
-                "请判断每个子问题与主线主题的相关程度，决定是否默认选中用于合并输出。\n\n"
-                f"【主线摘要】\n{main_summary}\n\n"
-                f"【子问题列表】\n{thread_lines}\n\n"
-                "请严格以 JSON 数组格式输出，不要输出其他任何内容：\n"
-                '[{"thread_id": "...", "selected": true, "reason": "一句话说明"}]'
+                "You are an analysis assistant. Below are the main thread summary and several sub-question summaries.\n"
+                "For each sub-question, decide whether it is relevant enough to the main topic to be selected by default for merged output.\n\n"
+                f"[Main summary]\n{main_summary}\n\n"
+                f"[Sub-questions]\n{thread_lines}\n\n"
+                'Output strictly as a JSON array and nothing else. Write "reason" in the same language as the main summary above:\n'
+                '[{"thread_id": "...", "selected": true, "reason": "one short sentence"}]'
             ),
         }],
         max_tokens=500,
@@ -827,30 +826,64 @@ async def assess_relevance(
     return [{"thread_id": t["thread_id"], "selected": True, "reason": ""} for t in threads]
 
 
+# 合并输出支持的 UI locale → 自然语言名的映射，用于强制输出语种。
+# Map of supported UI locales to natural-language names used to force output language.
+_MERGE_LANG_NAMES: dict[str, str] = {
+    "en": "English",
+    "zh": "Chinese (Simplified)",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+    "ru": "Russian",
+}
+
+# Transcript 模式下的结构性标签 per-locale（供直接拼接，无 LLM 参与）。
+# Transcript-mode structural labels per-locale (concatenated directly, no LLM involvement).
+_TRANSCRIPT_LABELS: dict[str, dict[str, str]] = {
+    "en": {"title": "Conversation transcript", "main": "Main thread", "sub": "Sub-question", "anchor": "Anchor"},
+    "zh": {"title": "对话原文", "main": "主线对话", "sub": "子问题", "anchor": "锚点"},
+    "ja": {"title": "会話の原文", "main": "メインの会話", "sub": "サブ質問", "anchor": "アンカー"},
+    "ko": {"title": "대화 원문", "main": "메인 대화", "sub": "하위 질문", "anchor": "앵커"},
+    "es": {"title": "Transcripción de la conversación", "main": "Conversación principal", "sub": "Subpregunta", "anchor": "Ancla"},
+    "fr": {"title": "Transcription de la conversation", "main": "Conversation principale", "sub": "Sous-question", "anchor": "Ancre"},
+    "de": {"title": "Gesprächsprotokoll", "main": "Hauptunterhaltung", "sub": "Unterfrage", "anchor": "Anker"},
+    "pt": {"title": "Transcrição da conversa", "main": "Conversa principal", "sub": "Subpergunta", "anchor": "Âncora"},
+    "ru": {"title": "Транскрипт беседы", "main": "Основная беседа", "sub": "Подвопрос", "anchor": "Якорь"},
+}
+
+
 async def merge_threads(
     threads_data: list[dict],
     main_content: str = "",
     format_type: str = "free",
     custom_prompt: str | None = None,
+    lang: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     以主线对话为主干、子线程为细节补充，合并为结构化输出，流式返回。
-    Merge with main thread as the backbone and sub-threads as enriching detail; streamed.
+    `lang` 为用户当前 UI 语种，用于强制输出语种与 transcript 模式的结构标签。
+    Merge with main thread as backbone and sub-threads as enriching detail; streamed.
+    `lang` is the current UI locale and forces both output language and transcript-mode labels.
     """
     if not threads_data:
         return
 
+    labels = _TRANSCRIPT_LABELS.get(lang or "en", _TRANSCRIPT_LABELS["en"])
+
     if format_type == "transcript":
-        parts: list[str] = ["# 对话原文\n"]
+        parts: list[str] = [f"# {labels['title']}\n"]
         if main_content and main_content.strip():
-            parts.append(f"## 主线对话\n\n{main_content.strip()}\n")
+            parts.append(f"## {labels['main']}\n\n{main_content.strip()}\n")
         for i, t in enumerate(threads_data, 1):
-            title = t.get("title") or f"子问题 {i}"
+            title = t.get("title") or f"{labels['sub']} {i}"
             anchor = t.get("anchor", "")
             content = t.get("content", "")
-            section = f"---\n\n## 子问题 {i}：{title}"
+            section = f"---\n\n## {labels['sub']} {i}: {title}"
             if anchor:
-                section += f"\n\n> 锚点：「{anchor}」"
+                section += f"\n\n> {labels['anchor']}: \"{anchor}\""
             if content:
                 section += f"\n\n{content.strip()}"
             parts.append(section)
@@ -862,18 +895,21 @@ async def merge_threads(
 
     FORMAT_INSTRUCTIONS = {
         "free": (
-            "请以主线对话为核心脉络，用子问题的深入探索来丰富和补充细节，"
-            "写一篇流畅有深度的总结报告。不要简单罗列，要将主线与子问题有机融合。"
+            "Write a flowing, in-depth summary report. Use the main thread as the narrative spine "
+            "and weave the sub-question explorations into it as enriching detail. Do not simply list — "
+            "integrate main and sub-threads organically."
         ),
         "bullets": (
-            "请以主线对话为框架，将子问题探索的要点按主题分组补充进来，"
-            "输出结构化的要点列表。每组用二级标题，要点用「- 」开头，保持简洁有力。"
+            "Use the main thread as the frame and group the key points from sub-question exploration "
+            "by topic. Output a structured bulleted list: one level-2 heading per group, bullets starting "
+            'with "- ", concise and sharp.'
         ),
         "structured": (
-            "请以主线对话为基础，结合子问题的深入探索，整理为结构化分析，"
-            "严格按以下四部分输出：\n"
-            "## 问题与背景\n## 方案与见解\n## 权衡与对比\n## 结论与行动\n"
-            "每部分下可分条阐述，主线提供主干，子问题提供细节支撑。"
+            "Use the main thread as the base and the sub-question exploration as detail. Output a "
+            "structured analysis following exactly these four sections (translate the headings into the "
+            "target output language):\n"
+            "## Problem & context\n## Approach & insights\n## Trade-offs & comparisons\n## Conclusion & actions\n"
+            "Each section may contain multiple points; main thread provides the backbone, sub-questions provide support."
         ),
     }
 
@@ -884,24 +920,24 @@ async def merge_threads(
 
     main_section = ""
     if main_content and main_content.strip():
-        main_section = f"## 主线对话\n\n{main_content}\n\n"
+        main_section = f"## Main thread\n\n{main_content}\n\n"
 
     sub_sections = []
     for i, t in enumerate(threads_data, 1):
-        title = t.get("title") or f"子问题 {i}"
+        title = t.get("title") or f"Sub-question {i}"
         anchor = t.get("anchor", "")
         content = t.get("content", "")
-        section = f"### 子问题 {i}：{title}"
+        section = f"### Sub-question {i}: {title}"
         if anchor:
-            section += f"\n> 锚点：「{anchor}」"
+            section += f'\n> Anchor: "{anchor}"'
         if content:
             section += f"\n\n{content}"
         sub_sections.append(section)
 
     sub_text = "\n\n---\n\n".join(sub_sections)
-    sub_section = f"## 子问题探索\n\n{sub_text}" if sub_text else ""
+    sub_section = f"## Sub-question exploration\n\n{sub_text}" if sub_text else ""
 
-    user_content = "以下是用户的对话内容，请按要求整合输出：\n\n"
+    user_content = "The following is the user's conversation content. Integrate it per the instructions:\n\n"
     if main_section:
         user_content += main_section
     if sub_section:
@@ -909,16 +945,30 @@ async def merge_threads(
 
     _HARD_CAP_CHARS = 17_000
     if len(user_content) > _HARD_CAP_CHARS:
-        user_content = user_content[:_HARD_CAP_CHARS] + "\n\n…（内容过长，已截断）"
+        user_content = user_content[:_HARD_CAP_CHARS] + "\n\n…(content truncated)"
+
+    # 语种指令：有 lang 就强制目标语种；没有就跟随原文语种。
+    # Language directive: if lang is given, force the target; otherwise follow the source.
+    if lang and lang in _MERGE_LANG_NAMES:
+        lang_directive = (
+            f"Write the entire merged report in {_MERGE_LANG_NAMES[lang]}, including all headings and labels. "
+            "Translate any section headings above into that language as needed."
+        )
+    else:
+        lang_directive = (
+            "Write the merged report in the same language as the main thread content above. "
+            "Translate section headings into that language as needed."
+        )
 
     messages = [
         {
             "role": "system",
             "content": (
-                "你是一位帮助用户整合思考成果的助手。"
-                "用户在对话过程中对多个要点插针展开了深入探索。"
-                "主线对话是主干，子问题是对主线细节的深入挖掘，"
-                "请以主线为核心将所有内容整合为有价值的输出。\n\n"
+                "You are an assistant that helps users consolidate the results of their thinking. "
+                "The user pinned multiple points during the conversation to explore them in depth. "
+                "The main thread is the backbone; sub-questions are deep dives into its details. "
+                "Integrate everything into a valuable output with the main thread at the core.\n\n"
+                + lang_directive + "\n\n"
                 + instruction
             ),
         },

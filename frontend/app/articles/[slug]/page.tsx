@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { use } from "react";
 import { useLangStore } from "@/stores/useLangStore";
+import { narrowToContentLang } from "@/lib/i18n";
+import LangSelector from "@/components/LangSelector";
 import { articles } from "../data";
 import { DIAGRAMS } from "../ArticleDiagrams";
 
@@ -75,12 +77,13 @@ function renderBlock(block: Block, i: number) {
 export default function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const lang = useLangStore((s) => s.lang);
-  const toggle = useLangStore((s) => s.toggle);
+  // 文章内容只有中/英；其他语种回落到英文 / Article data is bilingual only; third locales fall back to en
+  const contentLang = narrowToContentLang(lang);
 
   const article = articles.find((a) => a.slug === slug);
   if (!article) notFound();
 
-  const c = article.content[lang];
+  const c = article.content[contentLang];
 
   return (
     <div className="min-h-screen bg-base text-hi">
@@ -100,13 +103,11 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
             <span className="text-sm font-semibold text-md tracking-tight">Deeppin</span>
             <span className="text-faint text-sm">/</span>
             <Link href="/articles" className="text-sm text-faint hover:text-md transition-colors">
-              {lang === "zh" ? "文章" : "Articles"}
+              {contentLang === "zh" ? "文章" : "Articles"}
             </Link>
           </div>
         </div>
-        <button onClick={toggle} className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors">
-          {lang === "zh" ? "EN" : "中"}
-        </button>
+        <LangSelector />
       </header>
 
       <main className="max-w-[720px] mx-auto px-6 py-14">
@@ -134,7 +135,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 12H5M12 5l-7 7 7 7" />
             </svg>
-            {lang === "zh" ? "所有文章" : "All articles"}
+            {contentLang === "zh" ? "所有文章" : "All articles"}
           </Link>
         </div>
       </main>

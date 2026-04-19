@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Thread } from "@/lib/api";
 import { deleteAccount } from "@/lib/api";
-import type { Lang } from "@/lib/i18n";
 import { useT } from "@/stores/useLangStore";
 import ThemeToggle from "@/components/ThemeToggle";
+import LangSelector from "@/components/LangSelector";
 import { createClient } from "@/lib/supabase";
 
 interface Props {
@@ -19,8 +19,6 @@ interface Props {
   onBack: () => void;
   onForward: () => void;
   onSelect: (threadId: string) => void;
-  lang: Lang;
-  onToggleLang: () => void;
   onOpenSessions: () => void;
   /** 顶栏「新对话」按钮的点击回调；匿名用户在上层弹登录引导，登录用户直接 router.push 新 UUID。
    *  Handler for the topbar "new chat" button; parent branches on isAnon. */
@@ -41,7 +39,6 @@ export default function ThreadNav({
   onBack,
   onForward,
   onSelect,
-  onToggleLang,
   onOpenSessions,
   onNewChat,
   isAnon = false,
@@ -172,13 +169,8 @@ export default function ThreadNav({
       {/* 主题切换 */}
       <ThemeToggle />
 
-      {/* 语言切换 */}
-      <button
-        onClick={onToggleLang}
-        className="flex-shrink-0 text-[10px] font-semibold text-faint hover:text-md px-2.5 py-1 rounded-lg border border-subtle hover:border-base hover:bg-glass transition-all tracking-wide"
-      >
-        {t.toggleLang}
-      </button>
+      {/* 语言切换 / Language selector */}
+      <LangSelector />
 
       {/* 匿名用户：显示「登录」按钮（不显示个人菜单，删除账号对匿名无意义） */}
       {/* 登录用户：显示个人菜单（含删除账号） */}
