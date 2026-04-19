@@ -137,4 +137,10 @@ export const en = {
   languageLabel: "Language",
 } as const;
 
-export type T = typeof en;
+// T 是 en 的 key 集合 + 全部 string 值类型。
+// 不能直接写 `typeof en`，因为 `as const` 会把每个值收窄成字面量类型，
+// 导致其他 locale 的翻译（值不同）无法赋给相同的 key。
+// T is the key set of en mapped to plain string values. Using `typeof en` directly
+// would narrow each value to its English literal, which would then reject every
+// other locale's translation (different literal) on the same key.
+export type T = { [K in keyof typeof en]: string };
