@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
-import { narrowToContentLang } from "@/lib/i18n";
+import type { Lang } from "@/lib/i18n";
 
 type Phase =
   | "idle"      // 展示三根针已选中状态
@@ -28,7 +28,24 @@ const NEXT: Record<Phase, Phase> = {
   done:       "idle",
 };
 
-const CONTENT = {
+type Content = {
+  windowTitle: string;
+  pinsReady: string;
+  mergeOutput: string;
+  chatLines: readonly [string, string];
+  pins: readonly [string, string, string];
+  threads: readonly { id: string; label: string; depth: number; checked: boolean }[];
+  formats: readonly [string, string, string];
+  selectThreads: string;
+  selectAll: string;
+  generate: string;
+  download: string;
+  copy: string;
+  mergeText: string;
+  captions: Record<Phase, string>;
+};
+
+const CONTENT: Record<Lang, Content> = {
   zh: {
     windowTitle: "如何设计一个分布式系统？",
     pinsReady: "3 根针已就绪",
@@ -111,6 +128,293 @@ All three complement each other: CAP sets the architecture, Raft ensures write c
       done:      "Report ready — download or copy ✓",
     },
   },
+  ja: {
+    windowTitle: "分散システムはどう設計する？",
+    pinsReady: "3 本のピンが準備完了",
+    mergeOutput: "統合出力",
+    chatLines: ["分散システムはどう設計する？", "CAP 定理……Raft プロトコル……コンシステントハッシュ……を考慮する必要がある"],
+    pins: ["Raft プロトコル", "コンシステントハッシュ", "CAP 定理"],
+    threads: [
+      { id: "main",   label: "メインスレッド",         depth: 0, checked: false },
+      { id: "raft",   label: "Raft プロトコル",        depth: 1, checked: true  },
+      { id: "hash",   label: "コンシステントハッシュ", depth: 1, checked: true  },
+      { id: "cap",    label: "CAP 定理",               depth: 1, checked: true  },
+      { id: "leader", label: "Leader 選挙",            depth: 2, checked: true  },
+    ],
+    formats: ["自由要約", "箇条書き", "構造化分析"],
+    selectThreads: "スレッドを選択",
+    selectAll: "全選択",
+    generate: "生成開始",
+    download: "Markdown ダウンロード",
+    copy: "コピー",
+    mergeText:
+`## 分散システム設計のポイント
+
+**中心的なトレードオフ（CAP 定理）**
+ネットワーク分断は避けられず、C と A のどちらかを選ばなければならない。HBase は強一貫性、Cassandra は高可用性を優先する。
+
+**合意機構（Raft プロトコル）**
+Leader 選挙 + ログ複製で線形一貫性を保証。Leader 選挙により同時刻に正当な Leader は一つだけ。
+
+**スケール戦略（コンシステントハッシュ）**
+ノード増減の影響を O(1/N) に抑え、ステートレス拡張に適合。仮想ノードでデータ偏りを解消。
+
+**結論**
+三者は補完関係：CAP がアーキテクチャを決め、Raft が書き込み一貫性を担保し、コンシステントハッシュがデータ配置を最適化する。`,
+    captions: {
+      idle:      "3 本のピンが準備完了、統合出力をクリック",
+      clicking:  "統合ボタンをクリック中…",
+      selecting: "統合するスレッドを選択",
+      streaming: "構造化レポートを生成中…",
+      done:      "レポート完成、ダウンロード／コピー可能 ✓",
+    },
+  },
+  ko: {
+    windowTitle: "분산 시스템을 어떻게 설계할까?",
+    pinsReady: "3개의 핀 준비 완료",
+    mergeOutput: "병합 출력",
+    chatLines: ["분산 시스템을 어떻게 설계할까?", "CAP 정리, Raft 프로토콜, 일관성 해싱을 고려해야……"],
+    pins: ["Raft 프로토콜", "일관성 해싱", "CAP 정리"],
+    threads: [
+      { id: "main",   label: "메인 스레드",      depth: 0, checked: false },
+      { id: "raft",   label: "Raft 프로토콜",    depth: 1, checked: true  },
+      { id: "hash",   label: "일관성 해싱",      depth: 1, checked: true  },
+      { id: "cap",    label: "CAP 정리",         depth: 1, checked: true  },
+      { id: "leader", label: "리더 선출",        depth: 2, checked: true  },
+    ],
+    formats: ["자유 요약", "요점 목록", "구조화 분석"],
+    selectThreads: "스레드 선택",
+    selectAll: "전체",
+    generate: "생성 시작",
+    download: "Markdown 다운로드",
+    copy: "복사",
+    mergeText:
+`## 분산 시스템 설계 요점
+
+**핵심 트레이드오프(CAP 정리)**
+네트워크 분할은 불가피하며, 시스템은 C와 A 중 하나를 선택해야 한다. HBase는 강한 일관성, Cassandra는 고가용성을 우선한다.
+
+**합의 메커니즘(Raft 프로토콜)**
+리더 선출 + 로그 복제로 선형 일관성을 보장. 리더 선출은 같은 시점에 하나의 유효 리더만 존재하도록 한다.
+
+**스케일 전략(일관성 해싱)**
+노드 변경의 영향을 O(1/N)로 제한하여 무상태 서비스의 수평 확장에 적합. 가상 노드로 데이터 편향 해소.
+
+**결론**
+셋은 서로 보완한다: CAP는 아키텍처 방향을 정하고, Raft는 쓰기 일관성을 보장하며, 일관성 해싱은 데이터 분포를 최적화한다.`,
+    captions: {
+      idle:      "3개의 핀 준비 완료 — 병합 출력 클릭",
+      clicking:  "병합 버튼 클릭 중…",
+      selecting: "병합할 스레드 선택",
+      streaming: "구조화 리포트 생성 중…",
+      done:      "리포트 준비 완료 — 다운로드 또는 복사 ✓",
+    },
+  },
+  es: {
+    windowTitle: "¿Cómo diseñar un sistema distribuido?",
+    pinsReady: "3 anclajes listos",
+    mergeOutput: "Fusionar salida",
+    chatLines: ["¿Cómo diseñar un sistema distribuido?", "Hay que considerar el teorema CAP, Raft, hashing consistente…"],
+    pins: ["Protocolo Raft", "Hashing consistente", "Teorema CAP"],
+    threads: [
+      { id: "main",   label: "Hilo principal",        depth: 0, checked: false },
+      { id: "raft",   label: "Protocolo Raft",        depth: 1, checked: true  },
+      { id: "hash",   label: "Hashing consistente",   depth: 1, checked: true  },
+      { id: "cap",    label: "Teorema CAP",            depth: 1, checked: true  },
+      { id: "leader", label: "Elección de líder",      depth: 2, checked: true  },
+    ],
+    formats: ["Resumen libre", "Puntos clave", "Estructurado"],
+    selectThreads: "Seleccionar hilos",
+    selectAll: "Todo",
+    generate: "Generar",
+    download: "Descargar Markdown",
+    copy: "Copiar",
+    mergeText:
+`## Diseño de sistemas distribuidos
+
+**Compromiso central (teorema CAP)**
+Las particiones de red son inevitables — los sistemas deben elegir entre C y A. HBase favorece la consistencia; Cassandra, la disponibilidad.
+
+**Consenso (protocolo Raft)**
+Elección de líder + replicación de log garantizan linealizabilidad. En cualquier momento existe exactamente un líder válido.
+
+**Escalado (hashing consistente)**
+Limita el movimiento de datos a O(1/N) cuando cambian los nodos. Se combina bien con nodos virtuales para evitar puntos calientes.
+
+**Conclusión**
+Los tres se complementan: CAP define la arquitectura, Raft garantiza la consistencia de escritura y el hashing consistente optimiza la distribución de datos.`,
+    captions: {
+      idle:      "3 anclajes listos — haz clic en Fusionar",
+      clicking:  "Haciendo clic en Fusionar…",
+      selecting: "Selecciona los hilos a fusionar",
+      streaming: "Generando informe estructurado…",
+      done:      "Informe listo — descarga o copia ✓",
+    },
+  },
+  fr: {
+    windowTitle: "Comment concevoir un système distribué ?",
+    pinsReady: "3 épingles prêtes",
+    mergeOutput: "Fusionner la sortie",
+    chatLines: ["Comment concevoir un système distribué ?", "Il faut considérer le théorème CAP, Raft, le hachage cohérent…"],
+    pins: ["Protocole Raft", "Hachage cohérent", "Théorème CAP"],
+    threads: [
+      { id: "main",   label: "Fil principal",         depth: 0, checked: false },
+      { id: "raft",   label: "Protocole Raft",        depth: 1, checked: true  },
+      { id: "hash",   label: "Hachage cohérent",      depth: 1, checked: true  },
+      { id: "cap",    label: "Théorème CAP",           depth: 1, checked: true  },
+      { id: "leader", label: "Élection du leader",     depth: 2, checked: true  },
+    ],
+    formats: ["Résumé libre", "Points clés", "Structuré"],
+    selectThreads: "Sélectionner les fils",
+    selectAll: "Tout",
+    generate: "Générer",
+    download: "Télécharger Markdown",
+    copy: "Copier",
+    mergeText:
+`## Conception de système distribué
+
+**Compromis central (théorème CAP)**
+Les partitions réseau sont inévitables — les systèmes doivent choisir entre C et A. HBase privilégie la cohérence ; Cassandra, la disponibilité.
+
+**Consensus (protocole Raft)**
+L'élection d'un leader + la réplication du journal assurent la linéarisabilité. À tout moment, il existe exactement un leader valide.
+
+**Mise à l'échelle (hachage cohérent)**
+Limite le déplacement des données à O(1/N) lors d'un changement de nœuds. S'associe bien aux nœuds virtuels pour éviter les points chauds.
+
+**Conclusion**
+Les trois se complètent : CAP définit l'architecture, Raft assure la cohérence des écritures, le hachage cohérent optimise la distribution.`,
+    captions: {
+      idle:      "3 épingles prêtes — cliquez sur Fusionner",
+      clicking:  "Clic sur Fusionner…",
+      selecting: "Sélectionner les fils à fusionner",
+      streaming: "Génération du rapport structuré…",
+      done:      "Rapport prêt — télécharger ou copier ✓",
+    },
+  },
+  de: {
+    windowTitle: "Wie entwirft man ein verteiltes System?",
+    pinsReady: "3 Pins bereit",
+    mergeOutput: "Ausgabe zusammenführen",
+    chatLines: ["Wie entwirft man ein verteiltes System?", "Man muss CAP-Theorem, Raft, konsistentes Hashing berücksichtigen…"],
+    pins: ["Raft-Protokoll", "Konsistentes Hashing", "CAP-Theorem"],
+    threads: [
+      { id: "main",   label: "Hauptthread",            depth: 0, checked: false },
+      { id: "raft",   label: "Raft-Protokoll",         depth: 1, checked: true  },
+      { id: "hash",   label: "Konsistentes Hashing",   depth: 1, checked: true  },
+      { id: "cap",    label: "CAP-Theorem",             depth: 1, checked: true  },
+      { id: "leader", label: "Leader-Wahl",             depth: 2, checked: true  },
+    ],
+    formats: ["Freies Resümee", "Stichpunkte", "Strukturiert"],
+    selectThreads: "Threads wählen",
+    selectAll: "Alle",
+    generate: "Generieren",
+    download: "Markdown herunterladen",
+    copy: "Kopieren",
+    mergeText:
+`## Entwurf verteilter Systeme
+
+**Zentraler Kompromiss (CAP-Theorem)**
+Netzwerkpartitionen sind unvermeidlich — Systeme müssen zwischen C und A wählen. HBase bevorzugt Konsistenz; Cassandra bevorzugt Verfügbarkeit.
+
+**Konsens (Raft-Protokoll)**
+Leader-Wahl + Log-Replikation sorgen für Linearisierbarkeit. Zu jedem Zeitpunkt gibt es genau einen gültigen Leader.
+
+**Skalierung (konsistentes Hashing)**
+Begrenzt Datenbewegung auf O(1/N) bei Knotenänderungen. Kombiniert mit virtuellen Knoten verhindert Hotspots.
+
+**Fazit**
+Die drei ergänzen sich: CAP setzt die Architektur, Raft sichert Schreibkonsistenz, konsistentes Hashing optimiert die Datenverteilung.`,
+    captions: {
+      idle:      "3 Pins bereit — Ausgabe zusammenführen klicken",
+      clicking:  "Klicke auf Zusammenführen…",
+      selecting: "Threads zum Zusammenführen wählen",
+      streaming: "Strukturierter Bericht wird generiert…",
+      done:      "Bericht fertig — herunterladen oder kopieren ✓",
+    },
+  },
+  pt: {
+    windowTitle: "Como projetar um sistema distribuído?",
+    pinsReady: "3 pins prontos",
+    mergeOutput: "Mesclar saída",
+    chatLines: ["Como projetar um sistema distribuído?", "É preciso considerar o teorema CAP, Raft, hashing consistente…"],
+    pins: ["Protocolo Raft", "Hashing consistente", "Teorema CAP"],
+    threads: [
+      { id: "main",   label: "Thread principal",       depth: 0, checked: false },
+      { id: "raft",   label: "Protocolo Raft",         depth: 1, checked: true  },
+      { id: "hash",   label: "Hashing consistente",    depth: 1, checked: true  },
+      { id: "cap",    label: "Teorema CAP",             depth: 1, checked: true  },
+      { id: "leader", label: "Eleição de líder",        depth: 2, checked: true  },
+    ],
+    formats: ["Resumo livre", "Tópicos", "Estruturado"],
+    selectThreads: "Selecionar threads",
+    selectAll: "Tudo",
+    generate: "Gerar",
+    download: "Baixar Markdown",
+    copy: "Copiar",
+    mergeText:
+`## Projeto de sistema distribuído
+
+**Compromisso central (teorema CAP)**
+Partições de rede são inevitáveis — sistemas devem escolher entre C e A. HBase prioriza consistência; Cassandra prioriza disponibilidade.
+
+**Consenso (protocolo Raft)**
+Eleição de líder + replicação de log garantem linearização. A qualquer momento, existe exatamente um líder válido.
+
+**Escala (hashing consistente)**
+Limita a movimentação de dados a O(1/N) quando nós mudam. Combina bem com nós virtuais para evitar hotspots.
+
+**Conclusão**
+Os três se complementam: CAP define a arquitetura, Raft garante consistência de escrita, hashing consistente otimiza a distribuição dos dados.`,
+    captions: {
+      idle:      "3 pins prontos — clique em Mesclar",
+      clicking:  "Clicando em Mesclar…",
+      selecting: "Selecione os threads para mesclar",
+      streaming: "Gerando relatório estruturado…",
+      done:      "Relatório pronto — baixar ou copiar ✓",
+    },
+  },
+  ru: {
+    windowTitle: "Как спроектировать распределённую систему?",
+    pinsReady: "3 булавки готовы",
+    mergeOutput: "Объединить вывод",
+    chatLines: ["Как спроектировать распределённую систему?", "Нужно учесть теорему CAP, Raft, согласованное хеширование…"],
+    pins: ["Протокол Raft", "Согласованное хеширование", "Теорема CAP"],
+    threads: [
+      { id: "main",   label: "Главная ветка",               depth: 0, checked: false },
+      { id: "raft",   label: "Протокол Raft",               depth: 1, checked: true  },
+      { id: "hash",   label: "Согласованное хеширование",   depth: 1, checked: true  },
+      { id: "cap",    label: "Теорема CAP",                  depth: 1, checked: true  },
+      { id: "leader", label: "Выбор лидера",                 depth: 2, checked: true  },
+    ],
+    formats: ["Свободное резюме", "Ключевые пункты", "Структурировано"],
+    selectThreads: "Выбрать ветки",
+    selectAll: "Все",
+    generate: "Сгенерировать",
+    download: "Скачать Markdown",
+    copy: "Копировать",
+    mergeText:
+`## Проектирование распределённой системы
+
+**Центральный компромисс (теорема CAP)**
+Сетевые разделения неизбежны — системы должны выбирать между C и A. HBase выбирает согласованность, Cassandra — доступность.
+
+**Консенсус (протокол Raft)**
+Выбор лидера + репликация журнала обеспечивают линеаризуемость. В любой момент существует ровно один валидный лидер.
+
+**Масштабирование (согласованное хеширование)**
+Ограничивает перемещение данных O(1/N) при смене узлов. Хорошо сочетается с виртуальными узлами, чтобы избежать перекосов.
+
+**Вывод**
+Три подхода дополняют друг друга: CAP задаёт архитектуру, Raft обеспечивает согласованность записи, согласованное хеширование оптимизирует распределение данных.`,
+    captions: {
+      idle:      "3 булавки готовы — нажмите Объединить",
+      clicking:  "Нажимаем Объединить…",
+      selecting: "Выберите ветки для объединения",
+      streaming: "Генерируется структурированный отчёт…",
+      done:      "Отчёт готов — скачайте или скопируйте ✓",
+    },
+  },
 };
 
 function SimpleMd({ text }: { text: string }) {
@@ -139,18 +443,16 @@ function SimpleMd({ text }: { text: string }) {
 
 export default function MergeDemo() {
   const lang = useLangStore((s) => s.lang);
-  // Demo 内容只有中/英；其他语种回落到英文 / Demo content is bilingual only; third locales fall back to en
-  const contentLang = narrowToContentLang(lang);
-  const c = CONTENT[contentLang];
+  const c = CONTENT[lang];
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [streamLen, setStreamLen] = useState(0);
 
-  // 切换语言时重置动画 / Reset when the effective content language changes
+  // 切换语言时重置动画 / Reset when the UI language changes
   useEffect(() => {
     setPhase("idle");
     setStreamLen(0);
-  }, [contentLang]);
+  }, [lang]);
 
   useEffect(() => {
     const t = setTimeout(() => setPhase((p) => NEXT[p]), DELAYS[phase]);

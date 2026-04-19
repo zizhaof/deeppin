@@ -170,7 +170,7 @@ export default function ThreadNav({
       <ThemeToggle />
 
       {/* 语言切换 / Language selector */}
-      <LangSelector className="flex-shrink-0 text-[10px] font-semibold text-faint hover:text-md px-2.5 py-1 rounded-lg border border-subtle hover:border-base hover:bg-glass transition-all tracking-wide bg-transparent appearance-none cursor-pointer" />
+      <LangSelector />
 
       {/* 匿名用户：显示「登录」按钮（不显示个人菜单，删除账号对匿名无意义） */}
       {/* 登录用户：显示个人菜单（含删除账号） */}

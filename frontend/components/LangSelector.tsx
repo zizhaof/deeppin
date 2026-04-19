@@ -14,6 +14,8 @@ import {
 } from "@/lib/i18n";
 
 interface Props {
+  /** 可覆盖外层 wrapper 样式；默认是醒目的 indigo 着色按钮
+   *  Override wrapper styles; default is a prominent indigo-tinted pill. */
   className?: string;
 }
 
@@ -22,23 +24,54 @@ export default function LangSelector({ className }: Props) {
   const setLang = useLangStore((s) => s.setLang);
 
   return (
-    <select
-      value={lang}
-      onChange={(e) => setLang(e.target.value as Lang)}
-      aria-label="Language"
+    <div
       className={
         className ??
-        // 默认样式跟原 toggle 按钮视觉一致；appearance-none 去掉浏览器默认箭头
-        // Default styling matches the old toggle button; appearance-none removes
-        // the browser's native dropdown arrow.
-        "text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors bg-transparent appearance-none cursor-pointer"
+        "relative inline-flex items-center gap-1.5 pl-2 pr-6 py-1 rounded-lg border border-indigo-500/40 hover:border-indigo-400/70 bg-indigo-500/10 hover:bg-indigo-500/15 transition-colors flex-shrink-0"
       }
     >
-      {SUPPORTED_LOCALES.map((l) => (
-        <option key={l} value={l}>
-          {LOCALE_DISPLAY_NAMES[l]}
-        </option>
-      ))}
-    </select>
+      {/* 地球仪图标 / Globe icon — signals "language" at a glance */}
+      <svg
+        className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 pointer-events-none"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M2 12h20" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+
+      <select
+        value={lang}
+        onChange={(e) => setLang(e.target.value as Lang)}
+        aria-label="Language"
+        className="text-[11px] font-medium text-indigo-200 bg-transparent appearance-none cursor-pointer focus:outline-none pr-1"
+      >
+        {SUPPORTED_LOCALES.map((l) => (
+          <option key={l} value={l} className="bg-surface text-md">
+            {LOCALE_DISPLAY_NAMES[l]}
+          </option>
+        ))}
+      </select>
+
+      {/* 自定义下拉箭头 / Custom chevron (native arrow is hidden via appearance-none) */}
+      <svg
+        className="absolute right-1.5 w-3 h-3 text-indigo-400 pointer-events-none"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </div>
   );
 }
