@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
+import { narrowToContentLang } from "@/lib/i18n";
 
 // ── 颜色常量 ──────────────────────────────────────────────────────────────────
 const C = {
@@ -168,7 +169,9 @@ const CONTENT = {
 // ── 组件 ──────────────────────────────────────────────────────────────────────
 export default function PinDemo() {
   const lang    = useLangStore((s) => s.lang);
-  const content = CONTENT[lang];
+  // Demo 内容只有中/英；其他语种回落到英文 / Demo content is bilingual only; third locales fall back to en
+  const contentLang = narrowToContentLang(lang);
+  const content = CONTENT[contentLang];
 
   // 从 content 中提取常用变量
   const AI_TEXT          = content.aiText;
@@ -191,12 +194,12 @@ export default function PinDemo() {
   const [streamLen, setStreamLen] = useState(0);
   const [playing, setPlaying]   = useState(true);
 
-  // 语言切换时重置
+  // 语言切换时重置 / Reset when the effective content language changes
   useEffect(() => {
     setPhase("idle");
     setSweepPct(0);
     setStreamLen(0);
-  }, [lang]);
+  }, [contentLang]);
 
   // 自动推进
   useEffect(() => {
@@ -379,7 +382,7 @@ export default function PinDemo() {
                   <div className="px-2.5 pb-2 text-[10px] leading-relaxed overflow-hidden" style={{ color: C.textMd, maxHeight: 52 }}>
                     {showStream
                       ? <>{CARD_REPLY.slice(0, streamLen)}{phase === "streaming" && streamLen < CARD_REPLY.length && <Cursor />}</>
-                      : <span style={{ color: C.textFaint, fontStyle: "italic" }}>{lang === "zh" ? "正在准备回复…" : "Preparing reply…"}</span>
+                      : <span style={{ color: C.textFaint, fontStyle: "italic" }}>{contentLang === "zh" ? "正在准备回复…" : "Preparing reply…"}</span>
                     }
                   </div>
                 </div>

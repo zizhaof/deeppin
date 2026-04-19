@@ -265,12 +265,9 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         _, questions = await generate_title_and_suggestions(anchor, context_summary)
     except Exception as e:
         sync_llm_ok = False
-        short = anchor[:10]
-        questions = [
-            f"请详细解释「{short}」",
-            f"「{short}」有哪些应用场景？",
-            f"「{short}」的优缺点是什么？",
-        ]
+        # LLM 失败时返回空列表；前端有多语种占位符（customQuestion），不硬编码中文 fallback。
+        # On LLM failure, return an empty list; the frontend renders a localized placeholder — no hard-coded Chinese fallback.
+        questions = []
         logger.warning("[suggest] sync LLM 失败 thread=%s err=%s", thread_id, e)
 
     # 回写缓存，避免下次再生成 / Write back to cache to avoid regenerating next time

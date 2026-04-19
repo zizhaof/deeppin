@@ -1,0 +1,137 @@
+// lib/i18n/fr.ts — Traduction française / French translations
+
+import type { T } from "./en";
+
+export const fr: T = {
+  // Navigation
+  back: "Retour",
+  forward: "Avant",
+  mainThread: "Principal",
+  noTitle: "Nouveau chat",
+  switchThread: "Changer",
+  // En-têtes de la barre latérale
+  subQuestions: "Questions",
+  overview: "Aperçu",
+  viewList: "Liste",
+  viewGraph: "Graphe",
+  // États vides
+  selectToPin: "Sélectionne du texte pour ouvrir une question",
+  noThreads: "Aucun fil",
+  // Welcome
+  welcomeTitle: "La réflexion profonde commence ici",
+  welcomeSub: "Demande n'importe quoi à l'IA. Sélectionne du texte dans une réponse pour ouvrir une sous-question.",
+  chooseQuestion: "Choisis une question à explorer",
+  tagline: "Sélectionne n'importe quel texte pour creuser",
+  // InputBar
+  inputPlaceholder: "Écris un message… (Entrée pour envoyer, Maj+Entrée pour nouvelle ligne)",
+  webSearchPlaceholder: "Recherche web…",
+  webSearchOn: "Désactiver la recherche web",
+  webSearchOff: "Activer la recherche web",
+  longTextLabel: "Texte long",
+  fileParseError: "Impossible d'extraire le texte du fichier",
+  fileUploadError: "Échec du téléversement",
+  // Liste des sessions
+  newChat: "Nouveau chat",
+  recentSessions: "Conversations récentes",
+  noSessions: "Aucune conversation. Clique sur le bouton pour commencer.",
+  untitled: "Sans titre",
+  yesterday: "Hier",
+  daysAgo: "jours",
+  // Statut
+  loading: "Chargement…",
+  creating: "Création de session…",
+  errorPrefix: "Erreur : ",
+  processing: "Traitement…",
+  streamError: "[Erreur]",
+  // Fils
+  mainConversation: "Conversation principale",
+  subThread: "Sous-fil",
+  // Menu pin
+  pinAction: "Question",
+  copy: "Copier",
+  goToThread: "Aller à la question",
+  // Questions suggérées
+  suggestedQuestions: "Questions suggérées",
+  customQuestion: "Ou écris ta propre question…",
+  // Bulle de message
+  collapse: "Réduire",
+  expandFull: "Développer",
+  chars: "car.",
+  rawMode: "Raw",
+  mdMode: "MD",
+  showRaw: "Afficher le texte brut",
+  showMd: "Rendu Markdown",
+  // Pièces jointes
+  extracting: "Extraction du texte…",
+  // Sortie fusionnée
+  mergeButton: "Fusionner",
+  mergeTitle: "Sortie fusionnée",
+  mergeAngles: "sous-questions",
+  mergeHint: "Choisis un format et clique sur Générer pour fusionner tout le contenu des pins en un rapport",
+  mergePreparing: "Préparation…",
+  mergeCopyMd: "Copier Markdown",
+  mergeDownload: "Télécharger .md",
+  mergeGenerating: "Génération…",
+  mergeRegenerate: "Régénérer",
+  mergeGenerate: "Générer",
+  mergeFormatFree: "Résumé libre",
+  mergeFormatFreeDesc: "Récit fluide combinant toutes les perspectives",
+  mergeFormatBullets: "Points clés",
+  mergeFormatBulletsDesc: "Points regroupés par thème",
+  mergeFormatStructured: "Analyse structurée",
+  mergeFormatStructuredDesc: "Problème → Solution → Trade-offs → Conclusion",
+  mergeFormatCustom: "Personnalisé",
+  mergeFormatCustomDesc: "Résume à ta façon",
+  mergeFormatTranscript: "Transcription brute",
+  mergeFormatTranscriptDesc: "Sortie littérale de la conversation",
+  mergeCustomPromptPlaceholder: "Décris comment tu veux le résumé, ex. : en mémo pour l'équipe, centré sur les actions…",
+  // Problème landing
+  problemSetup: "Quand tu lis une réponse d'IA et veux creuser une partie, tu n'as que deux mauvaises options :",
+  badChoice1Label: "Démarrer un nouveau chat",
+  badChoice1Desc: "tu perds tout le contexte et dois tout réexpliquer",
+  badChoice2Label: "Demander dans ce chat",
+  badChoice2Desc: "tu interromps le fil principal et le sujet dérive",
+  solutionLabel: "Deeppin",
+  solutionDesc: "Épingle ce détail et continue à creuser — aussi profond que tu veux. Le fil principal ? Pas un mot interrompu.",
+  // Mode d'emploi
+  howToUseTitle: "Comment ça marche",
+  step1Title: "Demande n'importe quoi",
+  step1Desc: "Lance une conversation avec l'IA et obtiens une réponse détaillée",
+  step2Title: "Épingle pour explorer",
+  step2Desc: "Sélectionne du texte dans une réponse, clique sur 'Question' — un sous-fil focalisé s'ouvre, le chat principal reste intact",
+  step3Title: "Aussi profond que tu veux",
+  step3Desc: "Épingle à nouveau dans les sous-questions — pas de limite de niveaux",
+  step4Title: "Fusionne tout",
+  step4Desc: "Exploration terminée ? Combine tous les fils en un rapport complet et exporte-le",
+  // Articles
+  articles: "Articles",
+  // Compte
+  logout: "Déconnexion",
+  // Erreurs
+  deleteError: "Échec de la suppression : ",
+  unknownError: "Erreur inconnue",
+  confirmDelete: "Supprimer cette session ? C'est irréversible.",
+  // MergeDemo
+  pinsReady: "pins prêts",
+  mergeOutput: "Sortie fusionnée",
+  // Aplatir
+  flattenButton: "Aplatir",
+  flattenConfirmTitle: "Aplatir cette session ?",
+  flattenConfirmBody: "Tous les messages des sous-fils seront fusionnés dans le fil principal en préordre, et tous les pins seront supprimés.\n\nC'est irréversible.",
+  flattenConfirmCta: "Confirmer l'aplatissement",
+  flattenCancel: "Annuler",
+  flattening: "Aplatissement…",
+  flattenSuccess: "Aplati : {count} pin(s) fusionné(s)",
+  flattenAlready: "Déjà aplati",
+  flattenError: "Échec de l'aplatissement : ",
+  // Essai anonyme
+  anonQuotaTitle: "Limite d'essai gratuit atteinte",
+  anonQuotaDesc: "Connecte-toi pour continuer — ta conversation sera conservée.",
+  anonSessionLimitTitle: "Essai gratuit : 1 conversation",
+  anonSessionLimitDesc: "Connecte-toi pour avoir autant de conversations que tu veux — rien n'est perdu.",
+  signInGoogle: "Se connecter avec Google",
+  signIn: "Se connecter",
+  later: "Plus tard",
+  // Sélecteur de langue
+  languageLabel: "Langue",
+};

@@ -10,7 +10,7 @@ import type { Thread } from "@/lib/api";
 import { useThreadStore } from "@/stores/useThreadStore";
 import MarkdownContent from "@/components/MarkdownContent";
 import MergeTreeCanvas from "@/components/MergeTreeCanvas";
-import { useT } from "@/stores/useLangStore";
+import { useLangStore, useT } from "@/stores/useLangStore";
 
 interface Props {
   sessionId: string;
@@ -23,6 +23,7 @@ type State = "selecting" | "generating" | "streaming" | "done" | "error";
 
 export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   const t = useT();
+  const lang = useLangStore((s) => s.lang);
 
   const FORMAT_OPTIONS: { value: MergeFormat; label: string; desc: string }[] = [
     { value: "free",       label: t.mergeFormatFree,        desc: t.mergeFormatFreeDesc },
@@ -145,8 +146,9 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       (msg) => { setErrorMsg(msg); setState("error"); },
       (text) => setStatus(text),
       format === "custom" ? customPrompt : undefined,
+      lang,
     );
-  }, [sessionId, format, selected, customPrompt]);
+  }, [sessionId, format, selected, customPrompt, lang]);
 
   const handleCopy = useCallback(async () => {
     try { await navigator.clipboard.writeText(content); }

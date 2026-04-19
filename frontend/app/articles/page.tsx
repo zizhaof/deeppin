@@ -2,11 +2,14 @@
 // app/articles/page.tsx — 文章列表页
 import Link from "next/link";
 import { useLangStore } from "@/stores/useLangStore";
+import { narrowToContentLang } from "@/lib/i18n";
+import LangSelector from "@/components/LangSelector";
 import { articles } from "./data";
 
 export default function ArticlesPage() {
   const lang = useLangStore((s) => s.lang);
-  const toggle = useLangStore((s) => s.toggle);
+  // 文章内容只有中/英；其他语种回落到英文 / Article data is bilingual only; third locales fall back to en
+  const contentLang = narrowToContentLang(lang);
 
   return (
     <div className="min-h-screen bg-base text-hi">
@@ -25,20 +28,18 @@ export default function ArticlesPage() {
             </div>
             <span className="text-sm font-semibold text-md tracking-tight">Deeppin</span>
             <span className="text-faint text-sm">/</span>
-            <span className="text-sm text-faint">{lang === "zh" ? "文章" : "Articles"}</span>
+            <span className="text-sm text-faint">{contentLang === "zh" ? "文章" : "Articles"}</span>
           </div>
         </div>
-        <button onClick={toggle} className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors">
-          {lang === "zh" ? "EN" : "中"}
-        </button>
+        <LangSelector />
       </header>
 
       <main className="max-w-[680px] mx-auto px-6 py-14">
         <h1 className="text-xl font-semibold tracking-tight mb-1">
-          {lang === "zh" ? "文章" : "Articles"}
+          {contentLang === "zh" ? "文章" : "Articles"}
         </h1>
         <p className="text-sm text-faint mb-10">
-          {lang === "zh" ? "技术细节与产品思路" : "Technical deep-dives and product thinking"}
+          {contentLang === "zh" ? "技术细节与产品思路" : "Technical deep-dives and product thinking"}
         </p>
 
         <div className="space-y-3">
@@ -51,10 +52,10 @@ export default function ArticlesPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-hi group-hover:text-indigo-300 transition-colors leading-snug mb-1.5">
-                    {a.title[lang]}
+                    {a.title[contentLang]}
                   </p>
                   <p className="text-[11px] text-faint leading-relaxed line-clamp-2">
-                    {a.summary[lang]}
+                    {a.summary[contentLang]}
                   </p>
                   <div className="flex items-center gap-2 mt-3">
                     <span className="text-[10px] text-ph font-mono">{a.date}</span>

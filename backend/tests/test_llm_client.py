@@ -322,13 +322,14 @@ class TestGenerateTitleAndSuggestions:
         assert len(title) <= 20
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_generic_questions_on_empty(self):
-        """无追问时返回通用兜底问题 / Returns generic fallback questions when none are parsed."""
+    async def test_returns_empty_when_llm_emits_no_questions(self):
+        """无追问时返回空列表：前端有多语种占位符，不再硬编码中文 fallback。
+        Returns an empty list when none are parsed — frontend renders localized placeholders instead of a hard-coded Chinese fallback."""
         from services.llm_client import generate_title_and_suggestions
         mock_output = "TITLE: 标题\n（无追问）"
         with patch("services.llm_client._summarizer_call", new=AsyncMock(return_value=mock_output)):
             _, questions = await generate_title_and_suggestions("anchor")
-        assert len(questions) == 3
+        assert questions == []
 
     @pytest.mark.asyncio
     async def test_returns_at_most_3_questions(self):
@@ -484,7 +485,7 @@ class TestMergeThreads:
         with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="free"))
 
-        assert "流畅" in captured["system"] or "叙述" in captured["system"]
+        assert "flowing" in captured["system"].lower() or "in-depth" in captured["system"].lower()
 
     @pytest.mark.asyncio
     async def test_structured_format_in_system_prompt(self):
@@ -498,7 +499,8 @@ class TestMergeThreads:
         with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="structured"))
 
-        assert "结构化" in captured["system"] or "权衡" in captured["system"]
+        lowered = captured["system"].lower()
+        assert "structured analysis" in lowered or "trade-off" in lowered
 
     @pytest.mark.asyncio
     async def test_anchor_text_appears_in_user_prompt(self):
@@ -542,9 +544,12 @@ class TestMergeThreads:
                 [{"title": "问题一", "anchor": "锚点文本", "content": "用户：hi\nAI：hello"}],
                 main_content="用户：主线\nAI：回复",
                 format_type="transcript",
+                lang="zh",
             ))
 
         assert called["count"] == 0
+        # lang="zh" → transcript 标签应为中文
+        # lang="zh" → transcript labels should be Chinese
         assert "对话原文" in result
         assert "主线对话" in result
         assert "问题一" in result
@@ -563,7 +568,7 @@ class TestMergeThreads:
         with patch("services.llm_client.chat_stream", side_effect=_wrap_fake_stream(fake_stream)):
             await self._collect(merge_threads([{"title": "T", "anchor": "", "content": "C"}], format_type="nonexistent"))
 
-        assert "流畅" in captured["system"] or "叙述" in captured["system"]
+        assert "flowing" in captured["system"].lower() or "in-depth" in captured["system"].lower()
 
 
 class TestAssessRelevance:

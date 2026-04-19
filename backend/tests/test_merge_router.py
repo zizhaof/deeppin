@@ -223,7 +223,7 @@ class TestMergeGenerate:
         )
         passed_kwargs = {}
 
-        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None, **_):
             passed_kwargs["threads_data"] = threads_data
             passed_kwargs["main_content"] = main_content
             yield "merged"
@@ -245,7 +245,7 @@ class TestMergeGenerate:
         )
         passed_threads_data = []
 
-        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None, **_):
             passed_threads_data.extend(threads_data)
             yield "ok"
 
@@ -275,7 +275,7 @@ class TestMergeGenerate:
             sub_messages=[{"role": "assistant", "content": "some content"}]
         )
 
-        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None, **_):
             yield "part1"
             yield "part2"
 
@@ -296,7 +296,7 @@ class TestMergeGenerate:
 
         captured: list[dict] = []
 
-        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None):
+        async def fake_merge(threads_data, main_content="", format_type="free", custom_prompt=None, **_):
             captured.extend(threads_data)
             yield "ok"
 

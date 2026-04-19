@@ -1,0 +1,137 @@
+// lib/i18n/es.ts — Traducción al español / Spanish translations
+
+import type { T } from "./en";
+
+export const es: T = {
+  // Navegación
+  back: "Atrás",
+  forward: "Adelante",
+  mainThread: "Principal",
+  noTitle: "Chat nuevo",
+  switchThread: "Cambiar",
+  // Encabezados de la barra lateral
+  subQuestions: "Preguntas",
+  overview: "Resumen",
+  viewList: "Lista",
+  viewGraph: "Gráfico",
+  // Estados vacíos
+  selectToPin: "Selecciona texto para abrir una pregunta",
+  noThreads: "Sin hilos",
+  // Welcome
+  welcomeTitle: "El pensamiento profundo empieza aquí",
+  welcomeSub: "Pregunta cualquier cosa a la IA. Selecciona texto en una respuesta para abrir una subpregunta.",
+  chooseQuestion: "Elige una pregunta para explorar",
+  tagline: "Selecciona cualquier texto para profundizar",
+  // InputBar
+  inputPlaceholder: "Escribe un mensaje… (Enter para enviar, Shift+Enter para salto de línea)",
+  webSearchPlaceholder: "Búsqueda web…",
+  webSearchOn: "Desactivar búsqueda web",
+  webSearchOff: "Activar búsqueda web",
+  longTextLabel: "Texto largo",
+  fileParseError: "No se pudo extraer el texto del archivo",
+  fileUploadError: "Error al subir el archivo",
+  // Lista de sesiones
+  newChat: "Chat nuevo",
+  recentSessions: "Conversaciones recientes",
+  noSessions: "Aún no hay conversaciones. Haz clic en el botón para empezar.",
+  untitled: "Sin título",
+  yesterday: "Ayer",
+  daysAgo: "días atrás",
+  // Estado
+  loading: "Cargando…",
+  creating: "Creando sesión…",
+  errorPrefix: "Error: ",
+  processing: "Procesando…",
+  streamError: "[Error]",
+  // Hilos
+  mainConversation: "Conversación principal",
+  subThread: "Subhilo",
+  // Menú de pin
+  pinAction: "Pregunta",
+  copy: "Copiar",
+  goToThread: "Ir a la pregunta",
+  // Preguntas sugeridas
+  suggestedQuestions: "Preguntas sugeridas",
+  customQuestion: "O escribe tu propia pregunta…",
+  // Burbuja de mensaje
+  collapse: "Contraer",
+  expandFull: "Expandir",
+  chars: "car.",
+  rawMode: "Raw",
+  mdMode: "MD",
+  showRaw: "Mostrar texto sin formato",
+  showMd: "Renderizar Markdown",
+  // Adjuntos
+  extracting: "Extrayendo texto…",
+  // Salida de fusión
+  mergeButton: "Fusionar",
+  mergeTitle: "Salida fusionada",
+  mergeAngles: "subpreguntas",
+  mergeHint: "Elige un formato y pulsa Generar para fusionar todo el contenido de los pins en un informe",
+  mergePreparing: "Preparando…",
+  mergeCopyMd: "Copiar Markdown",
+  mergeDownload: "Descargar .md",
+  mergeGenerating: "Generando…",
+  mergeRegenerate: "Regenerar",
+  mergeGenerate: "Generar",
+  mergeFormatFree: "Resumen libre",
+  mergeFormatFreeDesc: "Narrativa fluida que integra todas las perspectivas",
+  mergeFormatBullets: "Lista de puntos",
+  mergeFormatBulletsDesc: "Puntos clave agrupados por tema",
+  mergeFormatStructured: "Análisis estructurado",
+  mergeFormatStructuredDesc: "Problema → Solución → Trade-offs → Conclusión",
+  mergeFormatCustom: "Personalizado",
+  mergeFormatCustomDesc: "Resume a tu manera",
+  mergeFormatTranscript: "Transcripción literal",
+  mergeFormatTranscriptDesc: "Salida textual de la conversación original",
+  mergeCustomPromptPlaceholder: "Describe cómo quieres el resumen, p. ej.: como memo para el equipo, centrado en acciones…",
+  // Problema en landing
+  problemSetup: "Cuando lees una respuesta de IA y quieres profundizar en una parte, solo tienes dos malas opciones:",
+  badChoice1Label: "Empezar un chat nuevo",
+  badChoice1Desc: "pierdes todo el contexto y tienes que volver a explicar",
+  badChoice2Label: "Preguntar en este chat",
+  badChoice2Desc: "interrumpes el hilo principal y el tema se desvía",
+  solutionLabel: "Deeppin",
+  solutionDesc: "Fija ese detalle y sigue cavando, tan profundo como quieras. ¿El hilo principal? Ni una palabra interrumpida.",
+  // Cómo funciona
+  howToUseTitle: "Cómo funciona",
+  step1Title: "Pregunta cualquier cosa",
+  step1Desc: "Inicia una conversación con IA y obtén una respuesta detallada",
+  step2Title: "Pin para explorar",
+  step2Desc: "Resalta cualquier texto en una respuesta y haz clic en 'Pregunta' — se abre un subhilo enfocado y el chat principal queda intacto",
+  step3Title: "Tan profundo como quieras",
+  step3Desc: "Puedes pinear dentro de subpreguntas — sin límite de capas",
+  step4Title: "Fusiona todo",
+  step4Desc: "¿Terminaste de explorar? Combina todos los hilos en un informe completo y expórtalo",
+  // Artículos
+  articles: "Artículos",
+  // Cuenta
+  logout: "Cerrar sesión",
+  // Errores
+  deleteError: "Error al eliminar: ",
+  unknownError: "Error desconocido",
+  confirmDelete: "¿Eliminar esta sesión? No se puede deshacer.",
+  // MergeDemo
+  pinsReady: "pins listos",
+  mergeOutput: "Salida fusionada",
+  // Aplanar
+  flattenButton: "Aplanar",
+  flattenConfirmTitle: "¿Aplanar esta sesión?",
+  flattenConfirmBody: "Todos los mensajes de subhilos se fusionarán en el hilo principal en preorden y se eliminarán todos los pins.\n\nEsto no se puede deshacer.",
+  flattenConfirmCta: "Confirmar aplanado",
+  flattenCancel: "Cancelar",
+  flattening: "Aplanando…",
+  flattenSuccess: "Aplanado: {count} pin(s) fusionados",
+  flattenAlready: "Ya está aplanado",
+  flattenError: "Error al aplanar: ",
+  // Prueba anónima
+  anonQuotaTitle: "Límite de prueba gratuita alcanzado",
+  anonQuotaDesc: "Inicia sesión para seguir chateando — se conserva tu conversación.",
+  anonSessionLimitTitle: "Prueba gratuita: 1 conversación",
+  anonSessionLimitDesc: "Inicia sesión para tener conversaciones ilimitadas — no se pierde nada.",
+  signInGoogle: "Iniciar sesión con Google",
+  signIn: "Iniciar sesión",
+  later: "Más tarde",
+  // Selector de idioma
+  languageLabel: "Idioma",
+};

@@ -55,9 +55,12 @@ async def _db(fn):
 
 
 class MergeRequest(BaseModel):
-    format: str = "free"  # "free" | "bullets" | "structured" | "custom"
+    format: str = "free"  # "free" | "bullets" | "structured" | "custom" | "transcript"
     thread_ids: list[str] | None = None  # None = 全部；有值 = 仅合并指定线程
     custom_prompt: str | None = None  # 仅 format="custom" 时使用
+    # 前端当前 UI locale，用于强制合并报告的输出语种与 transcript 结构标签
+    # Current frontend UI locale; forces output language of the merged report and transcript labels.
+    lang: str | None = None
 
     @field_validator("format")
     @classmethod
@@ -182,6 +185,7 @@ async def merge(session_id: uuid.UUID, body: MergeRequest, auth=Depends(get_curr
                 main_content=main_content,
                 format_type=body.format,
                 custom_prompt=body.custom_prompt,
+                lang=body.lang,
             ):
                 yield _sse("chunk", {"content": chunk})
 

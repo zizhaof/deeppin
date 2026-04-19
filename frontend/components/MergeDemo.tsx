@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
+import { narrowToContentLang } from "@/lib/i18n";
 
 type Phase =
   | "idle"      // 展示三根针已选中状态
@@ -138,16 +139,18 @@ function SimpleMd({ text }: { text: string }) {
 
 export default function MergeDemo() {
   const lang = useLangStore((s) => s.lang);
-  const c = CONTENT[lang];
+  // Demo 内容只有中/英；其他语种回落到英文 / Demo content is bilingual only; third locales fall back to en
+  const contentLang = narrowToContentLang(lang);
+  const c = CONTENT[contentLang];
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [streamLen, setStreamLen] = useState(0);
 
-  // 切换语言时重置动画
+  // 切换语言时重置动画 / Reset when the effective content language changes
   useEffect(() => {
     setPhase("idle");
     setStreamLen(0);
-  }, [lang]);
+  }, [contentLang]);
 
   useEffect(() => {
     const t = setTimeout(() => setPhase((p) => NEXT[p]), DELAYS[phase]);

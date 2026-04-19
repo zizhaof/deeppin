@@ -1,0 +1,137 @@
+// lib/i18n/ru.ts — Русский перевод / Russian translations
+
+import type { T } from "./en";
+
+export const ru: T = {
+  // Навигация
+  back: "Назад",
+  forward: "Вперёд",
+  mainThread: "Главная",
+  noTitle: "Новый чат",
+  switchThread: "Переключить",
+  // Боковая панель
+  subQuestions: "Вопросы",
+  overview: "Обзор",
+  viewList: "Список",
+  viewGraph: "Граф",
+  // Пустые состояния
+  selectToPin: "Выделите текст, чтобы открыть вопрос",
+  noThreads: "Нет тредов",
+  // Welcome
+  welcomeTitle: "Глубокое мышление начинается здесь",
+  welcomeSub: "Спросите ИИ о чём угодно. Выделите текст в ответе, чтобы открыть подвопрос.",
+  chooseQuestion: "Выберите вопрос для исследования",
+  tagline: "Выделите любой текст, чтобы копнуть глубже",
+  // InputBar
+  inputPlaceholder: "Введите сообщение… (Enter — отправить, Shift+Enter — новая строка)",
+  webSearchPlaceholder: "Поиск в сети…",
+  webSearchOn: "Выключить поиск в сети",
+  webSearchOff: "Включить поиск в сети",
+  longTextLabel: "Длинный текст",
+  fileParseError: "Не удалось извлечь текст из файла",
+  fileUploadError: "Не удалось загрузить файл",
+  // Список сессий
+  newChat: "Новый чат",
+  recentSessions: "Недавние беседы",
+  noSessions: "Бесед пока нет. Нажмите кнопку, чтобы начать.",
+  untitled: "Без названия",
+  yesterday: "Вчера",
+  daysAgo: "дн. назад",
+  // Статус
+  loading: "Загрузка…",
+  creating: "Создание сессии…",
+  errorPrefix: "Ошибка: ",
+  processing: "Обработка…",
+  streamError: "[Ошибка]",
+  // Треды
+  mainConversation: "Основная беседа",
+  subThread: "Подтред",
+  // Меню пина
+  pinAction: "Вопрос",
+  copy: "Копировать",
+  goToThread: "К вопросу",
+  // Рекомендации
+  suggestedQuestions: "Предложенные вопросы",
+  customQuestion: "Или напишите свой вопрос…",
+  // Пузырь сообщения
+  collapse: "Свернуть",
+  expandFull: "Развернуть",
+  chars: "симв.",
+  rawMode: "Raw",
+  mdMode: "MD",
+  showRaw: "Показать исходный текст",
+  showMd: "Рендер Markdown",
+  // Вложения
+  extracting: "Извлечение текста…",
+  // Вывод слияния
+  mergeButton: "Слить",
+  mergeTitle: "Объединённый вывод",
+  mergeAngles: "подвопросов",
+  mergeHint: "Выберите формат и нажмите «Сгенерировать», чтобы собрать все пины в один отчёт",
+  mergePreparing: "Подготовка…",
+  mergeCopyMd: "Копировать Markdown",
+  mergeDownload: "Скачать .md",
+  mergeGenerating: "Генерация…",
+  mergeRegenerate: "Сгенерировать заново",
+  mergeGenerate: "Сгенерировать",
+  mergeFormatFree: "Свободное резюме",
+  mergeFormatFreeDesc: "Связный текст, объединяющий все ракурсы",
+  mergeFormatBullets: "Список пунктов",
+  mergeFormatBulletsDesc: "Ключевые мысли, сгруппированные по темам",
+  mergeFormatStructured: "Структурированный анализ",
+  mergeFormatStructuredDesc: "Проблема → Решение → Компромиссы → Вывод",
+  mergeFormatCustom: "Своё",
+  mergeFormatCustomDesc: "Резюме по-своему",
+  mergeFormatTranscript: "Сырой транскрипт",
+  mergeFormatTranscriptDesc: "Дословный вывод исходной беседы",
+  mergeCustomPromptPlaceholder: "Опишите, как хотите получить резюме, напр.: как памятку для команды, с акцентом на действиях…",
+  // Проблема на лендинге
+  problemSetup: "Когда вы читаете ответ ИИ и хотите углубиться в часть, обычно есть только два плохих варианта:",
+  badChoice1Label: "Начать новый чат",
+  badChoice1Desc: "теряете весь контекст и объясняете всё заново",
+  badChoice2Label: "Спросить в этом чате",
+  badChoice2Desc: "прерываете основной тред, тема уходит в сторону",
+  solutionLabel: "Deeppin",
+  solutionDesc: "Закрепите эту деталь и копайте так глубоко, как хотите. Основной тред? Ни слова прерывания.",
+  // Как работает
+  howToUseTitle: "Как это работает",
+  step1Title: "Спросите что угодно",
+  step1Desc: "Начните разговор с ИИ и получите развёрнутый ответ",
+  step2Title: "Закрепите, чтобы изучить",
+  step2Desc: "Выделите текст в ответе и нажмите «Вопрос» — откроется отдельный подтред, основной чат останется нетронутым",
+  step3Title: "Так глубоко, как хотите",
+  step3Desc: "Можно закреплять и внутри подвопросов — без ограничения по уровням",
+  step4Title: "Слить всё вместе",
+  step4Desc: "Закончили исследовать? Объедините все треды в один отчёт и экспортируйте",
+  // Статьи
+  articles: "Статьи",
+  // Аккаунт
+  logout: "Выйти",
+  // Ошибки
+  deleteError: "Ошибка удаления: ",
+  unknownError: "Неизвестная ошибка",
+  confirmDelete: "Удалить эту сессию? Это нельзя отменить.",
+  // MergeDemo
+  pinsReady: "пинов готово",
+  mergeOutput: "Объединённый вывод",
+  // Уплощение
+  flattenButton: "Уплостить",
+  flattenConfirmTitle: "Уплостить эту сессию?",
+  flattenConfirmBody: "Все сообщения из подтредов будут объединены в основной тред в порядке preorder, а все пины удалены.\n\nЭто нельзя отменить.",
+  flattenConfirmCta: "Подтвердить уплощение",
+  flattenCancel: "Отмена",
+  flattening: "Уплощаем…",
+  flattenSuccess: "Уплощено: объединено пинов — {count}",
+  flattenAlready: "Уже уплощено",
+  flattenError: "Ошибка уплощения: ",
+  // Бесплатная пробная
+  anonQuotaTitle: "Лимит бесплатной пробной достигнут",
+  anonQuotaDesc: "Войдите, чтобы продолжить — беседа сохранится.",
+  anonSessionLimitTitle: "Бесплатная пробная: 1 беседа",
+  anonSessionLimitDesc: "Войдите, чтобы вести сколько угодно бесед — ничего не теряется.",
+  signInGoogle: "Войти через Google",
+  signIn: "Войти",
+  later: "Позже",
+  // Выбор языка
+  languageLabel: "Язык",
+};
