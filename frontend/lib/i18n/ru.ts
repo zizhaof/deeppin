@@ -134,4 +134,11 @@ export const ru: T = {
   later: "Позже",
   // Выбор языка
   languageLabel: "Язык",
+  // Попап при наведении на якорь
+  newReply: "Новое",
+  enterThread: "Открыть",
+  generatingSuggestions: "Генерируем уточняющие вопросы…",
+  // Счётчик бесплатного лимита
+  quotaFree: "осталось",
+  quotaFull: "Лимит пробной достигнут",
 };

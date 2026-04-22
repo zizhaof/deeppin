@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useMemo } from "react";
 import type { Thread, Message } from "@/lib/api";
-import type { ThreadCardItem } from "@/components/SubThread/SideColumn";
+import type { ThreadCardItem } from "@/components/SubThread/types";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import MergeTreeCanvas from "@/components/MergeTreeCanvas";
@@ -166,6 +166,16 @@ export default function MobileChatLayout({
   /** MergeTreeCanvas 需要的 selected set（全选） */
   const allSelected = useMemo(() => new Set(threads.map((t) => t.id)), [threads]);
 
+  /** 有未读回复的 thread id 集合；传给 MessageList 驱动锚点呼吸动画
+   *  Thread IDs with unread replies — drives anchor breathing animation in MessageList. */
+  const unreadThreadIdSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const [id, n] of Object.entries(unreadCounts)) {
+      if (n > 0) s.add(id);
+    }
+    return s;
+  }, [unreadCounts]);
+
   const navigateAndReturnToChat = useCallback(
     (threadId: string) => {
       onNavigateTo(threadId);
@@ -310,6 +320,7 @@ export default function MobileChatLayout({
                 streamingText={streamingText}
                 statusText={activeStatus}
                 anchorsByMessage={anchorsByMessage}
+                unreadThreadIds={unreadThreadIdSet}
                 suggestions={activeSuggestions}
                 anchorText={activeThread?.anchor_text}
                 userAvatarUrl={userAvatarUrl}

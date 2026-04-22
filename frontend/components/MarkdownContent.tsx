@@ -47,6 +47,7 @@ function highlightStr(
   highlightedIds: Set<string>,
   onAnchorClick?: (threadId: string) => void,
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
+  unreadThreadIds?: Set<string>,
 ): React.ReactNode {
   if (!anchors.length) return text;
 
@@ -99,11 +100,15 @@ function highlightStr(
     }
 
     const allThreadIds = covering.map(c => c.threadId);
+    const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
     nodes.push(
       <span
         key={segStart}
         data-anchor-thread-ids={allThreadIds.join(" ")}
-        className="bg-indigo-900/40 text-indigo-200 rounded-sm px-0.5 cursor-pointer transition-colors hover:bg-indigo-800/50"
+        data-unread={isUnread ? "1" : undefined}
+        className={`anchor-span text-indigo-200 rounded-sm px-0.5 cursor-pointer transition-colors ${
+          isUnread ? "anchor-unread" : "bg-indigo-900/30 hover:bg-indigo-800/50"
+        }`}
         onClick={(e) => {
           e.stopPropagation();
           const sel = window.getSelection();
@@ -132,17 +137,18 @@ function processChildren(
   highlightedIds: Set<string>,
   onAnchorClick?: (threadId: string) => void,
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
+  unreadThreadIds?: Set<string>,
 ): React.ReactNode {
   if (!anchors.length) return children;
   return React.Children.map(children, (child) => {
     if (typeof child === "string") {
-      return highlightStr(child, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover);
+      return highlightStr(child, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover, unreadThreadIds);
     }
     if (React.isValidElement(child) && child.props) {
       const props = child.props as Record<string, unknown>;
       if (props.children !== undefined) {
         return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
-          children: processChildren(props.children as React.ReactNode, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover),
+          children: processChildren(props.children as React.ReactNode, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover, unreadThreadIds),
         });
       }
     }
@@ -155,19 +161,20 @@ function processChildren(
 interface Props {
   content: string;
   anchors?: AnchorRange[];
+  unreadThreadIds?: Set<string>;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
 }
 
 // React.memo: props 不变时跳过 re-render，保留浏览器文字选区
-const MarkdownContent = React.memo(function MarkdownContent({ content, anchors = [], onAnchorClick, onAnchorHover }: Props) {
+const MarkdownContent = React.memo(function MarkdownContent({ content, anchors = [], unreadThreadIds, onAnchorClick, onAnchorHover }: Props) {
   const colorMap = buildColorMap(anchors);
 
   // 每次渲染创建一个新的 Set，跨文本块共享，确保每个锚点只高亮一次
   const highlightedIds = new Set<string>();
 
   const hl = (children: React.ReactNode) =>
-    processChildren(children, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover);
+    processChildren(children, anchors, colorMap, highlightedIds, onAnchorClick, onAnchorHover, unreadThreadIds);
 
   return (
     <ReactMarkdown

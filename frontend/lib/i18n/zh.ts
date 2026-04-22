@@ -135,4 +135,11 @@ export const zh: T = {
   later: "稍后",
   // 语言选择器
   languageLabel: "语言",
+  // 锚点 hover popover
+  newReply: "新",
+  enterThread: "进入",
+  generatingSuggestions: "正在生成追问…",
+  // 输入框配额计数器
+  quotaFree: "剩余",
+  quotaFull: "试用已达上限",
 };

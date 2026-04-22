@@ -134,4 +134,11 @@ export const de: T = {
   later: "Später",
   // Sprachauswahl
   languageLabel: "Sprache",
+  // Anker-Hover-Popover
+  newReply: "Neu",
+  enterThread: "Öffnen",
+  generatingSuggestions: "Folgefragen werden erstellt…",
+  // Zähler für kostenloses Kontingent
+  quotaFree: "frei",
+  quotaFull: "Testlimit erreicht",
 };

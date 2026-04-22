@@ -134,4 +134,11 @@ export const es: T = {
   later: "Más tarde",
   // Selector de idioma
   languageLabel: "Idioma",
+  // Popover de hover del ancla
+  newReply: "Nuevo",
+  enterThread: "Abrir",
+  generatingSuggestions: "Generando preguntas de seguimiento…",
+  // Contador de cuota gratuita
+  quotaFree: "libres",
+  quotaFull: "Límite de prueba alcanzado",
 };
