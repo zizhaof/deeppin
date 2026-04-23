@@ -1,5 +1,7 @@
 "use client";
 // components/SessionDrawer.tsx — 历史会话侧边抽屉（主页和对话页共用）
+// Paper-palette restyle — Fraunces session titles, mono dates, ink-on-paper
+// delete affordance that only shows on hover.
 
 import { useRouter } from "next/navigation";
 import type { Session } from "@/lib/api";
@@ -34,12 +36,6 @@ interface Props {
 export default function SessionDrawer({ open, onClose, sessions, loading, currentSessionId, t, onDelete, isAnon = false, onAnonNewChat }: Props) {
   const router = useRouter();
 
-  // 对话中直接新建：生成 UUID → 跳 /chat/<id>，由目标页 init() 走 getSession→404→createSession 流程。
-  // 不绕主页，避免打断「我正在某个对话里，想马上开新对话」的体感。
-  // In-chat new session: pre-generate a UUID and jump straight to /chat/<id>.
-  // The target page's init() handles the DB create on 404, so we skip the home-page detour.
-  // 匿名用户先走父组件的 onAnonNewChat（展示登录引导），避免硬撞 1-session 上限。
-  // Anon users delegate to onAnonNewChat (sign-in prompt) instead of hitting the 1-session cap.
   const handleNewChat = () => {
     onClose();
     if (isAnon && onAnonNewChat) {
@@ -61,17 +57,26 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
       />
 
       {/* 抽屉 */}
-      <div className={`fixed left-0 top-0 h-full w-72 z-50 bg-surface border-r border-subtle flex flex-col
-        transition-transform duration-200 ease-out ${open ? "translate-x-0" : "-translate-x-full"}`}>
-
+      <div
+        className={`fixed left-0 top-0 h-full w-[300px] z-50 flex flex-col transition-transform duration-200 ease-out ${open ? "translate-x-0" : "-translate-x-full"}`}
+        style={{ background: "var(--card)", borderRight: "1px solid var(--rule)" }}
+      >
         {/* 头部 */}
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-subtle flex-shrink-0">
-          <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.12em]">{t.recentSessions}</p>
+        <div
+          className="flex items-center justify-between px-5 py-4 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--rule)" }}
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "var(--ink-3)" }}>
+            {t.recentSessions}
+          </p>
           <button
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded-md text-ph hover:text-md hover:bg-glass transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+            style={{ color: "var(--ink-4)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-4)"; }}
           >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -82,50 +87,61 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
           {loading ? (
             <div className="flex items-center justify-center gap-1.5 py-10">
               {[0, 1, 2].map((i) => (
-                <span key={i} className="w-1 h-1 rounded-full bg-ph animate-bounce"
-                  style={{ animationDelay: `${i * 150}ms`, animationDuration: "900ms" }} />
+                <span
+                  key={i}
+                  className="w-[5px] h-[5px] rounded-full animate-bounce"
+                  style={{ background: "var(--ink-5)", animationDelay: `${i * 150}ms`, animationDuration: "900ms" }}
+                />
               ))}
             </div>
           ) : sessions.length === 0 ? (
-            <p className="text-xs text-ph text-center py-10">{t.noSessions}</p>
+            <p className="text-[12px] text-center py-10" style={{ color: "var(--ink-4)" }}>
+              {t.noSessions}
+            </p>
           ) : (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-[2px]">
               {sessions.map((s) => {
                 const isActive = s.id === currentSessionId;
                 return (
                   <button
                     key={s.id}
                     onClick={() => { onClose(); router.push(`/chat/${s.id}`); }}
-                    className={`w-full text-left flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg transition-colors group relative cursor-pointer ${
-                      isActive ? "bg-indigo-950/30 border border-indigo-500/15" : "hover:bg-glass border border-transparent"
-                    }`}
+                    className="group w-full text-left flex items-start gap-2.5 px-3 py-2.5 rounded-md transition-colors relative"
+                    style={{
+                      background: isActive ? "var(--ink)" : "transparent",
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; }}
+                    onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
-                    <div className={`w-7 h-7 rounded-md border flex items-center justify-center flex-shrink-0 transition-colors ${
-                      isActive ? "bg-indigo-500/10 border-indigo-500/20" : "bg-elevated/60 border-subtle group-hover:bg-elevated"
-                    }`}>
-                      <svg className={`w-3 h-3 transition-colors ${isActive ? "text-indigo-400" : "text-faint group-hover:text-lo"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </div>
+                    <span
+                      className="flex-shrink-0 mt-[5px] w-[3px] h-[28px] rounded-[2px]"
+                      style={{ background: isActive ? "var(--paper)" : "var(--ink-5)" }}
+                    />
                     <div className="flex-1 min-w-0">
-                      <p className={`text-xs truncate transition-colors ${isActive ? "text-indigo-300 font-medium" : "text-lo group-hover:text-md"}`}>
+                      <p
+                        className="font-serif text-[14px] font-medium leading-tight truncate"
+                        style={{ color: isActive ? "var(--paper)" : "var(--ink)" }}
+                      >
                         {s.title ?? t.untitled}
                       </p>
-                      <p className="text-[10px] text-ph mt-0.5">
+                      <p
+                        className="font-mono text-[10px] mt-1 truncate"
+                        style={{ color: isActive ? "var(--ink-5)" : "var(--ink-4)" }}
+                      >
                         {formatSessionDate(s.created_at, t.yesterday, t.daysAgo)}
                       </p>
                     </div>
-                    {isActive && (
-                      <div className="w-1 h-1 rounded-full bg-indigo-500/70 flex-shrink-0" />
-                    )}
                     {onDelete && (
                       <span
                         role="button"
                         onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-faint hover:text-red-400 transition-all"
-                        aria-label="删除会话"
+                        className="w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                        style={{ color: isActive ? "var(--ink-5)" : "var(--ink-4)" }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#b84a5b"; (e.currentTarget as HTMLElement).style.background = "color-mix(in oklch, #b84a5b 10%, transparent)"; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = isActive ? "var(--ink-5)" : "var(--ink-4)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        aria-label={t.deleteAccount}
                       >
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="3 6 5 6 21 6" />
                           <path d="M19 6l-1 14H6L5 6" />
                           <path d="M10 11v6M14 11v6" />
@@ -140,12 +156,14 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
           )}
         </div>
 
-        {/* 底部：新对话按钮（对所有用户可见；匿名点击由父组件弹登录引导）
-         *  New-chat button — visible to all; anon clicks trigger the sign-in prompt via parent */}
-        <div className="px-3 py-3 border-t border-subtle flex-shrink-0">
+        {/* 底部：新对话按钮 */}
+        <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid var(--rule)" }}>
           <button
             onClick={handleNewChat}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-dim hover:text-md hover:bg-glass border border-subtle hover:border-base transition-all"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-[12.5px] font-medium transition-colors"
+            style={{ background: "var(--ink)", color: "var(--paper)" }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--accent)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--ink)")}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />

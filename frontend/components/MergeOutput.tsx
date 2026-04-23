@@ -179,45 +179,69 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="flex flex-col bg-surface border border-base rounded-2xl shadow-2xl shadow-black/20 overflow-hidden relative"
-        style={{ width: modalW, maxWidth: "96vw", height: modalH, maxHeight: "96vh" }}
+        className="flex flex-col overflow-hidden relative rounded-xl"
+        style={{
+          width: modalW,
+          maxWidth: "96vw",
+          height: modalH,
+          maxHeight: "96vh",
+          background: "var(--card)",
+          border: "1px solid var(--rule)",
+          boxShadow: "0 24px 64px rgba(27,26,23,0.18)",
+        }}
       >
         {/* ── 顶栏 ── */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-subtle flex-shrink-0">
+        <div
+          className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--rule-soft)" }}
+        >
           <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
-              <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l8 9M20 4l-8 9m0 0v7" />
-              </svg>
-            </div>
-            <h2 className="font-semibold text-hi text-sm">{t.mergeTitle}</h2>
+            <span className="w-[9px] h-[9px] rounded-full" style={{ background: "var(--accent)" }} aria-hidden />
+            <h2 className="font-serif text-[17px] font-medium" style={{ color: "var(--ink)" }}>{t.mergeTitle}</h2>
             {subThreads.length > 0 && (
-              <span className="text-[11px] text-faint tabular-nums">{subThreads.length} {t.mergeAngles}</span>
+              <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--ink-4)" }}>
+                {subThreads.length} {t.mergeAngles}
+              </span>
             )}
           </div>
-          <button onClick={onClose}
-            className="text-faint hover:text-lo transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-md transition-colors"
+            style={{ color: "var(--ink-4)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-4)"; }}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* ── 格式选择 ── */}
-        <div className="flex flex-col gap-2 px-5 py-3 border-b border-subtle flex-shrink-0">
+        <div
+          className="flex flex-col gap-2 px-5 py-3 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--rule-soft)" }}
+        >
           <div className="flex gap-2">
-            {FORMAT_OPTIONS.map((opt) => (
-              <button key={opt.value} onClick={() => setFormat(opt.value)}
-                disabled={isGenerating}
-                className={`flex-1 rounded-xl px-2.5 py-2.5 text-xs transition-all border ${
-                  format === opt.value
-                    ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
-                    : "bg-surface-60 border-subtle text-dim hover:border-base hover:text-lo"
-                } disabled:opacity-40 disabled:cursor-not-allowed`}>
-                <div className="font-semibold text-left">{opt.label}</div>
-                <div className="text-[10px] mt-0.5 opacity-60 text-left leading-snug">{opt.desc}</div>
-              </button>
-            ))}
+            {FORMAT_OPTIONS.map((opt) => {
+              const isActive = format === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setFormat(opt.value)}
+                  disabled={isGenerating}
+                  className="flex-1 rounded-md px-2.5 py-2 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-left"
+                  style={{
+                    background: isActive ? "var(--accent-soft)" : "var(--paper-2)",
+                    border: `1px solid ${isActive ? "var(--accent)" : "var(--rule-soft)"}`,
+                    color: isActive ? "var(--accent)" : "var(--ink-3)",
+                  }}
+                >
+                  <div className="font-medium text-[12px]">{opt.label}</div>
+                  <div className="font-mono text-[9.5px] mt-[2px] leading-snug opacity-80">{opt.desc}</div>
+                </button>
+              );
+            })}
           </div>
           {format === "custom" && (
             <textarea
@@ -226,7 +250,12 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               disabled={isGenerating}
               placeholder={t.mergeCustomPromptPlaceholder}
               rows={3}
-              className="w-full bg-surface-60 border border-base rounded-xl px-3 py-2.5 text-xs text-md placeholder:text-faint resize-none focus:outline-none focus:border-indigo-500/40 transition-colors disabled:opacity-40"
+              className="w-full rounded-md px-3 py-2.5 text-xs resize-none focus:outline-none transition-colors disabled:opacity-40"
+              style={{
+                background: "var(--paper-2)",
+                border: "1px solid var(--rule)",
+                color: "var(--ink-2)",
+              }}
             />
           )}
         </div>
@@ -254,17 +283,25 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                     .replace("{selected}", String(selCount))
                     .replace("{total}", String(subThreads.length))}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-ph">{t.mergeHintDrag}</span>
+                {/* pan/drag 提示删了 —— 新 MergeGraph 是静态 SVG，不支持 pan/drag
+                    Old "Scroll to pan · drag to move" hint gone — MergeGraph is
+                    a static SVG and doesn't support those interactions. */}
+                <div className="flex items-center gap-3">
                   <button
                     onClick={() => setSelected(new Set(subThreads.map(t => t.id)))}
-                    className="text-[9px] text-indigo-400/70 hover:text-indigo-300 transition-colors"
+                    className="font-mono text-[10px] uppercase tracking-wider transition-colors"
+                    style={{ color: "var(--accent)" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--accent-ink)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--accent)")}
                   >
                     {t.mergeSelectAll}
                   </button>
                   <button
                     onClick={() => setSelected(new Set())}
-                    className="text-[9px] text-faint hover:text-lo transition-colors"
+                    className="font-mono text-[10px] uppercase tracking-wider transition-colors"
+                    style={{ color: "var(--ink-4)" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--ink-2)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--ink-4)")}
                   >
                     {t.mergeSelectNone}
                   </button>
@@ -315,25 +352,38 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           onPointerUp={onResizePointerUp}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" style={{ pointerEvents: "none" }}>
-            <path d="M9 3L3 9M9 6L6 9" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M9 3L3 9M9 6L6 9" stroke="var(--ink-5)" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </div>
 
         {/* ── 底栏 ── */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-subtle gap-3 flex-shrink-0">
-          <span className="text-[11px] text-ph truncate flex-1">
+        <div
+          className="flex items-center justify-between px-5 py-3 gap-3 flex-shrink-0"
+          style={{ borderTop: "1px solid var(--rule-soft)" }}
+        >
+          <span className="font-mono text-[11px] truncate flex-1" style={{ color: "var(--ink-4)" }}>
             {state === "streaming" && status ? status : ""}
           </span>
           <div className="flex items-center gap-2 flex-shrink-0">
             {hasContent && (
-              <button onClick={handleCopy}
-                className="text-xs text-dim hover:text-md px-2.5 py-1.5 rounded-lg border border-subtle hover:border-base transition-all">
+              <button
+                onClick={handleCopy}
+                className="text-[12px] px-3 py-[6px] rounded-md transition-colors"
+                style={{ color: "var(--ink-2)", border: "1px solid var(--rule)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--rule)"; (e.currentTarget as HTMLElement).style.color = "var(--ink-2)"; }}
+              >
                 {t.mergeCopyMd}
               </button>
             )}
             {hasContent && state === "done" && (
-              <button onClick={handleDownload}
-                className="text-xs text-dim hover:text-md px-2.5 py-1.5 rounded-lg border border-subtle hover:border-base transition-all">
+              <button
+                onClick={handleDownload}
+                className="text-[12px] px-3 py-[6px] rounded-md transition-colors"
+                style={{ color: "var(--ink-2)", border: "1px solid var(--rule)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--rule)"; (e.currentTarget as HTMLElement).style.color = "var(--ink-2)"; }}
+              >
                 {t.mergeDownload}
               </button>
             )}
@@ -351,7 +401,10 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                   }
                 }}
                 disabled={!mainThread || saving || saved}
-                className="text-xs text-dim hover:text-md disabled:opacity-40 px-2.5 py-1.5 rounded-lg border border-base hover:border-strong transition-all"
+                className="text-[12px] px-3 py-[6px] rounded-md transition-colors disabled:opacity-40"
+                style={{ color: "var(--ink-2)", border: "1px solid var(--rule)" }}
+                onMouseEnter={(e) => { if (!(saving || saved)) { (e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; } }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--rule)"; (e.currentTarget as HTMLElement).style.color = "var(--ink-2)"; }}
               >
                 {saved ? t.mergeSavedToChat : saving ? t.mergeSaving : t.mergeSaveToChat}
               </button>
@@ -360,7 +413,10 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               <button
                 onClick={handleGenerate}
                 disabled={selCount === 0 || (format === "custom" && !customPrompt.trim())}
-                className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white px-4 py-1.5 rounded-lg transition-colors"
+                className="text-[12px] font-medium px-4 py-[6px] rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: "var(--ink)", color: "var(--paper)" }}
+                onMouseEnter={(e) => { if (!(selCount === 0)) (e.currentTarget as HTMLElement).style.background = "var(--accent)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--ink)"; }}
               >
                 {t.mergeCta
                   .replace("{n}", String(selCount))
@@ -368,15 +424,23 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               </button>
             )}
             {(state === "done" || state === "error") && (
-              <button onClick={() => setState("selecting")}
-                className="text-xs font-semibold bg-elevated hover:bg-glass-lg text-md px-4 py-1.5 rounded-lg transition-colors border border-subtle">
+              <button
+                onClick={() => setState("selecting")}
+                className="text-[12px] font-medium px-4 py-[6px] rounded-md transition-colors"
+                style={{ background: "var(--paper-2)", color: "var(--ink-2)", border: "1px solid var(--rule)" }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--rule)")}
+              >
                 {t.mergeReselect}
               </button>
             )}
             {isGenerating && (
-              <button disabled
-                className="text-xs font-semibold bg-disabled text-disabled px-4 py-1.5 rounded-lg cursor-not-allowed">
-                生成中…
+              <button
+                disabled
+                className="text-[12px] font-medium px-4 py-[6px] rounded-md cursor-not-allowed"
+                style={{ background: "var(--s-disabled)", color: "var(--t-disabled)" }}
+              >
+                {t.mergeGenerating}
               </button>
             )}
           </div>
