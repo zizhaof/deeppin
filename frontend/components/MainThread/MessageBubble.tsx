@@ -374,9 +374,12 @@ function MessageBubble({
         {/* WHO 行 — mono uppercase + pigment dot + 可选 model 名
             WHO row — mono uppercase label + pigment dot + optional model label (AI only). */}
         <div
-          className="flex items-center gap-[7px] mb-[5px] font-mono text-[9.5px] uppercase"
-          style={{ color: "var(--ink-4)", letterSpacing: "0.12em" }}
+          className="flex items-center gap-[7px] mb-[5px] font-mono text-[9.5px] uppercase select-none"
+          style={{ color: "var(--ink-4)", letterSpacing: "0.12em", userSelect: "none" }}
         >
+          {/* WHO 行是 metadata —— 颜料点 / YOU·AI / model 名都不该被框选成锚点
+              The WHO row is metadata — pigment dot / YOU·AI / model name
+              shouldn't get selected and pinned. */}
           <span
             className="w-[5px] h-[5px] rounded-full flex-shrink-0"
             style={{ background: isUser ? "var(--ink-3)" : "var(--accent)" }}
@@ -388,6 +391,7 @@ function MessageBubble({
               alt=""
               className="w-3.5 h-3.5 rounded-full -ml-0.5 object-cover"
               referrerPolicy="no-referrer"
+              draggable={false}
             />
           )}
           <span>{isUser ? t.you : t.ai}</span>
