@@ -369,13 +369,41 @@ export default function MobilePinDemo() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [sweepPct, setSweepPct] = useState(0);
   const [streamLen, setStreamLen] = useState(0);
+  /** 每个 tap-式 phase 临转换前短暂 true —— 驱动目标按钮上的点击 ripple
+   *  Flips true briefly before each tap-phase transitions out; drives the
+   *  ripple animation on the button that's "being tapped". */
+  const [tapRing, setTapRing] = useState(false);
   const rafRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setPhase(NEXT[phase]), DELAYS[phase]);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [phase]);
+
+  // 每次 phase 变：清 ring，如果是 tap 类 phase → delay 到末尾再亮，让
+  // 观看者的视线自然从"元素展现"落到"哪里被按下"
+  // On each phase change: reset ring; for tap-like phases, fire ring near the
+  // tail of the phase so the viewer's eye lands on "where it got tapped"
+  // right before the transition plays out.
+  useEffect(() => {
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    setTapRing(false);
+    const tapPhases: Partial<Record<Phase, number>> = {
+      // 值 = 距离 phase 结束前多少 ms 点亮 ripple（ripple 本身约 650ms）
+      // Value = ms-before-phase-end to trigger ripple (ripple lasts ~650ms).
+      selpop: 900,        // 点击 Pin 按钮 / tap on Pin chip
+      pick: 300,          // 点击 suggestion / tap on suggestion
+      popover: 900,       // 点击 Enter / tap on Enter button
+      "tap-overview": 700, // 点击 overview / tap on overview button
+    };
+    const offset = tapPhases[phase];
+    if (offset == null) return;
+    const fireAt = Math.max(0, DELAYS[phase] - offset);
+    tapTimerRef.current = setTimeout(() => setTapRing(true), fireAt);
+    return () => { if (tapTimerRef.current) clearTimeout(tapTimerRef.current); };
   }, [phase]);
 
   useEffect(() => {
@@ -487,7 +515,7 @@ export default function MobilePinDemo() {
           <span
             className={`relative w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
               breatheRightBtn ? "demo-tap-here" : ""
-            }`}
+            } ${phase === "tap-overview" && tapRing ? "demo-tap-press" : ""}`}
             style={{
               color: breatheRightBtn ? "var(--accent)" : "var(--ink-4)",
               background: breatheRightBtn || drawerOpen ? "var(--accent-soft)" : "transparent",
@@ -506,6 +534,9 @@ export default function MobilePinDemo() {
                 aria-hidden
               />
             )}
+            {phase === "tap-overview" && tapRing && (
+              <span key="tap-ov" className="demo-tap-ripple demo-tap-ripple-sm" aria-hidden />
+            )}
           </span>
         </div>
 
@@ -521,13 +552,14 @@ export default function MobilePinDemo() {
               showPopover={showPopover}
               showNewReplyTag={showNewReplyTag}
               phase={phase}
+              tapRing={tapRing}
             />
           </div>
           <div className={`absolute inset-0 transition-opacity duration-200 ${inSub ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
             <SubView c={c} streamLen={streamLen} phase={phase} />
           </div>
 
-          {showDialog && <Dialog c={c} picked={phase === "pick"} />}
+          {showDialog && <Dialog c={c} picked={phase === "pick"} tapRing={tapRing && phase === "pick"} />}
 
           {/* 右抽屉 —— drawer-shown 时滑入；带 graph + Merge/Flatten
               Right drawer that slides in during drawer-shown — mirrors the
@@ -623,6 +655,46 @@ export default function MobilePinDemo() {
           0%, 100% { box-shadow: 0 0 0 0 rgba(42, 42, 114, 0.50); }
           50%      { box-shadow: 0 0 0 8px rgba(42, 42, 114, 0); }
         }
+
+        /* 一次性点击 ripple —— 中心从小环放大 + 淡出，代表"这里被按下"
+           One-shot tap ripple: ring grows from center and fades out, marks
+           where the user just tapped. */
+        :global(.demo-tap-ripple) {
+          pointer-events: none;
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 36px;
+          height: 36px;
+          margin-left: -18px;
+          margin-top: -18px;
+          border-radius: 9999px;
+          border: 2px solid var(--accent);
+          animation: demo-tap-ripple 640ms ease-out 1 forwards;
+          z-index: 40;
+        }
+        :global(.demo-tap-ripple-sm) {
+          width: 26px;
+          height: 26px;
+          margin-left: -13px;
+          margin-top: -13px;
+        }
+        @keyframes demo-tap-ripple {
+          0%   { transform: scale(0.35); opacity: 0.95; }
+          60%  { opacity: 0.75; }
+          100% { transform: scale(1.55); opacity: 0; }
+        }
+
+        /* 按下瞬间：目标元素本体的"被按下"缩压反馈（与 ripple 同步）
+           Press-down scale on the tapped element itself (sync with ripple). */
+        :global(.demo-tap-press) {
+          animation: demo-tap-press 640ms ease-out 1;
+        }
+        @keyframes demo-tap-press {
+          0%   { transform: scale(1); }
+          30%  { transform: scale(0.92); }
+          100% { transform: scale(1); }
+        }
       `}</style>
     </div>
   );
@@ -630,7 +702,7 @@ export default function MobilePinDemo() {
 
 // ── Main view ───────────────────────────────────────────────────────────
 function MainView({
-  c, sweepPct, anchorVisible, breathing, showSelpop, showPopover, showNewReplyTag, phase,
+  c, sweepPct, anchorVisible, breathing, showSelpop, showPopover, showNewReplyTag, phase, tapRing,
 }: {
   c: Copy;
   sweepPct: number;
@@ -640,6 +712,7 @@ function MainView({
   showPopover: boolean;
   showNewReplyTag: boolean;
   phase: Phase;
+  tapRing: boolean;
 }) {
   const sweeping = phase === "sweep";
   const bg = sweeping ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 22)}%, transparent)` : undefined;
@@ -704,8 +777,16 @@ function MainView({
                 style={{ background: "var(--ink)", color: "var(--paper)", padding: 2 }}
               >
                 <span className="px-2 py-1 text-[10px]">{c.copyLabel}</span>
-                <span className="px-2 py-1 rounded text-[10px] font-medium" style={{ background: "var(--accent)" }}>
+                <span
+                  className={`relative px-2 py-1 rounded text-[10px] font-medium ${
+                    phase === "selpop" && tapRing ? "demo-tap-press" : ""
+                  }`}
+                  style={{ background: "var(--accent)" }}
+                >
                   {c.pinLabel}
+                  {phase === "selpop" && tapRing && (
+                    <span key="tap-pin" className="demo-tap-ripple demo-tap-ripple-sm" aria-hidden />
+                  )}
                 </span>
                 <span aria-hidden className="absolute left-3 -bottom-1 w-1.5 h-1.5 rotate-45" style={{ background: "var(--ink)" }} />
               </span>
@@ -730,8 +811,16 @@ function MainView({
                   {c.threadReply.slice(0, 70)}…
                 </div>
                 <div className="flex items-center justify-end px-2.5 py-1" style={{ borderTop: "1px solid var(--rule-soft)", background: "var(--paper-2)" }}>
-                  <span className="font-medium text-[10px]" style={{ color: "var(--accent)" }}>
+                  <span
+                    className={`relative font-medium text-[10px] inline-flex items-center px-1 rounded ${
+                      phase === "popover" && tapRing ? "demo-tap-press" : ""
+                    }`}
+                    style={{ color: "var(--accent)" }}
+                  >
                     {c.enterLabel} →
+                    {phase === "popover" && tapRing && (
+                      <span key="tap-enter" className="demo-tap-ripple demo-tap-ripple-sm" aria-hidden />
+                    )}
                   </span>
                 </div>
               </span>
@@ -812,7 +901,7 @@ function SubView({ c, streamLen, phase }: { c: Copy; streamLen: number; phase: P
 }
 
 // ── Pin dialog ──────────────────────────────────────────────────────────
-function Dialog({ c, picked }: { c: Copy; picked: boolean }) {
+function Dialog({ c, picked, tapRing }: { c: Copy; picked: boolean; tapRing: boolean }) {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center animate-in fade-in-0 duration-150">
       <div className="absolute inset-0" style={{ background: "rgba(27,26,23,0.35)" }} />
@@ -833,7 +922,9 @@ function Dialog({ c, picked }: { c: Copy; picked: boolean }) {
         </div>
         <div className="px-3 py-2.5 flex flex-col gap-1.5">
           <div
-            className="text-left px-2.5 py-1.5 rounded text-[11px] transition-colors"
+            className={`relative text-left px-2.5 py-1.5 rounded text-[11px] transition-colors ${
+              tapRing ? "demo-tap-press" : ""
+            }`}
             style={{
               background: picked ? "var(--accent-soft)" : "var(--paper-2)",
               border: `1px solid ${picked ? "var(--accent)" : "var(--rule-soft)"}`,
@@ -841,6 +932,9 @@ function Dialog({ c, picked }: { c: Copy; picked: boolean }) {
             }}
           >
             {c.threadReply.slice(0, 38)}…
+            {tapRing && (
+              <span key="tap-pick" className="demo-tap-ripple" aria-hidden />
+            )}
           </div>
         </div>
       </div>
