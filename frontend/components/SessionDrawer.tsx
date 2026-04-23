@@ -55,7 +55,7 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
       {/* 遮罩 */}
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-200 ${
+        className={`fixed inset-0 z-40 [background:rgba(27,26,23,0.45)] backdrop-blur-sm transition-opacity duration-200 ${
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />

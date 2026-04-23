@@ -52,7 +52,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
 
   return createPortal(
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={onClose} />
+      <div className="fixed inset-0 [background:rgba(27,26,23,0.45)] backdrop-blur-sm z-40" onClick={onClose} />
 
       <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface border border-base rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden">
         {/* 锚点引用 */}
