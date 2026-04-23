@@ -420,9 +420,9 @@ export default function ChatPage() {
     handleNavigateTo(threadId);
   }, [handleNavigateTo]);
 
-  // ── 打开 session 抽屉时懒加载列表 ──────────────────────────────
-  const handleOpenSessions = useCallback(() => {
-    setShowSessions(true);
+  // ── Sessions 列表懒加载（首次访问时拉一次）
+  //    Lazy-fetch the session list (kicked off on first drawer open). */
+  const ensureSessionsLoaded = useCallback(() => {
     if (sessions.length === 0) {
       setSessionsLoading(true);
       listSessions()
@@ -431,6 +431,13 @@ export default function ChatPage() {
         .finally(() => setSessionsLoading(false));
     }
   }, [sessions.length]);
+
+  // 桌面 SessionDrawer 入口:打开抽屉 + 懒加载
+  // Desktop entry point: open the legacy SessionDrawer + lazy-load.
+  const handleOpenSessions = useCallback(() => {
+    setShowSessions(true);
+    ensureSessionsLoaded();
+  }, [ensureSessionsLoaded]);
 
   // ── 新建对话：匿名用户弹登录引导，登录用户直接跳新 UUID ───────────
   // New chat: anon users get the sign-in prompt; signed-in users go straight to a fresh UUID.
@@ -872,7 +879,12 @@ export default function ChatPage() {
           // Sessions
           sessions={sessions}
           sessionsLoading={sessionsLoading}
-          onOpenSessions={handleOpenSessions}
+          // 手机端内置自己的左抽屉,这里只负责懒加载 sessions(不开 SessionDrawer,
+          // 否则桌面遗留抽屉会和手机抽屉同时弹出两层)。
+          // Mobile layout owns its own left drawer — only trigger the lazy
+          // session fetch here; opening the legacy SessionDrawer too would
+          // result in two stacked drawers on mobile.
+          onOpenSessions={ensureSessionsLoaded}
           onDeleteSession={handleDeleteSession}
           onNewChat={handleNewChat}
           // Active conversation
@@ -1000,17 +1012,22 @@ export default function ChatPage() {
         </div>
       )}
 
-      <SessionDrawer
-        open={showSessions}
-        onClose={() => setShowSessions(false)}
-        sessions={sessions}
-        loading={sessionsLoading}
-        currentSessionId={sessionId}
-        t={t}
-        onDelete={handleDeleteSession}
-        isAnon={isAnon}
-        onAnonNewChat={() => setQuotaModal({ variant: "session" })}
-      />
+      {/* 桌面专属:手机端 MobileChatLayout 自带左抽屉,不能再渲染这一层
+          Desktop only — MobileChatLayout owns its own session drawer on
+          mobile, so gating this on md+ prevents two drawers stacking. */}
+      <div className="hidden md:contents">
+        <SessionDrawer
+          open={showSessions}
+          onClose={() => setShowSessions(false)}
+          sessions={sessions}
+          loading={sessionsLoading}
+          currentSessionId={sessionId}
+          t={t}
+          onDelete={handleDeleteSession}
+          isAnon={isAnon}
+          onAnonNewChat={() => setQuotaModal({ variant: "session" })}
+        />
+      </div>
 
       <QuotaExceededModal
         open={quotaModal !== null}
