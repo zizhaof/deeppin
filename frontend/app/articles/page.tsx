@@ -26,7 +26,7 @@ export default function ArticlesPage() {
                 <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
               </svg>
             </div>
-            <span className="text-sm font-semibold text-md tracking-tight">Deeppin</span>
+            <span className="font-serif text-base text-md tracking-tight">Deeppin</span>
             <span className="text-faint text-sm">/</span>
             <span className="text-sm text-faint">{contentLang === "zh" ? "文章" : "Articles"}</span>
           </div>

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -10,6 +10,20 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+/**
+ * Fraunces 只用于少量「editorial」场合 —— brand mark、hero 标题、popover 标题。
+ * 不作为全局默认，正文依然是 Geist（UI chrome）。
+ * Fraunces is reserved for editorial moments only — brand mark, hero titles,
+ * popover titles. Body copy stays Geist (UI chrome).
+ */
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  // 变量字体，不指定 weight；opsz 开启 optical-size 轴，小号字自动收紧
+  // Variable font; opsz axis enables automatic optical sizing.
+  axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
@@ -25,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       {/* 在 hydration 之前读取 localStorage 并设置主题 class，防止页面闪烁 */}
       <script

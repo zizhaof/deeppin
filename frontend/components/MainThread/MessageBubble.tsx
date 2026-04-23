@@ -102,7 +102,15 @@ function getCharOffset(container: Element, targetNode: Node, targetOffset: numbe
   return offset;
 }
 
-const ANCHOR_COLORS = ["#818cf8", "#a78bfa", "#67e8f9", "#f9a8d4", "#fbbf24"];
+// 5 色锚点颜料 — 读 globals.css 的 --pig-1..5（light=muted pigments，dark=老的亮色）
+// Anchor pigments — pulled from --pig-1..5 so the palette auto-switches with theme.
+const ANCHOR_COLORS = [
+  "var(--pig-1)",
+  "var(--pig-2)",
+  "var(--pig-3)",
+  "var(--pig-4)",
+  "var(--pig-5)",
+];
 
 function renderWithHighlights(
   content: string,

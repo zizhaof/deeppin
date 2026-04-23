@@ -47,7 +47,7 @@ export default function LoginPage() {
               <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
             </svg>
           </div>
-          <span className="text-lg font-semibold text-hi tracking-tight">
+          <span className="font-serif text-xl text-hi tracking-tight">
             Deeppin
           </span>
         </div>

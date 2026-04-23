@@ -26,7 +26,15 @@ import remarkGfm from "remark-gfm";
 import type { AnchorRange } from "./MainThread/MessageBubble";
 
 // ── 颜色 / Colors ─────────────────────────────────────────────────────
-const ANCHOR_COLORS = ["#818cf8", "#a78bfa", "#67e8f9", "#f9a8d4", "#fbbf24"];
+// 5 色锚点颜料 — 读 globals.css 的 --pig-1..5（light=muted、dark=原亮色）
+// Anchor pigments from globals.css; auto-switches with theme.
+const ANCHOR_COLORS = [
+  "var(--pig-1)",
+  "var(--pig-2)",
+  "var(--pig-3)",
+  "var(--pig-4)",
+  "var(--pig-5)",
+];
 
 function buildColorMap(anchors: AnchorRange[]): Map<string, string> {
   const map = new Map<string, string>();

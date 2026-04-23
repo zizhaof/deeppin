@@ -1,56 +1,92 @@
 @import "tailwindcss";
 
-/* ── 设计系统颜色 token（浅色模式默认，深色模式 override）────────────────
-   Design system color tokens — light mode defaults, dark mode overrides.
-   组件使用 @utility 类名，CSS 变量随 prefers-color-scheme 自动切换。
-   Components use @utility class names; CSS vars auto-switch with prefers-color-scheme.
+/* ── 设计系统颜色 token ────────────────────────────────────────────────
+   Design-system color tokens.
+
+   浅色模式（默认）= 新 brand：warm paper + deep-ink indigo。
+   深色模式（html.dark / prefers-color-scheme: dark）= 保留现有 zinc 配色，
+   确保深色用户不受 rebrand 影响；新设计本身是 light-first。
+
+   Light (default) = new brand: warm paper + deep-ink indigo.
+   Dark (html.dark / prefers-color-scheme: dark) = keep the existing zinc stack,
+   so dark-mode users aren't regressed by the rebrand; the new design is light-first.
    ──────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* — 表面背景 / Surface backgrounds — */
-  --s-base:       #f4f4f5;          /* 页面底色 / page: zinc-100 */
-  --s-surface:    #ffffff;           /* 卡片/面板 / card: white */
-  --s-elevated:   #fafafa;           /* 抬起层 / raised: off-white */
+  /* ── 新 brand 原色 / New brand primitives ─────────────────────────────
+     暖纸面 + 深墨蓝，文字从墨黑到米灰的 5 级阶梯。
+     Warm paper + deep-ink indigo; text steps from near-black to stone-grey. */
+  --paper:       #f5f1ea;   /* 页面主底 / page background */
+  --paper-2:     #efeae1;   /* 次级底（rail / panel 面）/ secondary surface */
+  --card:        #fbf8f2;   /* 卡片 / 抬起面 / card, elevated */
+  --ink:         #1b1a17;   /* 主文字 / primary text */
+  --ink-2:       #44413c;   /* 次要文字 */
+  --ink-3:       #716c63;   /* 三级文字 */
+  --ink-4:       #9a938a;   /* 元信息 / metadata */
+  --ink-5:       #c4bdb2;   /* placeholder / 弱提示 */
 
-  /* — 半透明表面 / Semi-transparent surfaces — */
-  --s-surface-95: rgba(255,255,255,0.95);
-  --s-surface-80: rgba(255,255,255,0.80);
-  --s-surface-70: rgba(255,255,255,0.70);
-  --s-surface-60: rgba(255,255,255,0.60);
-  --s-elevated-80: rgba(250,250,250,0.80);
+  --rule:        #d9d2c3;   /* 1px 分隔线（solid，不再用 alpha） / 1px dividers */
+  --rule-soft:   #e6dfd2;   /* 更淡的分隔 */
+  --rule-strong: #b8ad94;   /* 强分隔（罕用） */
 
-  /* — 悬停/玻璃层 / Hover / glass overlays — */
-  --s-glass:    rgba(0,0,0,0.04);
-  --s-glass-md: rgba(0,0,0,0.07);
-  --s-glass-lg: rgba(0,0,0,0.12);
+  --accent:      #2a2a72;   /* 深墨蓝主 accent — 取代原来的 indigo-500/600 */
+  --accent-2:    #3f3d99;   /* 次深墨蓝（hover / focus ring） */
+  --accent-soft: #e0dcf1;   /* 淡 indigo wash */
+  --accent-ink:  #1a1a4a;   /* 最深墨蓝（press / deep hover） */
 
-  /* — 边框 / Borders — */
-  --b-subtle: rgba(0,0,0,0.06);
-  --b-base:   rgba(0,0,0,0.10);
-  --b-strong: rgba(0,0,0,0.16);
+  /* 5 色锚点颜料 / 5-pigment anchor palette — 手调穆特色，不是霓虹 */
+  --pig-1: #2a2a72;   /* indigo */
+  --pig-2: #7a3d9e;   /* plum */
+  --pig-3: #0e6b68;   /* teal */
+  --pig-4: #b84a5b;   /* rose */
+  --pig-5: #a66a1f;   /* ochre */
 
-  /* — 文字 / Text — */
-  --t-hi:    #18181b;   /* zinc-900 — 主文字 */
-  --t-md:    #3f3f46;   /* zinc-700 — 次要 */
-  --t-lo:    #52525b;   /* zinc-600 — 三级 */
-  --t-dim:   #71717a;   /* zinc-500 — 元数据 */
-  --t-faint: #a1a1aa;   /* zinc-400 — 弱提示 */
-  --t-ph:    #d4d4d8;   /* zinc-300 — placeholder */
+  /* ── 语义 token（保持命名不变，换底色）/ Semantic tokens — same names, new values ── */
 
-  /* — 禁用状态 / Disabled states — */
-  --s-disabled:   #e4e4e7;   /* zinc-200 */
-  --t-disabled:   #a1a1aa;   /* zinc-400 */
+  /* 表面 / Surfaces */
+  --s-base:       var(--paper);
+  --s-surface:    var(--card);
+  --s-elevated:   var(--paper-2);
 
-  /* Legacy vars (keep for body/font) */
-  --background: #ffffff;
-  --foreground: #171717;
+  --s-surface-95: rgba(251,248,242,0.95);
+  --s-surface-80: rgba(251,248,242,0.80);
+  --s-surface-70: rgba(251,248,242,0.70);
+  --s-surface-60: rgba(251,248,242,0.60);
+  --s-elevated-80: rgba(239,234,225,0.80);
+
+  /* 玻璃 / Hover overlays（墨色）*/
+  --s-glass:    rgba(27,26,23,0.04);
+  --s-glass-md: rgba(27,26,23,0.07);
+  --s-glass-lg: rgba(27,26,23,0.12);
+
+  /* 边框 / Borders — 新设计用 solid rule，不再用 alpha-on-surface */
+  --b-subtle: var(--rule-soft);
+  --b-base:   var(--rule);
+  --b-strong: var(--rule-strong);
+
+  /* 文字 / Text */
+  --t-hi:    var(--ink);
+  --t-md:    var(--ink-2);
+  --t-lo:    var(--ink-3);
+  --t-dim:   var(--ink-3);
+  --t-faint: var(--ink-4);
+  --t-ph:    var(--ink-5);
+
+  --s-disabled:   #e4ded1;
+  --t-disabled:   var(--ink-5);
+
+  /* body 默认底/字 / Legacy body bg/fg kept */
+  --background: var(--paper);
+  --foreground: var(--ink);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --s-base:       #09090b;           /* zinc-950 */
-    --s-surface:    #18181b;            /* zinc-900 */
-    --s-elevated:   #27272a;            /* zinc-800 */
+    /* Dark mode 仍保留 zinc，避免 rebrand 的视觉跃迁打扰深色用户
+       Dark mode keeps zinc — rebrand is light-first, don't regress dark users. */
+    --s-base:       #09090b;
+    --s-surface:    #18181b;
+    --s-elevated:   #27272a;
 
     --s-surface-95: rgba(24,24,27,0.95);
     --s-surface-80: rgba(24,24,27,0.80);
@@ -66,25 +102,34 @@
     --b-base:   rgba(255,255,255,0.08);
     --b-strong: rgba(255,255,255,0.14);
 
-    --t-hi:    #f4f4f5;   /* zinc-100 */
-    --t-md:    #d4d4d8;   /* zinc-300 */
-    --t-lo:    #a1a1aa;   /* zinc-400 */
-    --t-dim:   #71717a;   /* zinc-500 */
-    --t-faint: #52525b;   /* zinc-600 */
-    --t-ph:    #3f3f46;   /* zinc-700 */
+    --t-hi:    #f4f4f5;
+    --t-md:    #d4d4d8;
+    --t-lo:    #a1a1aa;
+    --t-dim:   #71717a;
+    --t-faint: #52525b;
+    --t-ph:    #3f3f46;
 
-    --s-disabled:   #27272a;   /* zinc-800 */
-    --t-disabled:   #3f3f46;   /* zinc-700 */
+    --s-disabled:   #27272a;
+    --t-disabled:   #3f3f46;
 
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    /* Dark mode 下的 accent 用回现有的亮 indigo；5 色锚点保留，但在深色底上读得出 */
+    --accent:      #6366f1;
+    --accent-2:    #818cf8;
+    --accent-soft: rgba(99,102,241,0.18);
+    --accent-ink:  #4f46e5;
+
+    --pig-1: #818cf8;   /* 原 indigo-400 */
+    --pig-2: #a78bfa;   /* 原 violet-400 */
+    --pig-3: #67e8f9;   /* 原 cyan-300 */
+    --pig-4: #f9a8d4;   /* 原 pink-300 */
+    --pig-5: #fbbf24;   /* 原 amber-400 */
   }
 }
 
-/* ── 手动主题覆盖（优先级高于 prefers-color-scheme）──────────────────────
-   html.dark  → 强制深色（无论系统设置）
-   html.light → 强制浅色（无论系统设置）
-   ──────────────────────────────────────────────────────────────────────── */
+/* ── 手动主题覆盖（优先级高于 prefers-color-scheme）────────────────────── */
 
 html.dark {
   --s-base:       #09090b;
@@ -117,52 +162,92 @@ html.dark {
 
   --background: #0a0a0a;
   --foreground: #ededed;
+
+  --accent:      #6366f1;
+  --accent-2:    #818cf8;
+  --accent-soft: rgba(99,102,241,0.18);
+  --accent-ink:  #4f46e5;
+
+  --pig-1: #818cf8;
+  --pig-2: #a78bfa;
+  --pig-3: #67e8f9;
+  --pig-4: #f9a8d4;
+  --pig-5: #fbbf24;
 }
 
 html.light {
-  --s-base:       #f4f4f5;
-  --s-surface:    #ffffff;
-  --s-elevated:   #fafafa;
+  /* 显式声明 light 和 :root 相同——当系统偏好是 dark 时，强制浅色也走新 brand */
+  --s-base:       var(--paper);
+  --s-surface:    var(--card);
+  --s-elevated:   var(--paper-2);
 
-  --s-surface-95: rgba(255,255,255,0.95);
-  --s-surface-80: rgba(255,255,255,0.80);
-  --s-surface-70: rgba(255,255,255,0.70);
-  --s-surface-60: rgba(255,255,255,0.60);
-  --s-elevated-80: rgba(250,250,250,0.80);
+  --s-surface-95: rgba(251,248,242,0.95);
+  --s-surface-80: rgba(251,248,242,0.80);
+  --s-surface-70: rgba(251,248,242,0.70);
+  --s-surface-60: rgba(251,248,242,0.60);
+  --s-elevated-80: rgba(239,234,225,0.80);
 
-  --s-glass:    rgba(0,0,0,0.04);
-  --s-glass-md: rgba(0,0,0,0.07);
-  --s-glass-lg: rgba(0,0,0,0.12);
+  --s-glass:    rgba(27,26,23,0.04);
+  --s-glass-md: rgba(27,26,23,0.07);
+  --s-glass-lg: rgba(27,26,23,0.12);
 
-  --b-subtle: rgba(0,0,0,0.06);
-  --b-base:   rgba(0,0,0,0.10);
-  --b-strong: rgba(0,0,0,0.16);
+  --b-subtle: var(--rule-soft);
+  --b-base:   var(--rule);
+  --b-strong: var(--rule-strong);
 
-  --t-hi:    #18181b;
-  --t-md:    #3f3f46;
-  --t-lo:    #52525b;
-  --t-dim:   #71717a;
-  --t-faint: #a1a1aa;
-  --t-ph:    #d4d4d8;
+  --t-hi:    var(--ink);
+  --t-md:    var(--ink-2);
+  --t-lo:    var(--ink-3);
+  --t-dim:   var(--ink-3);
+  --t-faint: var(--ink-4);
+  --t-ph:    var(--ink-5);
 
-  --s-disabled:   #e4e4e7;
-  --t-disabled:   #a1a1aa;
+  --s-disabled:   #e4ded1;
+  --t-disabled:   var(--ink-5);
 
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: var(--paper);
+  --foreground: var(--ink);
+
+  --accent:      #2a2a72;
+  --accent-2:    #3f3d99;
+  --accent-soft: #e0dcf1;
+  --accent-ink:  #1a1a4a;
+
+  --pig-1: #2a2a72;
+  --pig-2: #7a3d9e;
+  --pig-3: #0e6b68;
+  --pig-4: #b84a5b;
+  --pig-5: #a66a1f;
 }
 
+/* ── Tailwind 调色板重映射 / Tailwind palette remap ─────────────────────
+   把 indigo-400..800 映射到新的 deep-ink indigo 阶梯，
+   这样 `bg-indigo-600` / `text-indigo-300` 等硬编码类在 light mode 下
+   自动拿到新 brand 色，避免逐文件改 class。
+   Remap indigo-400..800 to the deep-ink indigo scale. Hardcoded
+   `bg-indigo-600` / `text-indigo-300` etc. pick up the new brand in light mode
+   without touching any component classes. Dark mode preserves Tailwind's defaults. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-fraunces), "Fraunces", Georgia, "Times New Roman", serif;
+
+  --color-indigo-300: #5f5fb5;
+  --color-indigo-400: var(--accent-2);
+  --color-indigo-500: var(--accent);
+  --color-indigo-600: var(--accent);
+  --color-indigo-700: var(--accent-ink);
+  --color-indigo-800: #14143e;
+  --color-indigo-900: #0d0d2e;
+  --color-indigo-950: #07071a;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 /* ── 语义化工具类 / Semantic utility classes ──────────────────────────── */
@@ -181,6 +266,18 @@ body {
   .bg-glass      { background-color: var(--s-glass); }
   .bg-glass-md   { background-color: var(--s-glass-md); }
   .bg-glass-lg   { background-color: var(--s-glass-lg); }
+
+  /* 新 brand 辅助 utility / New brand helpers */
+  .bg-paper      { background-color: var(--paper); }
+  .bg-paper-2    { background-color: var(--paper-2); }
+  .bg-card       { background-color: var(--card); }
+  .bg-accent     { background-color: var(--accent); }
+  .bg-accent-soft{ background-color: var(--accent-soft); }
+  .text-ink      { color: var(--ink); }
+  .text-accent   { color: var(--accent); }
+  .border-rule       { border-color: var(--rule); }
+  .border-rule-soft  { border-color: var(--rule-soft); }
+  .font-serif    { font-family: var(--font-serif); }
 
   /* 边框 */
   .border-subtle { border-color: var(--b-subtle); }
@@ -205,6 +302,12 @@ body {
   /* 禁用 */
   .bg-disabled  { background-color: var(--s-disabled); }
   .text-disabled { color: var(--t-disabled); }
+}
+
+/* 选择高亮 / Text selection — 跟随 accent 色 */
+::selection {
+  background: var(--accent);
+  color: var(--paper);
 }
 
 /* ── 滚动条 / Scrollbars ─────────────────────────────────────────────── */
@@ -236,11 +339,12 @@ body {
 
 /* ── 锚点呼吸下划线（未读状态）/ Anchor breathing underline — unread state ─────
    有未读回复的 sub-thread 锚点，下划线亮度在 85%↔115% 脉动，
-   并在文字下方叠一层 indigo wash（0%↔22%）。0.95s 周期，hover 暂停。
-   替代了之前的尾部小点，避免把文字流撑开。
+   并在文字下方叠一层 accent wash（0%↔22%）。0.95s 周期，hover 暂停。
+   Wash 颜色跟随主题 accent token（light=deep ink、dark=indigo-400），
+   保证在两种 theme 下都能 peek 出来。
    Anchor for a sub-thread with an unread reply: underline brightness breathes,
-   with a soft indigo wash behind the word. 0.95s cycle, pauses on hover.
-   Replaces the old tail dot so the unread signal doesn't push nearby text.
+   with a soft accent wash behind the word. 0.95s cycle, pauses on hover.
+   Wash color tracks the theme accent so it reads in both light and dark.
    ────────────────────────────────────────────────────────────────────── */
 .anchor-span { position: relative; }
 .anchor-unread {
@@ -252,8 +356,7 @@ body {
   position: absolute;
   inset: 0 -2px -2px -2px;
   border-radius: 3px;
-  /* 取 indigo-400 作为 wash 基色；与 5 色锚点下划线的首色保持一致 */
-  background: #818cf8;
+  background: var(--accent);
   opacity: 0;
   z-index: -1;
   animation: anchor-wash-pulse 0.95s ease-in-out infinite;

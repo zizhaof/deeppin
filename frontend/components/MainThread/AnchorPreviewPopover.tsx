@@ -21,8 +21,15 @@ interface Props {
 }
 
 // 与 MessageBubble 中 ANCHOR_COLORS 保持一致（按 threadId 在同一消息里的出现顺序上色）
-// Same palette as MessageBubble's ANCHOR_COLORS — consumers key by thread order.
-const ANCHOR_COLORS = ["#818cf8", "#a78bfa", "#67e8f9", "#f9a8d4", "#fbbf24"];
+// 5 个值都是 CSS var()，随 light/dark 自动切换。
+// Same palette as MessageBubble's ANCHOR_COLORS (CSS vars — theme-aware).
+const ANCHOR_COLORS = [
+  "var(--pig-1)",
+  "var(--pig-2)",
+  "var(--pig-3)",
+  "var(--pig-4)",
+  "var(--pig-5)",
+];
 
 const POPOVER_WIDTH = 320;
 
@@ -124,7 +131,7 @@ export default function AnchorPreviewPopover({
           style={{ background: color }}
           aria-hidden
         />
-        <span className="flex-1 text-sm font-medium text-md truncate">{title}</span>
+        <span className="flex-1 font-serif text-[15px] font-medium text-md truncate">{title}</span>
         {unread && (
           <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-indigo-300 bg-indigo-500/15 px-1.5 py-0.5 rounded-sm">
             {t.newReply}

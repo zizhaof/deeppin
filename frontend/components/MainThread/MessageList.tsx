@@ -93,7 +93,7 @@ export default function MessageList({
                   </svg>
                 </div>
               </div>
-              <h2 className="text-sm font-semibold text-md tracking-tight">{t.welcomeTitle}</h2>
+              <h2 className="font-serif text-base font-medium text-md tracking-tight">{t.welcomeTitle}</h2>
               <p className="text-xs text-faint leading-relaxed">{t.welcomeSub}</p>
             </div>
           )}

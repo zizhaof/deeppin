@@ -297,7 +297,7 @@ export default function HomePage() {
                 <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
               </svg>
             </div>
-            <span className="text-sm font-semibold text-md tracking-tight">Deeppin</span>
+            <span className="font-serif text-base text-md tracking-tight">Deeppin</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <h1 className="text-[22px] font-semibold text-hi tracking-tight leading-tight">{t.welcomeTitle}</h1>
+          <h1 className="font-serif text-[26px] font-medium text-hi tracking-tight leading-tight">{t.welcomeTitle}</h1>
 
           {/* 首页输入框 — 与对话页主栏等宽 */}
           <div className="w-full bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
