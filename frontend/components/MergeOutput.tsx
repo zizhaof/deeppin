@@ -9,7 +9,7 @@ import { saveAssistantMessage } from "@/lib/api";
 import type { Thread } from "@/lib/api";
 import { useThreadStore } from "@/stores/useThreadStore";
 import MarkdownContent from "@/components/MarkdownContent";
-import MergeTreeCanvas from "@/components/MergeTreeCanvas";
+import MergeGraph from "@/components/MergeGraph";
 import { useLangStore, useT } from "@/stores/useLangStore";
 
 interface Props {
@@ -241,10 +241,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                 <span className="text-[9px] text-faint uppercase tracking-wider">{t.mergeHintSelect}</span>
               </div>
               <div className="flex-1 min-h-0 relative">
-                <MergeTreeCanvas
+                <MergeGraph
                   threads={threads}
                   selected={selected}
                   onToggle={handleToggle}
+                  messagesByThread={messagesByThread}
                 />
               </div>
               <div className="px-5 py-1.5 flex-shrink-0 flex items-center justify-between border-t border-subtle">

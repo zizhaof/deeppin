@@ -19,7 +19,7 @@ export const de: T = {
   noThreads: "Keine Threads",
   // Welcome
   welcomeTitle: "Tiefes Denken beginnt hier",
-  welcomeSub: "Frag die KI alles. Markiere Text in einer Antwort, um eine Unterfrage zu öffnen.",
+  welcomeSub: "Frag Deeppin alles. Markiere Text in einer Antwort, um eine Unterfrage zu öffnen.",
   chooseQuestion: "Wähle eine Frage zum Erkunden",
   tagline: "Markiere beliebigen Text, um tiefer zu graben",
   // InputBar
@@ -107,6 +107,7 @@ export const de: T = {
   articles: "Artikel",
   // Konto
   logout: "Abmelden",
+  deleteAccount: "Konto löschen",
   // Fehler
   deleteError: "Löschen fehlgeschlagen: ",
   unknownError: "Unbekannter Fehler",
@@ -142,7 +143,7 @@ export const de: T = {
   quotaFree: "frei",
   quotaFull: "Testlimit erreicht",
   you: "DU",
-  ai: "AI",
+  ai: "Deeppin",
   flattenPreviewBefore: "Vorher",
   flattenPreviewAfter: "Nachher",
   flattenPreviewEmpty: "Nur der Hauptthread — nichts zu flachen.",

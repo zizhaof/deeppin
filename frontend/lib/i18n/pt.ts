@@ -19,7 +19,7 @@ export const pt: T = {
   noThreads: "Sem threads",
   // Welcome
   welcomeTitle: "Pensamento profundo começa aqui",
-  welcomeSub: "Pergunte qualquer coisa à IA. Selecione um texto em uma resposta para abrir uma subpergunta.",
+  welcomeSub: "Pergunte qualquer coisa ao Deeppin. Selecione um texto em uma resposta para abrir uma subpergunta.",
   chooseQuestion: "Escolha uma pergunta para explorar",
   tagline: "Selecione qualquer texto para aprofundar",
   // InputBar
@@ -107,6 +107,7 @@ export const pt: T = {
   articles: "Artigos",
   // Conta
   logout: "Sair",
+  deleteAccount: "Excluir conta",
   // Erros
   deleteError: "Falha ao excluir: ",
   unknownError: "Erro desconhecido",
@@ -142,7 +143,7 @@ export const pt: T = {
   quotaFree: "livres",
   quotaFull: "Limite do teste atingido",
   you: "VOCÊ",
-  ai: "AI",
+  ai: "Deeppin",
   flattenPreviewBefore: "Antes",
   flattenPreviewAfter: "Depois",
   flattenPreviewEmpty: "Apenas o tópico principal — nada para achatar.",

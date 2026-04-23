@@ -374,12 +374,14 @@ function MessageBubble({
         {/* WHO 行 — mono uppercase + pigment dot + 可选 model 名
             WHO row — mono uppercase label + pigment dot + optional model label (AI only). */}
         <div
-          className="flex items-center gap-[7px] mb-[5px] font-mono text-[9.5px] uppercase select-none"
-          style={{ color: "var(--ink-4)", letterSpacing: "0.12em", userSelect: "none" }}
+          className="flex items-center gap-[7px] mb-[5px] select-none"
+          style={{ color: "var(--ink-4)", userSelect: "none" }}
         >
-          {/* WHO 行是 metadata —— 颜料点 / YOU·AI / model 名都不该被框选成锚点
-              The WHO row is metadata — pigment dot / YOU·AI / model name
-              shouldn't get selected and pinned. */}
+          {/* WHO 行是 metadata —— 颜料点 / YOU·Deeppin / model 名都不该被框选成锚点
+              The WHO row is metadata — pigment dot / YOU·Deeppin / model name
+              shouldn't get selected and pinned. User label stays mono-caps
+              ("YOU") for that chat-log aesthetic; AI label is the Deeppin
+              brand in its natural case (not uppercased to "DEEPPIN"). */}
           <span
             className="w-[5px] h-[5px] rounded-full flex-shrink-0"
             style={{ background: isUser ? "var(--ink-3)" : "var(--accent)" }}
@@ -394,7 +396,15 @@ function MessageBubble({
               draggable={false}
             />
           )}
-          <span>{isUser ? t.you : t.ai}</span>
+          {isUser ? (
+            <span className="font-mono text-[9.5px] uppercase" style={{ letterSpacing: "0.12em" }}>
+              {t.you}
+            </span>
+          ) : (
+            <span className="font-serif text-[12px] font-medium" style={{ color: "var(--ink-2)", letterSpacing: "-0.005em" }}>
+              {t.ai}
+            </span>
+          )}
           {!isUser && model && (
             <span
               className="font-mono lowercase tracking-normal truncate max-w-[160px]"

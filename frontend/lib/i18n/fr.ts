@@ -19,7 +19,7 @@ export const fr: T = {
   noThreads: "Aucun fil",
   // Welcome
   welcomeTitle: "La réflexion profonde commence ici",
-  welcomeSub: "Demande n'importe quoi à l'IA. Sélectionne du texte dans une réponse pour ouvrir une sous-question.",
+  welcomeSub: "Demande n'importe quoi à Deeppin. Sélectionne du texte dans une réponse pour ouvrir une sous-question.",
   chooseQuestion: "Choisis une question à explorer",
   tagline: "Sélectionne n'importe quel texte pour creuser",
   // InputBar
@@ -107,6 +107,7 @@ export const fr: T = {
   articles: "Articles",
   // Compte
   logout: "Déconnexion",
+  deleteAccount: "Supprimer le compte",
   // Erreurs
   deleteError: "Échec de la suppression : ",
   unknownError: "Erreur inconnue",
@@ -142,7 +143,7 @@ export const fr: T = {
   quotaFree: "restant",
   quotaFull: "Limite d'essai atteinte",
   you: "TOI",
-  ai: "AI",
+  ai: "Deeppin",
   flattenPreviewBefore: "Avant",
   flattenPreviewAfter: "Après",
   flattenPreviewEmpty: "Juste le fil principal — rien à aplatir.",

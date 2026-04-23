@@ -20,7 +20,7 @@ export const en = {
   noThreads: "No threads",
   // Welcome
   welcomeTitle: "Deep thinking starts here",
-  welcomeSub: "Ask AI anything. Select text in any reply to open a sub-question.",
+  welcomeSub: "Ask Deeppin anything. Select text in any reply to open a sub-question.",
   chooseQuestion: "Choose a question to explore",
   tagline: "Select any text to deep-dive",
   // InputBar
@@ -108,6 +108,7 @@ export const en = {
   articles: "Articles",
   // 账号 / Account
   logout: "Log out",
+  deleteAccount: "Delete account",
   // 错误消息 / Errors
   deleteError: "Delete failed: ",
   unknownError: "Unknown error",
@@ -144,7 +145,7 @@ export const en = {
   quotaFull: "Trial limit reached",
   // 消息气泡 WHO 标签 / Message bubble WHO labels
   you: "YOU",
-  ai: "AI",
+  ai: "Deeppin",
   // 扁平化 before/after 预览 / Flatten before-after preview
   flattenPreviewBefore: "Before",
   flattenPreviewAfter: "After",

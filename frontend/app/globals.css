@@ -194,18 +194,30 @@ body {
 }
 
 /* ── 锚点呼吸下划线（未读状态）/ Anchor breathing underline — unread state ─────
-   有未读回复的 sub-thread 锚点，下划线亮度在 85%↔115% 脉动，
-   并在文字下方叠一层 accent wash（0%↔22%）。0.95s 周期，hover 暂停。
-   Wash 颜色跟随主题 accent token（light=deep ink、dark=indigo-400），
-   保证在两种 theme 下都能 peek 出来。
-   Anchor for a sub-thread with an unread reply: underline brightness breathes,
-   with a soft accent wash behind the word. 0.95s cycle, pauses on hover.
-   Wash color tracks the theme accent so it reads in both light and dark.
+   原来的 filter: brightness 会把字本身调暗，读不清；改成只动 underline 透明度
+   + 背后 wash 透明度，字体颜色始终 var(--ink)（黑）。Wash 保持淡一点避免压糊字。
+   Old implementation used filter: brightness on the whole span — that dimmed
+   the text too. Now only the underline opacity and the wash opacity pulse;
+   text color stays var(--ink) (black). Wash kept low so text stays legible.
    ────────────────────────────────────────────────────────────────────── */
 .anchor-span { position: relative; }
 .anchor-unread {
   position: relative;
+  color: var(--ink); /* 强制黑色文字，不随 pulse 变灰 */
+}
+.anchor-unread::after {
+  /* 下划线用 ::after 做一层独立动画的彩色线（替代 border-bottom 的 opacity 动画）
+     Separate underline drawn via ::after so its opacity can pulse
+     independently of the text color. */
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: var(--pig-1);
+  border-radius: 1px;
   animation: anchor-underline-pulse 0.95s ease-in-out infinite;
+  pointer-events: none;
 }
 .anchor-unread::before {
   content: "";
@@ -219,18 +231,17 @@ body {
   pointer-events: none;
 }
 .anchor-unread:hover,
-.anchor-unread:hover::before {
-  animation-play-state: paused;
-}
+.anchor-unread:hover::before,
+.anchor-unread:hover::after { animation-play-state: paused; }
 @keyframes anchor-underline-pulse {
-  0%, 100% { filter: brightness(0.85); }
-  50%      { filter: brightness(1.15); }
+  /* 只让下划线的亮度在 40%↔100% 之间呼吸；字不受影响 */
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
 }
 @keyframes anchor-wash-pulse {
-  /* wash 在 paper 底色上压太深会让字看不清；降到 12% peak
-     22% on warm-paper bled into the text; dialing peak down to 12%. */
+  /* wash 峰值 10% — 在暖纸底上若有若无，字还能看清 */
   0%, 100% { opacity: 0; }
-  50%      { opacity: 0.12; }
+  50%      { opacity: 0.10; }
 }
 
 /* ── Tree node 未读章脉动 / Tree-node unread badge pulse ───────────────

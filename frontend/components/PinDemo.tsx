@@ -28,6 +28,8 @@ import { useLangStore } from "@/stores/useLangStore";
 import type { Lang } from "@/lib/i18n";
 
 // ── Phases ──────────────────────────────────────────────────────────────
+// 增加 sub-depth 阶段：在 sub-thread 里再 pin 一次，展示「无限嵌套」。
+// Added sub-depth: pin again inside the sub-thread to demonstrate infinite nesting.
 type Phase =
   | "idle"
   | "sweep"
@@ -40,6 +42,7 @@ type Phase =
   | "popover"
   | "enter"
   | "sub-thread"
+  | "sub-depth"
   | "back";
 
 const NEXT: Record<Phase, Phase> = {
@@ -53,7 +56,8 @@ const NEXT: Record<Phase, Phase> = {
   "unread-breathing": "popover",
   popover: "enter",
   enter: "sub-thread",
-  "sub-thread": "back",
+  "sub-thread": "sub-depth",
+  "sub-depth": "back",
   back: "idle",
 };
 
@@ -68,7 +72,8 @@ const DELAYS: Record<Phase, number> = {
   "unread-breathing": 2200,
   popover: 2800,
   enter: 500,
-  "sub-thread": 3000,
+  "sub-thread": 2800,
+  "sub-depth": 2600,
   back: 1700,
 };
 
@@ -80,6 +85,12 @@ interface Copy {
   aiPost: string;
   suggestions: [string, string, string];
   threadReply: string;
+  /** 在 sub-thread AI 回复里再 pin 一次的短语 —— 必须在 threadReply 里存在。
+   *  A short phrase within threadReply that gets pinned during sub-depth. */
+  deeperAnchor: string;
+  /** 更深一层 sub-thread 的标题（显示在 graph 第三层节点下）。
+   *  Title for the depth-2 sub-thread (shown under the 3rd-level graph node). */
+  deeperSubTitle: string;
   subTitle: string;
   questionTitle: string;
   mainCrumb: string;
@@ -111,6 +122,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "Highlight any text in an AI reply, click 'Question' — a focused sub-thread opens right there. The main chat stays untouched. You can pin again inside sub-questions — no limit on depth. When you're done exploring, merge everything into one structured report.",
+    deeperAnchor: "no limit on depth",
+    deeperSubTitle: "no limit on depth",
     subTitle: "pin that detail",
     questionTitle: "deeppin — product intro",
     mainCrumb: "Main",
@@ -136,6 +149,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "Hover the underline for a preview — title, snippet, Enter.",
       enter: "Click Enter to jump into the sub-thread.",
       "sub-thread": "Full sub-thread view. Breadcrumb shows Main › pin that detail.",
+      "sub-depth": "Inside the sub-thread, you can pin again — sub-threads nest infinitely.",
       back: "Click Main to return. Breathing stops — the reply is seen.",
     },
   },
@@ -152,6 +166,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "在 AI 回复里选中任意一段文字，点「插针」—— 焦点子线程立刻在旁边打开。主线原封不动。子线程里还能再插针，深度不限。读完再把所有分支一键合并成一份结构化报告。",
+    deeperAnchor: "深度不限",
+    deeperSubTitle: "深度不限",
     subTitle: "钉住那个细节",
     questionTitle: "deeppin — 产品介绍",
     mainCrumb: "主线",
@@ -177,6 +193,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "悬停下划线 —— 浮出预览：标题、摘要、进入按钮。",
       enter: "点击「进入」跳进子线程。",
       "sub-thread": "完整子线程视图。面包屑：主线 › 钉住那个细节。",
+      "sub-depth": "子线程里还能再插针 —— 嵌套深度不限。",
       back: "点「主线」返回。呼吸停下 —— 表示已读。",
     },
   },
@@ -193,6 +210,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "AI の返答から任意のテキストを選択し、「ピン」をクリック —— その場に焦点を絞ったサブスレッドが開く。メインのチャットはそのまま。サブ質問の中でさらにピン留めもでき、深さに制限なし。探索が終わったら、すべてを一つの構造化レポートにマージできる。",
+    deeperAnchor: "深さに制限なし",
+    deeperSubTitle: "深さ無制限",
     subTitle: "そこをピン留め",
     questionTitle: "deeppin — 製品紹介",
     mainCrumb: "メイン",
@@ -218,6 +237,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "下線にホバーでプレビュー —— タイトル、抜粋、Enter。",
       enter: "Enter をクリックしてサブスレッドに入る。",
       "sub-thread": "サブスレッドの完全ビュー。パンくず：メイン › ここをピン留め。",
+      "sub-depth": "サブスレッド内でもさらにピン留めできる —— 入れ子は無制限。",
       back: "メインをクリックで戻る。呼吸は止まり、既読を示す。",
     },
   },
@@ -234,6 +254,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "AI 답변에서 아무 텍스트나 선택하고 '핀'을 클릭 —— 집중된 서브 스레드가 그 자리에 열린다. 메인 대화는 그대로. 서브 질문 안에서 다시 핀 가능하고 깊이 제한 없다. 다 탐색한 뒤 모든 걸 하나의 구조화된 보고서로 병합하면 끝.",
+    deeperAnchor: "깊이 제한 없다",
+    deeperSubTitle: "깊이 무제한",
     subTitle: "그 부분을 고정",
     questionTitle: "deeppin — 제품 소개",
     mainCrumb: "메인",
@@ -259,6 +281,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "밑줄에 호버하면 미리보기 —— 제목, 발췌, Enter.",
       enter: "Enter 클릭으로 서브 스레드 진입.",
       "sub-thread": "서브 스레드 전체 뷰. 브레드크럼: 메인 › 그 부분을 고정.",
+      "sub-depth": "서브 스레드 안에서 다시 핀 —— 중첩 깊이 제한 없음.",
       back: "메인 클릭으로 돌아가기. 호흡 멈춤 —— 읽음 표시.",
     },
   },
@@ -275,6 +298,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "Selecciona cualquier texto en una respuesta de IA, haz clic en 'Anclar' — se abre un sub-hilo enfocado allí mismo. El chat principal permanece intacto. Puedes anclar de nuevo dentro de las sub-preguntas, sin límite de profundidad. Cuando termines, fusiona todo en un informe estructurado.",
+    deeperAnchor: "sin límite de profundidad",
+    deeperSubTitle: "sin límite de profundidad",
     subTitle: "ancla ese detalle",
     questionTitle: "deeppin — presentación del producto",
     mainCrumb: "Principal",
@@ -300,6 +325,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "Pasa el ratón por el subrayado — título, extracto, Abrir.",
       enter: "Haz clic en Abrir para saltar al sub-hilo.",
       "sub-thread": "Vista completa del sub-hilo. Miga: Principal › ancla ese detalle.",
+      "sub-depth": "Dentro del sub-hilo puedes anclar otra vez — anidamiento sin límite.",
       back: "Haz clic en Principal para volver. La respiración para — respuesta vista.",
     },
   },
@@ -316,6 +342,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "Sélectionne n'importe quel texte dans une réponse d'IA, clique sur 'Épingler' — un sous-fil ciblé s'ouvre sur place. Le chat principal reste intact. Tu peux épingler à nouveau dans les sous-questions — sans limite de profondeur. Quand c'est fini, fusionne tout en un rapport structuré.",
+    deeperAnchor: "sans limite de profondeur",
+    deeperSubTitle: "profondeur illimitée",
     subTitle: "épingle ce détail",
     questionTitle: "deeppin — présentation du produit",
     mainCrumb: "Principal",
@@ -341,6 +369,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "Survole le soulignement pour un aperçu — titre, extrait, Ouvrir.",
       enter: "Clique sur Ouvrir pour entrer dans le sous-fil.",
       "sub-thread": "Vue complète du sous-fil. Fil d'ariane : Principal › épingle ce détail.",
+      "sub-depth": "Dans un sous-fil, tu peux épingler à nouveau — imbrication illimitée.",
       back: "Clique sur Principal pour revenir. La respiration s'arrête — réponse vue.",
     },
   },
@@ -357,6 +386,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "Markiere beliebigen Text in einer KI-Antwort, klicke 'Anheften' — ein fokussierter Sub-Thread öffnet sich an Ort und Stelle. Der Haupt-Chat bleibt unberührt. Du kannst innerhalb von Unterfragen erneut anheften — keine Tiefenbegrenzung. Zum Schluss alles in einen strukturierten Bericht zusammenführen.",
+    deeperAnchor: "keine Tiefenbegrenzung",
+    deeperSubTitle: "keine Tiefenbegrenzung",
     subTitle: "Pin dieses Detail",
     questionTitle: "deeppin — Produktvorstellung",
     mainCrumb: "Haupt",
@@ -382,6 +413,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "Fahre über die Unterstreichung für eine Vorschau — Titel, Ausschnitt, Öffnen.",
       enter: "Klicke auf Öffnen, um in den Sub-Thread zu springen.",
       "sub-thread": "Vollständige Sub-Thread-Ansicht. Breadcrumb: Haupt › Pin dieses Detail.",
+      "sub-depth": "Im Sub-Thread kannst du erneut anheften — unbegrenzt verschachtelt.",
       back: "Klicke auf Haupt, um zurückzukehren. Atmen stoppt — Antwort gesehen.",
     },
   },
@@ -398,6 +430,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "Selecione qualquer texto numa resposta da IA, clique em 'Fixar' — um sub-tópico focado abre ali mesmo. O chat principal permanece intacto. Você pode fixar de novo dentro de sub-perguntas, sem limite de profundidade. Quando terminar, mescle tudo num relatório estruturado.",
+    deeperAnchor: "sem limite de profundidade",
+    deeperSubTitle: "sem limite de profundidade",
     subTitle: "fixe esse detalhe",
     questionTitle: "deeppin — apresentação do produto",
     mainCrumb: "Principal",
@@ -423,6 +457,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "Passe o mouse no sublinhado para uma prévia — título, trecho, Abrir.",
       enter: "Clique em Abrir para entrar no sub-tópico.",
       "sub-thread": "Vista completa do sub-tópico. Navegação: Principal › fixe esse detalhe.",
+      "sub-depth": "Dentro do sub-tópico você pode fixar de novo — aninhamento sem limite.",
       back: "Clique em Principal para voltar. A respiração para — lido.",
     },
   },
@@ -439,6 +474,8 @@ const CONTENT: Record<Lang, Copy> = {
     ],
     threadReply:
       "Выделите любой текст в ответе ИИ, нажмите «Закрепить» — сфокусированная подветка откроется тут же. Основной чат остаётся нетронутым. Можно закреплять внутри подвопросов — без ограничений по глубине. Когда закончите, объедините всё в один структурированный отчёт.",
+    deeperAnchor: "без ограничений по глубине",
+    deeperSubTitle: "без ограничений по глубине",
     subTitle: "закрепите эту деталь",
     questionTitle: "deeppin — презентация продукта",
     mainCrumb: "Главная",
@@ -464,6 +501,7 @@ const CONTENT: Record<Lang, Copy> = {
       popover: "Наведите на подчёркивание для предпросмотра — заголовок, фрагмент, Открыть.",
       enter: "Щёлкните «Открыть», чтобы войти в подветку.",
       "sub-thread": "Полный вид подветки. Хлебные крошки: Главная › закрепите эту деталь.",
+      "sub-depth": "Внутри подветки можно закреплять ещё раз — вложенность без ограничений.",
       back: "Щёлкните «Главная», чтобы вернуться. Дыхание прекращается — прочитано.",
     },
   },
@@ -539,14 +577,19 @@ export default function PinDemo() {
     "popover",
     "enter",
     "sub-thread",
+    "sub-depth",
     "back",
   ].includes(phase);
   const anchorBreathing = phase === "unread-breathing" || phase === "popover";
   const showPopover = phase === "popover" || phase === "enter";
-  const inSub = phase === "ai-replying" || phase === "sub-thread" || phase === "enter";
+  const inSub = phase === "ai-replying" || phase === "sub-thread" || phase === "enter" || phase === "sub-depth";
   const showNewReplyTag = phase === "popover" || phase === "enter";
   const showCapNode = anchorVisible;
-  const activeThread: "main" | "cap" = inSub ? "cap" : "main";
+  // sub-depth 及以后展示第三级节点（深度 2 的 sub-sub-thread）
+  // Show a 3rd-level node (depth-2 grandchild) at sub-depth onward.
+  const showDeeperNode = phase === "sub-depth";
+  const activeThread: "main" | "cap" | "deeper" =
+    phase === "sub-depth" ? "deeper" : inSub ? "cap" : "main";
 
   const goToSubThread = useCallback(() => setPhase("sub-thread"), []);
 
@@ -629,7 +672,7 @@ export default function PinDemo() {
           </div>
 
           {/* 右栏 — graph view */}
-          <RightRail c={c} activeThread={activeThread} showCapNode={showCapNode} phase={phase} />
+          <RightRail c={c} activeThread={activeThread} showCapNode={showCapNode} showDeeperNode={showDeeperNode} phase={phase} />
         </div>
 
         {/* Caption — 底部提示条，固定高度 */}
@@ -708,7 +751,7 @@ function MainView({
       <div className="flex flex-col items-start">
         <div className="flex items-center gap-[7px] mb-[4px] font-mono text-[9.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
           <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--accent)" }} />
-          <span>AI</span>
+          <span>Deeppin</span>
         </div>
         <div
           className="relative max-w-[86%] px-[14px] py-[11px] text-[13.5px] leading-[1.6]"
@@ -727,14 +770,15 @@ function MainView({
             visible={anchorVisible}
             breathing={anchorBreathing}
             phase={phase}
-          />
+          >
+            {/* selpop 和 popover 都挂在 AnchorSpan 的子元素上
+                 → 位置相对锚点本身，不再相对气泡框 */}
+            {/* Both selpop and popover mount as AnchorSpan children so they
+                 position relative to the anchor span itself, not the bubble. */}
+            {showSelpop && <SelPop c={c} />}
+            {showPopover && <AnchorPopover c={c} showNew={showNewReplyTag} />}
+          </AnchorSpan>
           {c.aiPost}
-
-          {/* selpop */}
-          {showSelpop && <SelPop c={c} />}
-
-          {/* hover popover */}
-          {showPopover && <AnchorPopover c={c} showNew={showNewReplyTag} />}
         </div>
       </div>
 
@@ -771,43 +815,77 @@ function MainView({
   );
 }
 
-// ── Anchor span — 文字里带下划线的高亮 ──
+// ── Anchor span — 文字里带下划线的高亮，子元素用来挂 selpop / popover ──
+// AnchorSpan — the anchored phrase; children are portals (selpop / popover)
+// that should position relative to the anchor itself.
 function AnchorSpan({
   text,
   sweepPct,
   visible,
   breathing,
   phase,
+  children,
 }: {
   text: string;
   sweepPct: number;
   visible: boolean;
   breathing: boolean;
   phase: Phase;
+  children?: React.ReactNode;
 }) {
   const sweeping = phase === "sweep";
   const bg = sweeping
     ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 22)}%, transparent)`
     : undefined;
-  const bb = visible || sweeping ? `2px solid ${visible ? "var(--pig-1)" : "transparent"}` : "none";
+  const bb = visible && !breathing
+    ? `2px solid var(--pig-1)`
+    : sweeping
+      ? "2px solid transparent"
+      : "none";
   return (
     <span
-      className={`relative inline ${breathing ? "pin-demo-anchor-unread" : ""}`}
+      className={`relative inline-block ${breathing ? "pin-demo-anchor-unread" : ""}`}
       style={{
         background: bg,
         borderBottom: bb,
         paddingBottom: 1,
-        transition: "background 120ms ease-out, border-bottom 220ms ease-out",
+        color: "var(--ink)",
+        transition: "background 120ms ease-out",
       }}
     >
       {text}
+      {children}
       <style jsx>{`
-        .pin-demo-anchor-unread {
-          animation: pin-demo-pulse 0.95s ease-in-out infinite;
+        /* 只让 underline 和背后 wash 脉动，字体颜色保持 var(--ink)
+           Underline (::after) + wash (::before) pulse — text color stays ink. */
+        .pin-demo-anchor-unread::after {
+          content: "";
+          position: absolute;
+          left: 0; right: 0; bottom: -2px;
+          height: 2px;
+          background: var(--pig-1);
+          border-radius: 1px;
+          animation: pin-demo-underline 0.95s ease-in-out infinite;
+          pointer-events: none;
         }
-        @keyframes pin-demo-pulse {
-          0%, 100% { filter: brightness(0.85); }
-          50% { filter: brightness(1.15); }
+        .pin-demo-anchor-unread::before {
+          content: "";
+          position: absolute;
+          inset: 0 -2px -2px -2px;
+          border-radius: 3px;
+          background: var(--accent);
+          opacity: 0;
+          z-index: -1;
+          animation: pin-demo-wash 0.95s ease-in-out infinite;
+          pointer-events: none;
+        }
+        @keyframes pin-demo-underline {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+        @keyframes pin-demo-wash {
+          0%, 100% { opacity: 0; }
+          50% { opacity: 0.10; }
         }
       `}</style>
     </span>
@@ -968,7 +1046,7 @@ function SubThreadView({ c, streamLen, phase }: { c: Copy; streamLen: number; ph
       <div className="flex flex-col items-start">
         <div className="flex items-center gap-[7px] mb-[4px] font-mono text-[9.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
           <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--accent)" }} />
-          <span>AI</span>
+          <span>Deeppin</span>
         </div>
         <div
           className="max-w-[86%] px-[14px] py-[11px] text-[13px] leading-[1.6]"
@@ -980,13 +1058,45 @@ function SubThreadView({ c, streamLen, phase }: { c: Copy; streamLen: number; ph
             borderBottomLeftRadius: 4,
           }}
         >
-          {c.threadReply.slice(0, streamLen)}
-          {streaming && (
-            <span
-              className="inline-block w-[2px] h-3 align-middle ml-[1px]"
-              style={{ background: "var(--accent)", animation: "pin-demo-caret 1s steps(2) infinite" }}
-            />
-          )}
+          {(() => {
+            // 在 sub-depth 阶段，把 deeperAnchor 在 reply 里高亮成第二层 pin
+            // At sub-depth, highlight deeperAnchor as a pigment-2 anchor in the reply.
+            const text = c.threadReply.slice(0, streamLen);
+            if (phase !== "sub-depth") {
+              return (
+                <>
+                  {text}
+                  {streaming && (
+                    <span
+                      className="inline-block w-[2px] h-3 align-middle ml-[1px]"
+                      style={{ background: "var(--accent)", animation: "pin-demo-caret 1s steps(2) infinite" }}
+                    />
+                  )}
+                </>
+              );
+            }
+            const idx = text.indexOf(c.deeperAnchor);
+            if (idx < 0) return text;
+            return (
+              <>
+                {text.slice(0, idx)}
+                <span
+                  className="relative inline-block"
+                  style={{
+                    color: "var(--ink)",
+                    borderBottom: "2px solid var(--pig-2)",
+                    paddingBottom: 1,
+                    background: "color-mix(in oklch, var(--pig-2) 14%, transparent)",
+                    borderRadius: 2,
+                    padding: "0 2px",
+                  }}
+                >
+                  {c.deeperAnchor}
+                </span>
+                {text.slice(idx + c.deeperAnchor.length)}
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -1005,19 +1115,25 @@ function RightRail({
   c,
   activeThread,
   showCapNode,
+  showDeeperNode,
   phase,
 }: {
   c: Copy;
-  activeThread: "main" | "cap";
+  activeThread: "main" | "cap" | "deeper";
   showCapNode: boolean;
+  showDeeperNode: boolean;
   phase: Phase;
 }) {
   const capBreathing = phase === "unread-breathing" || phase === "popover";
+  // 布局：3 层垂直排列，给第三层留空间
+  // Layout: 3 levels stacked vertically.
   const W = 300;
   const mainX = W / 2;
-  const mainY = 80;
+  const mainY = 50;
   const subX = W / 2;
-  const subY = 180;
+  const subY = 140;
+  const deeperX = W / 2;
+  const deeperY = 230;
 
   return (
     <div className="flex flex-col" style={{ background: "var(--paper-2)", borderLeft: "1px solid var(--rule)" }}>
@@ -1133,8 +1249,51 @@ function RightRail({
               )}
             </g>
           )}
+
+          {/* deeper edge sub → deeper node, 仅 sub-depth 阶段出现 */}
+          {showDeeperNode && (
+            <path
+              d={`M ${subX} ${subY} C ${subX} ${subY + 40}, ${deeperX} ${deeperY - 40}, ${deeperX} ${deeperY}`}
+              fill="none"
+              stroke="var(--rule-strong)"
+              strokeWidth={1}
+              style={{ animation: "pin-demo-fade-in 320ms ease-out both" }}
+            />
+          )}
+
+          {/* 3rd-level node — 深度 2 的 sub-sub-thread */}
+          {showDeeperNode && (
+            <g style={{ animation: "pin-demo-node-in 380ms cubic-bezier(0.16,1,0.3,1) both" }}>
+              <circle
+                cx={deeperX}
+                cy={deeperY}
+                r={activeThread === "deeper" ? 6 : 4.5}
+                fill={activeThread === "deeper" ? "var(--pig-2)" : "var(--paper-2)"}
+                stroke="var(--pig-2)"
+                strokeWidth={activeThread === "deeper" ? 0 : 1.25}
+              />
+              <text
+                x={deeperX}
+                y={deeperY + 22}
+                fontSize={11}
+                fill={activeThread === "deeper" ? "var(--ink)" : "var(--ink-3)"}
+                style={{ fontFamily: "var(--font-serif)" }}
+                textAnchor="middle"
+                fontWeight={activeThread === "deeper" ? 500 : 400}
+              >
+                {c.deeperSubTitle.length > 18 ? c.deeperSubTitle.slice(0, 17) + "…" : c.deeperSubTitle}
+              </text>
+            </g>
+          )}
         </svg>
       </div>
+      <style jsx>{`
+        @keyframes pin-demo-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pin-demo-node-in {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
