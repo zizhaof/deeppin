@@ -140,6 +140,138 @@ function ThreadStack({
   return <div className="flex flex-col gap-[3px]">{rows}</div>;
 }
 
+// ── Graph before/after — 两个小 SVG 展示线程结构的坍缩 ─────────────
+// Two small SVGs showing how the thread tree collapses into a single main.
+function GraphBefore({ threads, pigMap }: { threads: Thread[]; pigMap: Map<string, number> }) {
+  const W = 150, H = 140;
+  const mainId = threads.find((t) => t.parent_thread_id === null)?.id;
+  if (!mainId) return null;
+
+  // 按 depth 布局：main 在顶端，sub-threads 平铺在 depth=1
+  // Layout by depth: main at top, depth-1 children spread horizontally.
+  const byDepth = new Map<number, Thread[]>();
+  for (const thr of threads) {
+    const list = byDepth.get(thr.depth) ?? [];
+    list.push(thr);
+    byDepth.set(thr.depth, list);
+  }
+  const positions = new Map<string, { x: number; y: number }>();
+  const maxDepth = Math.max(0, ...Array.from(byDepth.keys()));
+  for (const [depth, arr] of byDepth) {
+    const y = 20 + depth * 45;
+    if (arr.length === 1) {
+      positions.set(arr[0].id, { x: W / 2, y });
+    } else {
+      const pad = 20;
+      const gap = (W - pad * 2) / (arr.length - 1);
+      arr.forEach((thr, i) => {
+        positions.set(thr.id, { x: pad + i * gap, y });
+      });
+    }
+  }
+  void maxDepth;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxHeight: 140, display: "block" }} preserveAspectRatio="xMidYMid meet">
+      {/* edges */}
+      {threads
+        .filter((thr) => thr.parent_thread_id)
+        .map((thr) => {
+          const p = positions.get(thr.id);
+          const parent = positions.get(thr.parent_thread_id!);
+          if (!p || !parent) return null;
+          const dy = p.y - parent.y;
+          return (
+            <path
+              key={`e-${thr.id}`}
+              d={`M ${parent.x} ${parent.y} C ${parent.x} ${parent.y + dy * 0.45}, ${p.x} ${p.y - dy * 0.45}, ${p.x} ${p.y}`}
+              fill="none"
+              stroke="var(--rule-strong)"
+              strokeWidth={1}
+            />
+          );
+        })}
+      {/* nodes */}
+      {threads.map((thr) => {
+        const p = positions.get(thr.id);
+        if (!p) return null;
+        const isRoot = thr.parent_thread_id === null;
+        const pigIdx = pigMap.get(thr.id);
+        const color = isRoot
+          ? "var(--ink)"
+          : pigIdx != null
+            ? PIG_VAR[pigIdx]
+            : "var(--ink-3)";
+        return (
+          <circle
+            key={`n-${thr.id}`}
+            cx={p.x}
+            cy={p.y}
+            r={isRoot ? 5 : 4}
+            fill="var(--paper-2)"
+            stroke={color}
+            strokeWidth={1.5}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function GraphAfter() {
+  const W = 150, H = 140;
+  // flatten 后只剩一个 main 节点；用 pulsing ring 强调「合并到了这里」
+  // After flatten there's exactly one main node; a static halo emphasizes it.
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxHeight: 140, display: "block" }} preserveAspectRatio="xMidYMid meet">
+      <circle cx={W / 2} cy={H / 2} r={14} fill="var(--accent-soft)" />
+      <circle cx={W / 2} cy={H / 2} r={6.5} fill="var(--ink)" />
+    </svg>
+  );
+}
+
+function Arrow() {
+  return (
+    <div className="flex items-center justify-center self-center">
+      <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
+        <path
+          d="M2 9 L18 9 M14 4 L19 9 L14 14"
+          stroke="var(--accent)"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function Card({ children, minHeight }: { children: React.ReactNode; minHeight?: number }) {
+  return (
+    <div
+      className="rounded-md px-3 py-3 relative overflow-hidden"
+      style={{
+        background: "var(--card)",
+        border: "1px solid var(--rule-soft)",
+        minHeight,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="font-mono text-[9px] uppercase tracking-[0.18em]"
+      style={{ color: "var(--ink-4)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
 export default function FlattenPreview({ threads, messagesByThread }: Props) {
   const t = useT();
 
@@ -156,153 +288,138 @@ export default function FlattenPreview({ threads, messagesByThread }: Props) {
     );
   }
 
-  // Before 视图：主线气泡纵向 stack；每个 sub-thread 作为从锚点横向分支出的小方块
-  // After 视图：所有 thread 按 preorder 顺序拼成一条，sub-thread 段带分隔标签
-
-  const COL_W = 130;   // 每栏内气泡基准宽度 / base bubble width
-  const FLOW_GAP = 8;  // 气泡堆叠间距
+  const COL_W = 130;
+  const FLOW_GAP = 8;
+  const totalMsgs = ordered.reduce((acc, thr) => acc + msgCount(thr, messagesByThread), 0);
 
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
-      {/* ── Before ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col">
-        <span
-          className="font-mono text-[9.5px] uppercase tracking-[0.14em] mb-2 text-center"
-          style={{ color: "var(--ink-4)" }}
-        >
-          {t.flattenPreviewBefore}
-        </span>
-        <div
-          className="rounded-md px-3 py-3 relative overflow-hidden"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--rule-soft)",
-            minHeight: 160,
-          }}
-        >
-          {/* 主线 */}
-          <div className="flex items-center gap-2 mb-2 font-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: "var(--ink-4)" }}>
-            <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--ink)" }} />
-            <span>{t.mainThread ?? "main"}</span>
-          </div>
-          <ThreadStack
-            thread={mainThread}
-            msgs={messagesByThread}
-            width={COL_W}
-            anchorIdx={1}
-            isMain
-            pigColor="var(--ink-2)"
-          />
+    <div className="flex flex-col gap-5">
+      {/* Section 顶部 meta 标签 + Before/After 彩色标题 */}
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-end">
+        <div className="flex items-center justify-center gap-1.5">
+          <SectionLabel>{t.flattenPreviewBefore}</SectionLabel>
+          <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--ink-3)" }}>
+            · {threads.length} threads
+          </span>
+        </div>
+        <div />
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+            {t.flattenPreviewAfter}
+          </span>
+          <span className="font-mono text-[10px] tabular-nums" style={{ color: "var(--ink-3)" }}>
+            · {totalMsgs} msgs
+          </span>
+        </div>
+      </div>
 
-          {/* 子线程：作为分支块显示在主线下方，缩进 + 左边 pigment 线 */}
-          <div className="mt-3 space-y-2.5">
-            {subThreads.slice(0, 3).map((thr) => {
-              const pigIdx = pigMap.get(thr.id) ?? 0;
-              const color = PIG_VAR[pigIdx];
-              return (
-                <div key={thr.id} className="flex gap-2 items-stretch">
-                  <span
-                    className="w-[2px] rounded-full flex-shrink-0"
-                    style={{ background: color }}
-                  />
-                  <div className="flex-1 min-w-0" style={{ paddingTop: 2, gap: FLOW_GAP }}>
-                    <div className="font-mono text-[9px] mb-1 truncate" style={{ color: "var(--ink-4)" }}>
-                      {thr.title?.slice(0, 20) ?? thr.anchor_text?.slice(0, 18) ?? "sub-thread"}
+      {/* ── Row 1: 对话视图 / Chat view ─────────────────────────────── */}
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
+        <div className="flex flex-col gap-1">
+          <SectionLabel>chat</SectionLabel>
+          <Card minHeight={170}>
+            <div className="flex items-center gap-2 mb-2 font-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: "var(--ink-4)" }}>
+              <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--ink)" }} />
+              <span>{t.mainThread}</span>
+            </div>
+            <ThreadStack
+              thread={mainThread}
+              msgs={messagesByThread}
+              width={COL_W}
+              anchorIdx={1}
+              isMain
+              pigColor="var(--ink-2)"
+            />
+            <div className="mt-3 space-y-2.5">
+              {subThreads.slice(0, 3).map((thr) => {
+                const pigIdx = pigMap.get(thr.id) ?? 0;
+                const color = PIG_VAR[pigIdx];
+                return (
+                  <div key={thr.id} className="flex gap-2 items-stretch">
+                    <span className="w-[2px] rounded-full flex-shrink-0" style={{ background: color }} />
+                    <div className="flex-1 min-w-0" style={{ paddingTop: 2, gap: FLOW_GAP }}>
+                      <div className="font-mono text-[9px] mb-1 truncate" style={{ color: "var(--ink-4)" }}>
+                        {thr.title?.slice(0, 20) ?? thr.anchor_text?.slice(0, 18) ?? "sub-thread"}
+                      </div>
+                      <ThreadStack
+                        thread={thr}
+                        msgs={messagesByThread}
+                        width={COL_W - 12}
+                        isMain={false}
+                        pigColor={color}
+                      />
                     </div>
-                    <ThreadStack
-                      thread={thr}
-                      msgs={messagesByThread}
-                      width={COL_W - 12}
-                      isMain={false}
-                      pigColor={color}
-                    />
                   </div>
-                </div>
-              );
-            })}
-            {subThreads.length > 3 && (
-              <div className="font-mono text-[9.5px] pl-3" style={{ color: "var(--ink-4)" }}>
-                + {subThreads.length - 3} more
-              </div>
-            )}
-          </div>
-        </div>
-        <span className="mt-2 font-mono text-[10px] text-center" style={{ color: "var(--ink-4)" }}>
-          {threads.length} threads · {subThreads.length} pins
-        </span>
-      </div>
-
-      {/* ── Arrow ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-center self-center pt-7">
-        <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
-          <path
-            d="M2 9 L18 9 M14 4 L19 9 L14 14"
-            stroke="var(--accent)"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-
-      {/* ── After ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col">
-        <span
-          className="font-mono text-[9.5px] uppercase tracking-[0.14em] mb-2 text-center"
-          style={{ color: "var(--accent)" }}
-        >
-          {t.flattenPreviewAfter}
-        </span>
-        <div
-          className="rounded-md px-3 py-3 relative overflow-hidden"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--rule-soft)",
-            minHeight: 160,
-          }}
-        >
-          <div className="flex items-center gap-2 mb-2 font-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: "var(--ink-4)" }}>
-            <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--ink)" }} />
-            <span>{t.mainThread ?? "main"}</span>
-          </div>
-          <div className="flex flex-col gap-[3px]">
-            {ordered.map((thr) => {
-              const isMain = thr.parent_thread_id === null;
-              const n = msgCount(thr, messagesByThread);
-              const rows: React.ReactNode[] = [];
-              for (let i = 0; i < n; i++) {
-                rows.push(
-                  <BubbleRow
-                    key={`${thr.id}-${i}`}
-                    alignRight={i % 2 === 0}
-                    color="var(--ink-2)"
-                    width={Math.max(34, Math.round(COL_W * (i % 2 === 0 ? 0.48 : 0.72)))}
-                  />,
                 );
-              }
-              return (
-                <React.Fragment key={thr.id}>
-                  {!isMain && (
-                    <div
-                      className="flex items-center gap-1.5 py-1.5 font-mono text-[9px]"
-                      style={{ color: "var(--ink-4)" }}
-                    >
-                      <span className="flex-1 h-px" style={{ background: "var(--rule-soft)" }} />
-                      <span className="tracking-tight">
-                        ↳ {thr.title?.slice(0, 16) ?? thr.anchor_text?.slice(0, 14) ?? "merged"}
-                      </span>
-                      <span className="flex-1 h-px" style={{ background: "var(--rule-soft)" }} />
-                    </div>
-                  )}
-                  {rows}
-                </React.Fragment>
-              );
-            })}
-          </div>
+              })}
+              {subThreads.length > 3 && (
+                <div className="font-mono text-[9.5px] pl-3" style={{ color: "var(--ink-4)" }}>
+                  + {subThreads.length - 3} more
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
-        <span className="mt-2 font-mono text-[10px] text-center" style={{ color: "var(--ink-4)" }}>
-          1 main thread · {ordered.reduce((acc, thr) => acc + msgCount(thr, messagesByThread), 0)} messages
-        </span>
+
+        <Arrow />
+
+        <div className="flex flex-col gap-1">
+          <SectionLabel>chat</SectionLabel>
+          <Card minHeight={170}>
+            <div className="flex items-center gap-2 mb-2 font-mono text-[9px] uppercase tracking-[0.15em]" style={{ color: "var(--ink-4)" }}>
+              <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--ink)" }} />
+              <span>{t.mainThread}</span>
+            </div>
+            <div className="flex flex-col gap-[3px]">
+              {ordered.map((thr) => {
+                const isMain = thr.parent_thread_id === null;
+                const n = msgCount(thr, messagesByThread);
+                const rows: React.ReactNode[] = [];
+                for (let i = 0; i < n; i++) {
+                  rows.push(
+                    <BubbleRow
+                      key={`${thr.id}-${i}`}
+                      alignRight={i % 2 === 0}
+                      color="var(--ink-2)"
+                      width={Math.max(34, Math.round(COL_W * (i % 2 === 0 ? 0.48 : 0.72)))}
+                    />,
+                  );
+                }
+                return (
+                  <React.Fragment key={thr.id}>
+                    {!isMain && (
+                      <div className="flex items-center gap-1.5 py-1.5 font-mono text-[9px]" style={{ color: "var(--ink-4)" }}>
+                        <span className="flex-1 h-px" style={{ background: "var(--rule-soft)" }} />
+                        <span className="tracking-tight">
+                          ↳ {thr.title?.slice(0, 16) ?? thr.anchor_text?.slice(0, 14) ?? "merged"}
+                        </span>
+                        <span className="flex-1 h-px" style={{ background: "var(--rule-soft)" }} />
+                      </div>
+                    )}
+                    {rows}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* ── Row 2: Graph 视图 / Graph view ─────────────────────────── */}
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
+        <div className="flex flex-col gap-1">
+          <SectionLabel>graph</SectionLabel>
+          <Card minHeight={140}>
+            <GraphBefore threads={threads} pigMap={pigMap} />
+          </Card>
+        </div>
+        <Arrow />
+        <div className="flex flex-col gap-1">
+          <SectionLabel>graph</SectionLabel>
+          <Card minHeight={140}>
+            <GraphAfter />
+          </Card>
+        </div>
       </div>
     </div>
   );
