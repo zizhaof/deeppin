@@ -82,11 +82,19 @@ export default function ThreadNav({
       className="h-14 flex items-center gap-3 flex-shrink-0 px-6"
       style={{ borderBottom: "1px solid var(--rule)", background: "var(--paper)" }}
     >
-      {/* 品牌 — 设计里的 dot + serif "Deeppin" 放在最左
-           Brand dot + serif "Deeppin" on the far left per design */}
-      <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group" title={t.newChat}>
-        <span className="w-[9px] h-[9px] rounded-full" style={{ background: "var(--accent)" }} aria-hidden />
-        <span className="font-serif text-[19px] tracking-[-0.01em] text-ink group-hover:opacity-80 transition-opacity">
+      {/* 品牌 — 跟欢迎页的左上角一致：paper 小方块 + 深墨蓝 8 角星 + Fraunces Deeppin
+          Brand mark matches the welcome-page top-left exactly:
+          paper square box + deep-ink 8-point star + Fraunces "Deeppin". */}
+      <Link href="/" className="flex items-center gap-2 flex-shrink-0 group" title={t.newChat}>
+        <span
+          className="w-6 h-6 rounded-md flex items-center justify-center transition-colors"
+          style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
+        >
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--accent)" }}>
+            <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+          </svg>
+        </span>
+        <span className="font-serif text-[18px] tracking-[-0.01em] group-hover:opacity-80 transition-opacity" style={{ color: "var(--ink)" }}>
           Deeppin
         </span>
       </Link>
