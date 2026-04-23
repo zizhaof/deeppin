@@ -160,7 +160,7 @@ function Drawer({
       />
       {/* 抽屉本体 */}
       <aside
-        className={`fixed top-0 bottom-0 z-50 w-[50vw] max-w-[280px] flex flex-col transition-transform duration-250 ease-out`}
+        className={`fixed top-0 bottom-0 z-50 w-[60vw] max-w-[320px] flex flex-col transition-transform duration-250 ease-out`}
         style={{
           background: "var(--card)",
           [side]: 0,
