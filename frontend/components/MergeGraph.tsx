@@ -54,6 +54,12 @@ function layoutNodes(
   messagesByThread: Record<string, Message[] | undefined> | undefined,
   width: number,
 ): { nodes: Positioned[]; height: number } {
+  // 叶子数加权递归布局 —— 同 ThreadGraph。每棵子树拿到与叶子数成比例的
+  // 横向空间，每个节点居中于其区间。子节点永远在父节点的 [xLeft, xRight] 内部，
+  // 因此任意两条父子边都不会交叉。
+  // Leaf-count-weighted recursive layout (matches ThreadGraph). Each subtree
+  // claims horizontal space proportional to its leaves; children stay within
+  // the parent's [xLeft, xRight] range — so parent→child edges never cross.
   const byParent = new Map<string | null, Thread[]>();
   for (const thr of threads) {
     const list = byParent.get(thr.parent_thread_id) ?? [];
@@ -66,32 +72,45 @@ function layoutNodes(
     if (parentId === null) continue;
     const sorted = sortSiblings(siblings, messagesByThread?.[parentId] ?? []);
     sorted.forEach((thr, i) => pigIdxMap.set(thr.id, i % PIG_VAR.length));
+    byParent.set(parentId, sorted);
   }
 
-  const byDepth = new Map<number, Thread[]>();
-  for (const thr of threads) {
-    const list = byDepth.get(thr.depth) ?? [];
-    list.push(thr);
-    byDepth.set(thr.depth, list);
-  }
-
+  const mainThread = threads.find((t) => t.parent_thread_id === null);
   const positions = new Map<string, { x: number; y: number }>();
-  const maxDepth = Math.max(0, ...Array.from(byDepth.keys()));
+  const leafCountCache = new Map<string, number>();
+  function leafCount(id: string): number {
+    const cached = leafCountCache.get(id);
+    if (cached != null) return cached;
+    const kids = byParent.get(id) ?? [];
+    const n = kids.length === 0 ? 1 : kids.reduce((acc, k) => acc + leafCount(k.id), 0);
+    leafCountCache.set(id, n);
+    return n;
+  }
 
-  for (const [depth, arr] of byDepth) {
-    arr.sort((a, b) => {
-      if (a.parent_thread_id !== b.parent_thread_id) {
-        return (a.parent_thread_id ?? "").localeCompare(b.parent_thread_id ?? "");
-      }
-      return (a.anchor_start_offset ?? 0) - (b.anchor_start_offset ?? 0);
-    });
-    const y = 40 + depth * ROW_H;
-    const usable = width - PAD * 2;
-    const gap = arr.length === 1 ? 0 : usable / (arr.length - 1);
-    arr.forEach((thr, i) => {
-      const x = arr.length === 1 ? width / 2 : PAD + i * gap;
-      positions.set(thr.id, { x, y });
-    });
+  let maxDepth = 0;
+  function place(id: string, depth: number, xLeft: number, xRight: number) {
+    const thr = threads.find((t) => t.id === id);
+    if (!thr) return;
+    if (depth > maxDepth) maxDepth = depth;
+    positions.set(id, { x: (xLeft + xRight) / 2, y: 40 + depth * ROW_H });
+    const kids = byParent.get(id) ?? [];
+    if (kids.length === 0) return;
+    const totalLeaves = kids.reduce((acc, k) => acc + leafCount(k.id), 0);
+    let cursor = xLeft;
+    for (const k of kids) {
+      const w = ((xRight - xLeft) * leafCount(k.id)) / totalLeaves;
+      place(k.id, depth + 1, cursor, cursor + w);
+      cursor += w;
+    }
+  }
+
+  if (mainThread) place(mainThread.id, 0, PAD, width - PAD);
+
+  for (const thr of threads) {
+    if (!positions.has(thr.id)) {
+      positions.set(thr.id, { x: width / 2, y: 40 + thr.depth * ROW_H });
+      if (thr.depth > maxDepth) maxDepth = thr.depth;
+    }
   }
 
   const nodes: Positioned[] = threads.map((thr) => {

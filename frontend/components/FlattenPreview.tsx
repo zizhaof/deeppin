@@ -147,29 +147,47 @@ function GraphBefore({ threads, pigMap }: { threads: Thread[]; pigMap: Map<strin
   const mainId = threads.find((t) => t.parent_thread_id === null)?.id;
   if (!mainId) return null;
 
-  // 按 depth 布局：main 在顶端，sub-threads 平铺在 depth=1
-  // Layout by depth: main at top, depth-1 children spread horizontally.
-  const byDepth = new Map<number, Thread[]>();
+  // 同 ThreadGraph：叶子数加权递归布局，子节点聚拢在父节点下、不会出现交叉边
+  // Same leaf-count-weighted recursive layout as ThreadGraph — children
+  // cluster under their parent and edges never cross.
+  const PAD = 18;
+  const byParent = new Map<string | null, Thread[]>();
   for (const thr of threads) {
-    const list = byDepth.get(thr.depth) ?? [];
+    const list = byParent.get(thr.parent_thread_id) ?? [];
     list.push(thr);
-    byDepth.set(thr.depth, list);
+    byParent.set(thr.parent_thread_id, list);
   }
+  for (const [parentId, siblings] of byParent) {
+    if (parentId === null) continue;
+    const sorted = [...siblings].sort(
+      (a, b) => (a.anchor_start_offset ?? 0) - (b.anchor_start_offset ?? 0),
+    );
+    byParent.set(parentId, sorted);
+  }
+
   const positions = new Map<string, { x: number; y: number }>();
-  const maxDepth = Math.max(0, ...Array.from(byDepth.keys()));
-  for (const [depth, arr] of byDepth) {
-    const y = 20 + depth * 45;
-    if (arr.length === 1) {
-      positions.set(arr[0].id, { x: W / 2, y });
-    } else {
-      const pad = 20;
-      const gap = (W - pad * 2) / (arr.length - 1);
-      arr.forEach((thr, i) => {
-        positions.set(thr.id, { x: pad + i * gap, y });
-      });
+  const leafCountCache = new Map<string, number>();
+  function leafCount(id: string): number {
+    const cached = leafCountCache.get(id);
+    if (cached != null) return cached;
+    const kids = byParent.get(id) ?? [];
+    const n = kids.length === 0 ? 1 : kids.reduce((acc, k) => acc + leafCount(k.id), 0);
+    leafCountCache.set(id, n);
+    return n;
+  }
+  function place(id: string, depth: number, xLeft: number, xRight: number) {
+    positions.set(id, { x: (xLeft + xRight) / 2, y: 20 + depth * 45 });
+    const kids = byParent.get(id) ?? [];
+    if (kids.length === 0) return;
+    const total = kids.reduce((acc, k) => acc + leafCount(k.id), 0);
+    let cursor = xLeft;
+    for (const k of kids) {
+      const w = ((xRight - xLeft) * leafCount(k.id)) / total;
+      place(k.id, depth + 1, cursor, cursor + w);
+      cursor += w;
     }
   }
-  void maxDepth;
+  place(mainId, 0, PAD, W - PAD);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxHeight: 140, display: "block" }} preserveAspectRatio="xMidYMid meet">
