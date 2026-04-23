@@ -220,6 +220,20 @@ export default function MobileChatLayout({
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [overviewView, setOverviewView] = useState<"list" | "graph">("graph");
+  // 选区模式：默认 false（普通滚动）；按下「Select」切到 true，触发后自动回 false
+  // Select-mode toggle — default off (normal scroll); flips on, captures one
+  // selection, auto-flips back off so the user can scroll normally again.
+  const [selectMode, setSelectMode] = useState(false);
+
+  /** 在 onTextSelect 之后自动关掉选区模式（这样不需要用户手动再点一次按钮） */
+  /* Wrap parent's onTextSelect so we auto-exit select mode once a selection lands. */
+  const wrappedTextSelect = useCallback(
+    (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
+      onTextSelect(text, messageId, rect, startOffset, endOffset);
+      setSelectMode(false);
+    },
+    [onTextSelect],
+  );
 
   // 打开左抽屉 = 触发 sessions 懒加载 / Opening left drawer triggers session list lazy-load
   const openLeftDrawer = useCallback(() => {
@@ -322,22 +336,50 @@ export default function MobileChatLayout({
       )}
 
       {/* ── 主对话区 ── */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 relative">
         <MessageList
           messages={activeMessages}
           streamingText={streamingText}
           statusText={activeStatus}
           anchorsByMessage={anchorsByMessage}
           unreadThreadIds={unreadThreadIdSet}
+          mobileSelectActive={selectMode}
           suggestions={activeSuggestions}
           anchorText={activeThread?.anchor_text}
           userAvatarUrl={userAvatarUrl}
           onMessageRef={onMessageRef}
-          onTextSelect={onTextSelect}
+          onTextSelect={wrappedTextSelect}
           onAnchorClick={onAnchorClick}
           onAnchorHover={onAnchorHover}
           onSendSuggestion={onSendSuggestion}
         />
+
+        {/* ── Select-mode FAB / 浮动「选区」按钮 ──
+            按一下：进入选区模式 → 整个气泡禁用 native scroll 在 AI 文字上，
+            手指 down→drag→up 直接圈选；释放后弹 PinMenu。Selection 抓到后自动退出。
+            Floating select-mode toggle: tap once → bubble text becomes
+            finger-trackable; touch-down→drag→release captures the selection;
+            PinMenu fires; mode auto-exits. */}
+        <button
+          onClick={() => setSelectMode((v) => !v)}
+          className="fixed bottom-[88px] right-4 z-30 inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full transition-transform active:scale-95"
+          style={{
+            background: selectMode ? "var(--accent)" : "var(--ink)",
+            color: "var(--paper)",
+            boxShadow: "0 8px 24px rgba(27,26,23,0.22)",
+          }}
+          aria-pressed={selectMode}
+          aria-label="Selection mode"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            {/* 「I-beam + 高亮」图标 */}
+            <path d="M7 5h4M7 19h4M9 5v14" />
+            <path d="M14 8h6M14 16h6" strokeWidth={2.5} />
+          </svg>
+          <span className="font-mono text-[11px] uppercase tracking-wider">
+            {selectMode ? t.cancel : t.selectMode}
+          </span>
+        </button>
       </div>
 
       {/* ── 输入栏 ── */}

@@ -32,6 +32,17 @@ interface Props {
   userAvatarUrl?: string | null;
   /** 生成该回复的 LLM 模型名（如 "groq/llama-3.3-70b-versatile"） */
   model?: string | null;
+  /** 移动端「选区模式」开关。
+   *  - undefined（桌面）：保留原行为（鼠标 mouseup + 长按 selectionchange）
+   *  - false（移动端关）：禁用所有 native text selection，气泡纯粹是只读
+   *  - true（移动端开）：用自定义 touch handlers 实时追踪手指位置，建 Range，
+   *    抬手即调 onSelect。不依赖系统长按。
+   *  Mobile-only "select mode" toggle:
+   *    undefined → desktop behavior (mouseup + native long-press selection)
+   *    false → mobile, user-select:none, no selection at all
+   *    true  → mobile, custom touch tracking via caretRangeFromPoint/Position;
+   *            release fires onSelect immediately. */
+  mobileSelectActive?: boolean;
   onSelect?: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
@@ -221,6 +232,7 @@ function MessageBubble({
   unreadThreadIds,
   userAvatarUrl,
   model,
+  mobileSelectActive,
   onSelect,
   onAnchorClick,
   onAnchorHover,
@@ -309,20 +321,17 @@ function MessageBubble({
     if (rects.length > 0) setSelRects(rects);
   };
 
-  // 移动端：selectionchange 防抖 600ms（显示 action bar）
-  // + touchend 立即捕获选区矩形（在 OS 清空选区之前保存覆盖层）
-  // - 长按选词 → 选区稳定 600ms 后弹出底部 action bar
-  // - 拖动 handle 扩选 → 每次变化重置计时器，停止拖动 600ms 后弹出
-  // - 原生 Copy/Search 菜单正常显示，不干扰
+  // 桌面端原生选区：长按 + selectionchange 防抖 / Desktop native selection
+  // 仅在 mobileSelectActive === undefined（即非移动端布局）时启用。
+  // Only active on desktop (when mobileSelectActive is undefined).
   useEffect(() => {
-    if (!onSelect || isUser) return;
+    if (!onSelect || isUser || mobileSelectActive !== undefined) return;
     let actionTimer: ReturnType<typeof setTimeout>;
     let clearTimer: ReturnType<typeof setTimeout>;
 
     const onSelectionChange = () => {
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed) {
-        // 选区存在：立即更新覆盖层 + 防抖触发 action bar
         clearTimeout(clearTimer);
         captureSelRects();
         clearTimeout(actionTimer);
@@ -331,22 +340,16 @@ function MessageBubble({
           if (s && !s.isCollapsed && s.toString().trim()) handleSelection();
         }, 600);
       } else {
-        // 选区消失后清理。但 touchend 后 React re-render 会导致
-        // 原生选区短暂消失，这不是用户主动取消——忽略这个瞬态。
         const sinceTouchEnd = Date.now() - lastTouchEndRef.current;
-        if (sinceTouchEnd < 500) return; // touchend 已处理过，忽略瞬态 collapse
+        if (sinceTouchEnd < 500) return;
         clearTimeout(actionTimer);
         clearTimeout(clearTimer);
         clearTimer = setTimeout(() => setSelRects([]), 400);
       }
     };
 
-    // touchend：在 OS 清空选区之前立即捕获矩形 + 触发 action bar
-    // captureSelRects → setSelRects → re-render 会导致 DOM 节点替换、原生选区丢失，
-    // 所以必须在同一帧里先完成 handleSelection（锁定选区数据），再保存覆盖层。
     const onTouchEnd = () => {
       lastTouchEndRef.current = Date.now();
-      // 先锁定选区数据（触发 PinMenu），再保存视觉覆盖层
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed && sel.toString().trim()) {
         clearTimeout(actionTimer);
@@ -366,7 +369,139 @@ function MessageBubble({
       document.removeEventListener("touchcancel", onTouchEnd);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onSelect, isUser, messageId]);
+  }, [onSelect, isUser, messageId, mobileSelectActive]);
+
+  // 选区模式关闭 → 清掉残留的高亮覆盖层 / Clear stale overlay when select mode toggles off
+  useEffect(() => {
+    if (mobileSelectActive === false) setSelRects([]);
+  }, [mobileSelectActive]);
+
+  // ── 移动端「选区模式」自定义 touch 追踪 / Mobile select-mode custom touch tracking ──
+  // 用 caretRangeFromPoint / caretPositionFromPoint 在每个 touchmove 取手指位置
+  // 对应的 text-node + offset，建 Range，渲染高亮覆盖层。touchend 调 onSelect。
+  // No long-press, no native selection — pure finger-down → drag → release flow.
+  useEffect(() => {
+    if (!onSelect || isUser || !mobileSelectActive) return;
+    const bubble = divRef.current;
+    const content = contentRef.current;
+    if (!bubble || !content) return;
+
+    type Caret = { node: Text; offset: number };
+    let startCaret: Caret | null = null;
+    let endCaret: Caret | null = null;
+
+    /** caretRangeFromPoint (Webkit) 或 caretPositionFromPoint (Firefox) 兜底 */
+    const caretAt = (x: number, y: number): Caret | null => {
+      type CaretPosFn = (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+      type CaretRangeFn = (x: number, y: number) => Range | null;
+      const doc = document as unknown as {
+        caretPositionFromPoint?: CaretPosFn;
+        caretRangeFromPoint?: CaretRangeFn;
+      };
+      try {
+        if (doc.caretPositionFromPoint) {
+          const cp = doc.caretPositionFromPoint(x, y);
+          if (cp?.offsetNode?.nodeType === Node.TEXT_NODE && bubble.contains(cp.offsetNode)) {
+            return { node: cp.offsetNode as Text, offset: cp.offset };
+          }
+        }
+        if (doc.caretRangeFromPoint) {
+          const r = doc.caretRangeFromPoint(x, y);
+          if (r?.startContainer?.nodeType === Node.TEXT_NODE && bubble.contains(r.startContainer)) {
+            return { node: r.startContainer as Text, offset: r.startOffset };
+          }
+        }
+      } catch { /* ignore */ }
+      return null;
+    };
+
+    /** start..end 排成 forward range（避免反向选区时 setStart > setEnd 抛错） */
+    const buildRange = (): Range | null => {
+      if (!startCaret || !endCaret) return null;
+      try {
+        const range = document.createRange();
+        // 比较节点位置 / Compare positions in DOM order
+        const cmp = startCaret.node.compareDocumentPosition(endCaret.node);
+        const sameNode = startCaret.node === endCaret.node;
+        if (sameNode && startCaret.offset > endCaret.offset) {
+          range.setStart(endCaret.node, endCaret.offset);
+          range.setEnd(startCaret.node, startCaret.offset);
+        } else if (cmp & Node.DOCUMENT_POSITION_PRECEDING) {
+          range.setStart(endCaret.node, endCaret.offset);
+          range.setEnd(startCaret.node, startCaret.offset);
+        } else {
+          range.setStart(startCaret.node, startCaret.offset);
+          range.setEnd(endCaret.node, endCaret.offset);
+        }
+        return range;
+      } catch { return null; }
+    };
+
+    const updateOverlay = () => {
+      const range = buildRange();
+      if (!range) return;
+      const base = content.getBoundingClientRect();
+      const rects = Array.from(range.getClientRects())
+        .map((r) => ({
+          top: r.top - base.top,
+          left: r.left - base.left,
+          width: r.width,
+          height: r.height,
+        }))
+        .filter((r) => r.width > 0 && r.height > 0);
+      setSelRects(rects);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!bubble.contains(e.target as Node)) return;
+      const touch = e.touches[0];
+      const c = caretAt(touch.clientX, touch.clientY);
+      if (!c) return;
+      // 落在文本上 → 阻止默认（防止滚动 + 防止 native long-press 选词）
+      e.preventDefault();
+      startCaret = c;
+      endCaret = c;
+      setSelRects([]);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!startCaret) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const c = caretAt(touch.clientX, touch.clientY);
+      if (!c) return;
+      endCaret = c;
+      updateOverlay();
+    };
+
+    const onTouchEnd = () => {
+      if (!startCaret || !endCaret) return;
+      const range = buildRange();
+      if (range) {
+        const text = range.toString().trim();
+        if (text) {
+          const startOffset = getCharOffset(bubble, range.startContainer, range.startOffset);
+          const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
+          const rect = range.getBoundingClientRect();
+          onSelect(text, messageId, rect, startOffset, endOffset);
+        }
+      }
+      startCaret = null;
+      endCaret = null;
+    };
+
+    bubble.addEventListener("touchstart", onTouchStart, { passive: false });
+    bubble.addEventListener("touchmove", onTouchMove, { passive: false });
+    bubble.addEventListener("touchend", onTouchEnd);
+    bubble.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      bubble.removeEventListener("touchstart", onTouchStart);
+      bubble.removeEventListener("touchmove", onTouchMove);
+      bubble.removeEventListener("touchend", onTouchEnd);
+      bubble.removeEventListener("touchcancel", onTouchEnd);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileSelectActive, isUser, messageId, onSelect]);
 
   return (
     <div
@@ -425,7 +560,15 @@ function MessageBubble({
         <div
           ref={contentRef}
           onMouseUp={handleMouseUp}
-          className={`relative px-[14px] py-[11px] text-[14.5px] leading-[1.6] select-text ${
+          className={`relative px-[14px] py-[11px] text-[14.5px] leading-[1.6] ${
+            // 移动端布局：永远 user-select: none —— 启用「Select 模式」时
+            // 由 useEffect 里的 caretRangeFromPoint 接管，不依赖 native selection。
+            // 桌面端保持原行为：select-text 让鼠标圈选生效。
+            // Mobile: user-select stays off; the caretRangeFromPoint touch
+            // handlers in select-mode build the Range manually. Desktop keeps
+            // native select-text so mouse-drag selection works.
+            mobileSelectActive !== undefined ? "select-none [touch-action:pan-y]" : "select-text"
+          } ${
             isUser
               ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/20"
               : "bg-surface text-hi border border-subtle"
@@ -433,7 +576,6 @@ function MessageBubble({
           style={{
             borderRadius: 14,
             // 非对称圆角：user 的右下收 4，AI 的左下收 4 —— 给气泡一个「尾巴」方向
-            // Asymmetric corner: user's bottom-right shrinks, AI's bottom-left shrinks — directional tail.
             ...(isUser
               ? { borderBottomRightRadius: 4 }
               : { borderBottomLeftRadius: 4 }),

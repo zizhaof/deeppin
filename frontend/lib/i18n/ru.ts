@@ -159,4 +159,6 @@ export const ru: T = {
   mergeSaveToChat: "Сохранить в чат",
   mergeReselect: "Выбрать заново",
   signInTerms: "Войдя, вы соглашаетесь с Условиями и Политикой конфиденциальности Deeppin.",
+  selectMode: "Выбрать",
+  cancel: "Отмена",
 };

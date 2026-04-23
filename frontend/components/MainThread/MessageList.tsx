@@ -19,6 +19,9 @@ interface Props {
   /** 有未读回复的 thread id 集合 — 下游锚点据此切换呼吸动画
    *  Set of thread IDs with unread replies — anchors flip to the breathing state when included. */
   unreadThreadIds?: Set<string>;
+  /** 移动端「选区模式」开关 —— 透传到 MessageBubble。详见 MessageBubble.Props 注释。
+   *  Mobile select-mode flag — passed straight to MessageBubble; see its Props doc. */
+  mobileSelectActive?: boolean;
   suggestions?: string[];
   anchorText?: string | null;
   userAvatarUrl?: string | null;
@@ -39,6 +42,7 @@ export default function MessageList({
   statusText,
   anchorsByMessage,
   unreadThreadIds = EMPTY_UNREAD,
+  mobileSelectActive,
   suggestions = [],
   anchorText,
   userAvatarUrl,
@@ -113,6 +117,7 @@ export default function MessageList({
               content={msg.content}
               anchors={anchorsByMessage[msg.id] ?? EMPTY_ANCHORS}
               unreadThreadIds={unreadThreadIds}
+              mobileSelectActive={mobileSelectActive}
               userAvatarUrl={userAvatarUrl}
               model={msg.model}
               onMessageRef={onMessageRef}
