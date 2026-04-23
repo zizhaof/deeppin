@@ -1,17 +1,20 @@
 name: Daily Provider Check
 
-# 每日巡检所有 (provider, model, key) 组合，发现模型漂移或额度问题
-# Daily sweep of every (provider, model, key) triple to catch model drift or quota issues
+# Daily zero-quota sweep. For each unique (provider, key), fetch the
+# provider's /v1/models catalog and verify: the key isn't rejected
+# (401/403) and every model_id we have configured in ModelSpec is still
+# listed upstream. No LLM inference runs, so transient upstream 429/503
+# throttling (OpenRouter :free global rate-limit, Gemini high demand,
+# Cerebras traffic spikes) does NOT turn this check red.
 #
-# 与部署后集成测试互补：deploy-backend.yml 只测每 (provider, key) 的首个模型（轻量、快速），
-# 这个 workflow 每天跑一次测全部 slot。
-# Complements deploy-backend.yml: that one tests only the first model per (provider, key),
-# while this runs daily and exercises every slot.
+# Actual inference probing (one prompt per slot) lives in
+# deploy-backend.yml's post-deploy integration test and in a manual
+# workflow_dispatch against /providers/full when we want a deep sweep.
 
 on:
   schedule:
-    - cron: "0 10 * * *"   # 每天 UTC 10:00（北京 18:00 / 美西 02:00 或 03:00）
-  workflow_dispatch:        # 允许手动触发
+    - cron: "0 10 * * *"   # Daily at 10:00 UTC
+  workflow_dispatch:
     inputs:
       base_url:
         description: "Backend base URL to probe"
@@ -22,35 +25,53 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe /health/providers/full
+      - name: Probe /health/providers/keys
         env:
           BASE_URL: ${{ inputs.base_url || 'https://deeppin.duckdns.org' }}
         run: |
           set -e
-          echo "Probing $BASE_URL/health/providers/full ..."
+          echo "Probing $BASE_URL/health/providers/keys ..."
 
-          # 单次调用，最长等 120s（每个 slot 内部 15s timeout，串并行组合一般 <60s）
+          # Zero-quota check: one /v1/models GET per unique (provider, key).
+          # Pure network I/O, so 60s is plenty.
           http_status=$(curl -s -o response.json -w "%{http_code}" \
-            --max-time 120 \
-            "$BASE_URL/health/providers/full")
+            --max-time 60 \
+            "$BASE_URL/health/providers/keys")
 
           echo "HTTP status: $http_status"
           echo "=== Full response ==="
           cat response.json | python3 -m json.tool
           echo "====================="
 
-          # 打印每个 slot 状态
+          # Group failures by cause so oncall can tell at a glance whether
+          # a key is dead, a configured model got deprecated upstream, or
+          # something else went wrong.
           python3 <<'PY'
           import json, sys
           with open("response.json") as f:
               data = json.load(f)
+
           print(f"\nSummary: total={data['total']} ok={data['ok']} failed={data['failed']}")
+
           failures = [r for r in data["results"] if not r["ok"]]
-          if failures:
-              print("\nFailed slots:")
-              for r in failures:
+          if not failures:
+              print("\nAll keys valid, no model drift.")
+              sys.exit(0)
+
+          print("\nFailures by category:")
+          for r in failures:
+              prov = r["provider"]
+              key = r.get("key", "?")
+              if r.get("key_valid") is False:
                   err = (r.get("error") or "").replace("\n", " ")[:200]
-                  print(f"  - {r['provider']}/{r['model']} [{r['key']}]: {err}")
-              sys.exit(1)
-          print("\nAll slots healthy.")
+                  print(f"  [KEY INVALID]  {prov} [{key}]: {err}")
+              elif r.get("missing_models"):
+                  miss = ", ".join(r["missing_models"])
+                  print(f"  [MODEL DRIFT]  {prov} [{key}]: missing {miss}")
+              else:
+                  err = (r.get("error") or "").replace("\n", " ")[:200]
+                  status = r.get("status_code", "?")
+                  print(f"  [OTHER {status}] {prov} [{key}]: {err}")
+
+          sys.exit(1)
           PY
