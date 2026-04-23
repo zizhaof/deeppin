@@ -16,6 +16,9 @@ interface Props {
   /** 首个 chunk 到达前显示的后台状态文字（如"正在检索…"）*/
   statusText?: string;
   anchorsByMessage: Record<string, AnchorRange[]>;
+  /** 有未读回复的 thread id 集合 — 下游锚点据此切换呼吸动画
+   *  Set of thread IDs with unread replies — anchors flip to the breathing state when included. */
+  unreadThreadIds?: Set<string>;
   suggestions?: string[];
   anchorText?: string | null;
   userAvatarUrl?: string | null;
@@ -26,11 +29,16 @@ interface Props {
   onSendSuggestion?: (question: string) => void;
 }
 
+// 稳定空集合，避免每次渲染创建新 Set 导致 MessageBubble.memo 失效
+// Stable empty set — avoids MessageBubble.memo invalidation from a fresh object each render.
+const EMPTY_UNREAD: Set<string> = new Set();
+
 export default function MessageList({
   messages,
   streamingText,
   statusText,
   anchorsByMessage,
+  unreadThreadIds = EMPTY_UNREAD,
   suggestions = [],
   anchorText,
   userAvatarUrl,
@@ -99,6 +107,7 @@ export default function MessageList({
               role={msg.role}
               content={msg.content}
               anchors={anchorsByMessage[msg.id] ?? EMPTY_ANCHORS}
+              unreadThreadIds={unreadThreadIds}
               userAvatarUrl={userAvatarUrl}
               model={msg.model}
               onMessageRef={onMessageRef}

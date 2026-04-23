@@ -26,6 +26,9 @@ interface Props {
   content: string;
   streaming?: boolean;
   anchors?: AnchorRange[];
+  /** 有未读回复的 thread id 集合，锚点据此切换呼吸动画
+   *  Set of thread IDs with unread replies — anchors opt into the breathing animation when included. */
+  unreadThreadIds?: Set<string>;
   userAvatarUrl?: string | null;
   /** 生成该回复的 LLM 模型名（如 "groq/llama-3.3-70b-versatile"） */
   model?: string | null;
@@ -106,6 +109,7 @@ function renderWithHighlights(
   anchors: AnchorRange[],
   onAnchorClick?: (threadId: string) => void,
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void,
+  unreadThreadIds?: Set<string>,
 ): React.ReactNode {
   if (!anchors.length) return content;
 
@@ -162,11 +166,15 @@ function renderWithHighlights(
     }
 
     const allThreadIds = covering.map(c => c.threadId);
+    const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
     nodes.push(
       <span
         key={segStart}
         data-anchor-thread-ids={allThreadIds.join(" ")}
-        className="bg-indigo-500/15 text-indigo-200 rounded-sm px-0.5 cursor-pointer transition-colors hover:bg-indigo-500/25"
+        data-unread={isUnread ? "1" : undefined}
+        className={`anchor-span rounded-sm px-0.5 cursor-pointer transition-colors text-indigo-200 ${
+          isUnread ? "anchor-unread" : "bg-indigo-500/10 hover:bg-indigo-500/25"
+        }`}
         onClick={(e) => {
           e.stopPropagation();
           const sel = window.getSelection();
@@ -195,6 +203,7 @@ function MessageBubble({
   content,
   streaming,
   anchors = [],
+  unreadThreadIds,
   userAvatarUrl,
   model,
   onSelect,
@@ -391,19 +400,20 @@ function MessageBubble({
           ))}
           {isUser ? (
             <>
-              {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
+              {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover, unreadThreadIds)}
               {needsCollapse && !expanded && (
                 <span className="text-indigo-300 select-none">…</span>
               )}
             </>
           ) : rawMode ? (
             <pre className="whitespace-pre-wrap text-sm text-md font-mono leading-relaxed">
-              {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover)}
+              {renderWithHighlights(displayContent, anchors, onAnchorClick, onAnchorHover, unreadThreadIds)}
             </pre>
           ) : (
             <MarkdownContent
               content={displayContent}
               anchors={anchors}
+              unreadThreadIds={unreadThreadIds}
               onAnchorClick={onAnchorClick}
               onAnchorHover={onAnchorHover}
             />

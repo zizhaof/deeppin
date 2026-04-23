@@ -134,4 +134,11 @@ export const ko: T = {
   later: "나중에",
   // 언어 선택기
   languageLabel: "언어",
+  // 앵커 호버 팝오버
+  newReply: "새글",
+  enterThread: "열기",
+  generatingSuggestions: "후속 질문 생성 중…",
+  // 무료 쿼터 카운터
+  quotaFree: "남음",
+  quotaFull: "체험 한도 도달",
 };

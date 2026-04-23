@@ -135,6 +135,13 @@ export const en = {
   later: "Later",
   // 语言选择器 / Language selector
   languageLabel: "Language",
+  // 锚点 hover popover / Anchor hover popover
+  newReply: "New",
+  enterThread: "Enter",
+  generatingSuggestions: "Generating follow-ups…",
+  // Composer 配额计数器 / Composer quota counter
+  quotaFree: "free",
+  quotaFull: "Trial limit reached",
 } as const;
 
 // T 是 en 的 key 集合 + 全部 string 值类型。

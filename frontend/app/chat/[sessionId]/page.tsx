@@ -1,7 +1,7 @@
 "use client";
 // app/chat/[sessionId]/page.tsx
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession, flattenSession, ApiError } from "@/lib/api";
@@ -19,8 +19,8 @@ import PinStartDialog from "@/components/PinStartDialog";
 import type { PinDialogInfo } from "@/components/PinStartDialog";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import { clearActiveHighlight } from "@/components/MainThread/MessageBubble";
-import PinRoll from "@/components/SubThread/PinRoll";
-import type { ThreadCardItem } from "@/components/SubThread/SideColumn";
+import AnchorPreviewPopover from "@/components/MainThread/AnchorPreviewPopover";
+import type { ThreadCardItem } from "@/components/SubThread/types";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import MergeTreeCanvas from "@/components/MergeTreeCanvas";
@@ -102,12 +102,9 @@ export default function ChatPage() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [pinDialog, setPinDialog] = useState<PinDialogInfo | null>(null);
-  /** 立即传给 PinRoll，触发卡片聚焦动画（第一个悬浮线程） */
-  const [hoverThreadId, setHoverThreadId] = useState<string | null>(null);
-  /** 统一引导线：悬浮时显示的线程 ID 列表（hover-only） */
-  const [cardGuide, setCardGuide] = useState<string[] | null>(null);
-  /** 卡片展开动画结束后才显示 SVG（避免动画中出现错误位置的线） */
-  const [svgReady, setSvgReady] = useState(false);
+  /** 悬浮锚点时展开的预览 popover — 取代旧的左栏卡片入口
+   *  Anchor-hover preview popover — replaces the old left-rail card entry. */
+  const [anchorHover, setAnchorHover] = useState<{ threadIds: string[]; rect: DOMRect } | null>(null);
   /** 右侧概览视图：dots（圆点树）或 list（文字列表） */
   const [rightView, setRightView] = useState<"dots" | "canvas">(() =>
     typeof window !== "undefined"
@@ -167,45 +164,35 @@ export default function ChatPage() {
     return () => clearTimeout(id);
   }, [flattenToast]);
 
-  // 侧栏宽度（可拖拽调整）
-  const [leftW, setLeftW] = useState(() =>
-    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:left-w")) || 200 : 200
-  );
+  // 右栏宽度（可拖拽调整）—— 左栏已移除，只剩右栏一个可调节点
+  // Right panel width (left panel was removed — only right resizer remains).
   const [rightW, setRightW] = useState(() =>
-    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:right-w")) || 200 : 200
+    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:right-w")) || 288 : 288
   );
-  const MIN_SIDE = 120;
-  // 上限 = 三栏 1:1:1 时每栏宽度，即窗口宽度的三分之一
-  // Max = one-third of window width (the 1:1:1 equal-column layout)
-  const maxSide = () => (typeof window !== "undefined" ? Math.floor(window.innerWidth / 3) : 640);
+  const MIN_SIDE = 200;
+  // 上限 = 窗口宽度的一半，为主对话区留出 >= 200px 的空间
+  // Max = half of viewport width; main column always keeps >= 200px.
+  const maxSide = () =>
+    typeof window !== "undefined" ? Math.max(MIN_SIDE, Math.floor(window.innerWidth / 2)) : 640;
 
-  const startResize = useCallback((side: "left" | "right", startX: number, startW: number) => {
+  const startResizeRight = useCallback((startX: number, startW: number) => {
     const onMove = (e: MouseEvent) => {
-      const delta = e.clientX - startX;
-      const next = Math.min(maxSide(), Math.max(MIN_SIDE, startW + (side === "left" ? delta : -delta)));
-      if (side === "left") { setLeftW(next); localStorage.setItem("deeppin:left-w", String(next)); }
-      else { setRightW(next); localStorage.setItem("deeppin:right-w", String(next)); }
+      const next = Math.min(maxSide(), Math.max(MIN_SIDE, startW - (e.clientX - startX)));
+      setRightW(next);
+      localStorage.setItem("deeppin:right-w", String(next));
     };
     const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, []);
-  const anchorGuideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cardGuideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // 线程切换下拉
-  // messageId → 相对主滚动容器顶部的 top 偏移（px）
+  const anchorHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // messageId → 相对主滚动容器顶部的 top 偏移（px），用于 Mobile 的锚点计算
   const [messagePositions, setMessagePositions] = useState<Record<string, number>>({});
-  // 主内容区的 scrollTop
-  const [scrollTop, setScrollTop] = useState(0);
 
   // ── refs ────────────────────────────────────────────────────────
-  // drawableAreaRef：SVG 引导线所在的容器（不含 InputBar）
-  const drawableAreaRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const leftCardsRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement>>({});
   const scrollFrameRef = useRef<number | null>(null);
-  const [sideMetrics, setSideMetrics] = useState({ offset: 0, height: 600, mainHeight: 600 });
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   /** 当前登录用户是否匿名；影响「新对话」按钮可见性 + 配额弹窗文案。
    *  Whether the current user is anonymous — gates in-chat "new session" button + quota modal. */
@@ -213,6 +200,11 @@ export default function ChatPage() {
   /** 额度用尽弹窗。variant 决定是 20 轮用尽 (quota) 还是多开 session (session)。
    *  Quota-exceeded modal; variant picks between trial-turns vs session-cap copy. */
   const [quotaModal, setQuotaModal] = useState<{ variant: "quota" | "session"; message?: string } | null>(null);
+  /** 当前 session 已使用的轮数（匿名用户 quota 计数器用）。init 时从 getSession 取，
+   *  每次 send 后本地 +1；与后端 turn_count 最终一致，但无需额外往返。
+   *  Per-session turn count for the anon quota counter. Initialized from getSession,
+   *  incremented locally after each send — eventually consistent with backend turn_count. */
+  const [sessionTurnCount, setSessionTurnCount] = useState(0);
 
   const mainThread = threads.find((t) => t.parent_thread_id === null);
   const activeThread = activeThreadId ? threads.find((t) => t.id === activeThreadId) : null;
@@ -221,12 +213,6 @@ export default function ChatPage() {
   const activeStatus = activeThreadId ? (statusByThread[activeThreadId] ?? "") : "";
   const isStreaming = streamingText !== undefined || !!activeStatus;
   const activeSuggestions = activeThreadId ? (suggestions[activeThreadId] ?? []) : [];
-
-  // 有内容时才显示侧边栏（欢迎页隐藏）
-  const hasContent =
-    activeMessages.length > 0 ||
-    streamingText !== undefined ||
-    Object.values(messagesByThread).some((msgs) => msgs && msgs.length > 0);
 
   // ── 初始化（含 auth 检查）────────────────────────────────────────
   // Auth check is done inside init() so data fetches never race with auth
@@ -278,6 +264,7 @@ export default function ChatPage() {
 
         const allThreads = session.threads ?? [];
         setThreads(allThreads);
+        setSessionTurnCount(session.turn_count ?? 0);
 
         const main = allThreads.find((t) => t.parent_thread_id === null);
         const lastThreadId = localStorage.getItem(`deeppin:last-thread:${sessionId}`);
@@ -348,28 +335,6 @@ export default function ChatPage() {
     });
   }, []);
 
-  const measureSideMetrics = useCallback(() => {
-    if (!scrollContainerRef.current || !leftCardsRef.current) return;
-    const scrollRect = scrollContainerRef.current.getBoundingClientRect();
-    const sideRect = leftCardsRef.current.getBoundingClientRect();
-    setSideMetrics({
-      offset: scrollRect.top - sideRect.top,
-      height: sideRect.height,
-      mainHeight: scrollRect.height,
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (loading) return;
-    const id = requestAnimationFrame(measureSideMetrics);
-    return () => cancelAnimationFrame(id);
-  }, [loading, measureSideMetrics]);
-
-  useEffect(() => {
-    window.addEventListener("resize", measureSideMetrics);
-    return () => window.removeEventListener("resize", measureSideMetrics);
-  }, [measureSideMetrics]);
-
   const messageCount = activeMessages.length;
   useEffect(() => {
     updatePositions();
@@ -380,11 +345,9 @@ export default function ChatPage() {
     else delete messageRefs.current[messageId];
   }, []);
 
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const newTop = e.currentTarget.scrollTop;
+  const handleScroll = useCallback(() => {
     if (scrollFrameRef.current !== null) return;
     scrollFrameRef.current = requestAnimationFrame(() => {
-      setScrollTop(newTop);
       updatePositions();
       scrollFrameRef.current = null;
     });
@@ -418,6 +381,7 @@ export default function ChatPage() {
     addUserMessage(activeThreadId, display ?? content);
     setStreamStatus(activeThreadId, t.processing);
     const threadId = activeThreadId;
+    setSessionTurnCount((n) => n + 1);
 
     await sendMessageStream(
       threadId,
@@ -435,6 +399,7 @@ export default function ChatPage() {
     consumeSuggestion(threadId, question);
     addUserMessage(threadId, question);
     setStreamStatus(threadId, t.processing);
+    setSessionTurnCount((n) => n + 1);
     sendMessageStream(
       threadId,
       question,
@@ -499,36 +464,22 @@ export default function ChatPage() {
     }
   }, [sessionId, t]);
 
-  // ── 切换线程时清除残留引导线 ─────────────────────────────────────
+  // ── 切换线程时清除残留 hover popover ─────────────────────────────
   useEffect(() => {
-    setCardGuide(null);
-    setHoverThreadId(null);
+    setAnchorHover(null);
   }, [activeThreadId]);
 
-  // ── 卡片展开动画结束后才允许渲染 SVG（PinRoll transition: 200ms） ─
-  useEffect(() => {
-    setSvgReady(false);
-    if (!cardGuide || cardGuide.length === 0) return;
-    const t = setTimeout(() => setSvgReady(true), 130);
-    return () => clearTimeout(t);
-  }, [cardGuide]);
-
-  // ── 悬浮锚点：聚焦卡片 + 立即画引导线（支持多线程） ─────────────
-  const handleAnchorHover = useCallback((threadIds: string[], _rect: DOMRect | null) => {
-    if (anchorGuideTimer.current) clearTimeout(anchorGuideTimer.current);
-    if (threadIds.length > 0) {
-      setHoverThreadId(threadIds[0]);
-      setCardGuide(threadIds);
+  // ── 悬浮锚点：展开/关闭预览 popover（左栏卡片入口的替代方案）─────
+  // Anchor hover: open/close the preview popover (replaces the old left-rail card entry point).
+  // 延迟关闭，让用户有时间把鼠标从锚点移到 popover 上
+  // Delay close so the mouse can travel from anchor to popover without dropping it.
+  const handleAnchorHover = useCallback((threadIds: string[], rect: DOMRect | null) => {
+    if (anchorHoverTimer.current) clearTimeout(anchorHoverTimer.current);
+    if (threadIds.length > 0 && rect) {
+      setAnchorHover({ threadIds, rect });
     } else {
-      setHoverThreadId(null);
-      setCardGuide(null);
+      anchorHoverTimer.current = setTimeout(() => setAnchorHover(null), 120);
     }
-  }, []);
-
-  // ── 针卡片 hover：立即画针→锚点引导线 ──────────────────────────
-  const handleCardHover = useCallback((threadId: string | null) => {
-    if (cardGuideTimer.current) clearTimeout(cardGuideTimer.current);
-    setCardGuide(threadId ? [threadId] : null);
   }, []);
 
   // ── 插针 ────────────────────────────────────────────────────────
@@ -665,6 +616,16 @@ export default function ChatPage() {
   // 子线程（插针）数量，供 MergeOutput 面板显示
   const pinCount = threads.filter((t) => t.depth > 0).length;
 
+  // 有未读回复的 thread id 集合 — 锚点呼吸下划线用这个判断
+  // Set of thread IDs with unread replies — anchor breathing-underline keys off this.
+  const unreadThreadIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const [id, n] of Object.entries(unreadCounts)) {
+      if (n > 0) s.add(id);
+    }
+    return s;
+  }, [unreadCounts]);
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-base">
@@ -712,52 +673,14 @@ export default function ChatPage() {
         onSignIn={handleSignIn}
       />
 
-      {/* drawable area — SVG 在此范围内，不包含 InputBar，避免引导线污染输入框 */}
-      {/* onMouseLeave 兜底：鼠标快速滑出整个区域时内层元素可能漏发事件，统一在此清除 */}
+      {/* 主体两栏：主对话 + 右侧概览。锚点 hover popover 取代了原来的左栏卡片入口 */}
+      {/* Main 2-column shell: chat + right overview. Anchor-hover popover replaces the old left rail. */}
       <div
-        ref={drawableAreaRef}
         className="flex flex-1 min-h-0 overflow-hidden relative"
-        onMouseLeave={() => { setCardGuide(null); setHoverThreadId(null); }}
+        onMouseLeave={() => setAnchorHover(null)}
       >
-
-        {/* 左侧：子问题面板 */}
-        <div style={{ width: leftW, flexShrink: 0 }} className="min-w-0 border-r border-subtle flex flex-col">
-          {rollItems.length > 0 ? (
-            <>
-              <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center">
-                <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em] flex-1">{t.subQuestions}</h2>
-              </div>
-              <div ref={leftCardsRef} className="flex-1 overflow-hidden">
-                <PinRoll
-                  items={rollItems}
-                  activeThreadId={activeThreadId}
-                  mainScrollTop={scrollTop}
-                  mainHeight={sideMetrics.mainHeight}
-                  rollHeight={sideMetrics.height}
-                  focusThreadId={hoverThreadId}
-                  focusThreadIds={cardGuide ?? undefined}
-                  onCardHover={handleCardHover}
-                  onSelectThread={handleNavigateTo}
-                  onSendSuggestion={handleSendSuggestion}
-                />
-              </div>
-            </>
-          ) : (
-            <div ref={leftCardsRef} className="flex-1 flex items-center justify-center">
-              <p className="text-[10px] text-ph [writing-mode:vertical-rl] select-none tracking-[0.15em]">
-                选中文字 → 插针
-              </p>
-            </div>
-          )}
-        </div>
-        {/* 左侧拖拽手柄 */}
-        <div
-          className="w-1 flex-shrink-0 hover:bg-indigo-500/30 cursor-col-resize transition-colors"
-          onMouseDown={(e) => { e.preventDefault(); startResize("left", e.clientX, leftW); }}
-        />
-
         {/* 中间：主对话 */}
-        <div className="flex-[3.5] flex flex-col min-w-0 relative">
+        <div className="flex-1 flex flex-col min-w-0 relative">
           <div
             ref={scrollContainerRef}
             className="flex-1 overflow-y-auto scrollbar-thin"
@@ -768,6 +691,7 @@ export default function ChatPage() {
               streamingText={streamingText}
               statusText={activeStatus}
               anchorsByMessage={anchorsByMessage}
+              unreadThreadIds={unreadThreadIds}
               suggestions={activeSuggestions}
               anchorText={activeThread?.anchor_text}
               userAvatarUrl={userAvatarUrl}
@@ -783,7 +707,7 @@ export default function ChatPage() {
         {/* 右侧拖拽手柄 */}
         <div
           className="w-1 flex-shrink-0 hover:bg-indigo-500/30 cursor-col-resize transition-colors"
-          onMouseDown={(e) => { e.preventDefault(); startResize("right", e.clientX, rightW); }}
+          onMouseDown={(e) => { e.preventDefault(); startResizeRight(e.clientX, rightW); }}
         />
         {/* 右侧：概览面板 */}
         {(
@@ -864,138 +788,39 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* 引导线 SVG：仅悬停时显示，cardGuide 列表中的每条线程都画一条曲线 */}
-        {/* svgReady 在卡片展开动画结束后变为 true，确保坐标基于最终位置 */}
-        {svgReady && (() => {
-          const container = drawableAreaRef.current;
-          if (!container || !cardGuide || cardGuide.length === 0) return null;
-          const base = container.getBoundingClientRect();
-          const toLocal = (vx: number, vy: number) => ({ x: vx - base.left, y: vy - base.top });
-
-          /**
-           * 用字符偏移量在消息 DOM 里精确还原选中区域的中心坐标。
-           * 走 TreeWalker 遍历所有文本节点，累计字符数定位到 startOffset/endOffset
-           * 所在的节点和偏移，建 Range 后取 getBoundingClientRect()。
-           * 对单行、多行、跨段落均准确，不依赖 Markdown 高亮是否渲染成功。
-           *
-           * Accurately find the midpoint of a selection using character offsets,
-           * by walking text nodes with TreeWalker and constructing a Range.
-           * Works for single-line, multi-line, and cross-paragraph selections.
-           */
-          function anchorEdge(
-            msgEl: HTMLElement,
-            startOff: number,
-            endOff: number,
-          ): { x: number; y: number } | null {
-            const walker = document.createTreeWalker(msgEl, NodeFilter.SHOW_TEXT);
-            let cur = 0;
-            let sNode: Text | null = null, sOff = 0;
-            let eNode: Text | null = null, eOff = 0;
-            let node = walker.nextNode() as Text | null;
-            while (node) {
-              const len = node.length;
-              if (!sNode && cur + len > startOff) { sNode = node; sOff = startOff - cur; }
-              if (sNode && cur + len >= endOff)   { eNode = node; eOff = endOff   - cur; break; }
-              cur += len;
-              node = walker.nextNode() as Text | null;
-            }
-            if (!sNode || !eNode) return null;
-            try {
-              const range = document.createRange();
-              range.setStart(sNode, Math.min(sOff, sNode.length));
-              range.setEnd(eNode,   Math.min(eOff,  eNode.length));
-              const r = range.getBoundingClientRect();
-              if (!r.width && !r.height) return null;
-              // 指向锚点左边缘，垂直居中
-              return toLocal(r.left, r.top + r.height / 2);
-            } catch { return null; }
-          }
-
-          const paths = cardGuide.flatMap((threadId) => {
-            const cardEl = container.querySelector(`[data-thread-id="${threadId}"]`);
-            if (!cardEl) return [];
-
-            const cr = cardEl.getBoundingClientRect();
-            const p1 = toLocal(cr.right, cr.top + cr.height / 2);
-
-            // 优先：data-anchor-thread-ids 高亮 span — 指向左边缘
-            // Priority: anchor highlight span — connect to left edge
-            let p2: { x: number; y: number } | null = null;
-            const markEl = container.querySelector(`[data-anchor-thread-ids~="${threadId}"]`);
-            if (markEl) {
-              const mr = markEl.getBoundingClientRect();
-              p2 = toLocal(mr.left, mr.top + mr.height / 2);
-            }
-
-            // 次选：TreeWalker + Range 偏移量定位（跨行 / 跨段落均可）
-            // Fallback: TreeWalker + Range offset lookup (handles multi-line/cross-paragraph)
-            if (!p2) {
-              const thr = threads.find((t) => t.id === threadId);
-              if (thr?.anchor_message_id != null &&
-                  thr.anchor_start_offset != null &&
-                  thr.anchor_end_offset != null) {
-                const msgEl = messageRefs.current[thr.anchor_message_id] ??
-                              messageRefs.current[thr.anchor_message_id.toLowerCase()];
-                if (msgEl) {
-                  p2 = anchorEdge(msgEl, thr.anchor_start_offset, thr.anchor_end_offset);
-                }
-              }
-            }
-
-            // 兜底：连到消息气泡左边缘中点
-            // Last resort: connect to left edge of message bubble
-            if (!p2) {
-              const thr = threads.find((t) => t.id === threadId);
-              if (thr?.anchor_message_id) {
-                const msgEl = container.querySelector(`[data-message-id="${thr.anchor_message_id}"]`);
-                if (msgEl) {
-                  const mr = msgEl.getBoundingClientRect();
-                  p2 = toLocal(mr.left, mr.top + mr.height / 2);
-                }
-              }
-            }
-
-            if (!p2) return [];
-
-            const dx = Math.abs(p2.x - p1.x);
-            return [(
-              <g key={threadId}>
-                <path
-                  d={`M ${p1.x} ${p1.y} C ${p1.x + dx * 0.45} ${p1.y}, ${p2.x - dx * 0.45} ${p2.y}, ${p2.x} ${p2.y}`}
-                  fill="none"
-                  stroke="#6366f1"
-                  strokeWidth={1}
-                  opacity={0.5}
-                />
-                <circle cx={p1.x} cy={p1.y} r="2" fill="#6366f1" opacity={0.6} />
-                <circle cx={p2.x} cy={p2.y} r="2" fill="#6366f1" opacity={0.6} />
-              </g>
-            )];
-          });
-
-          if (!paths.length) return null;
-          return (
-            <svg className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%", zIndex: 40 }}>
-              {paths}
-            </svg>
-          );
-        })()}
+        {/* 锚点 hover 预览 popover — 原左栏卡片入口的替代
+            Anchor hover preview popover — replaces the old left-rail card entry */}
+        <AnchorPreviewPopover
+          hover={anchorHover}
+          threads={threads}
+          messagesByThread={messagesByThread}
+          unreadCounts={unreadCounts}
+          onEnter={(threadId) => {
+            setAnchorHover(null);
+            handleNavigateTo(threadId);
+          }}
+          onMouseEnter={() => {
+            if (anchorHoverTimer.current) clearTimeout(anchorHoverTimer.current);
+          }}
+          onMouseLeave={() => setAnchorHover(null)}
+        />
       </div>
 
-      {/* InputBar 在 drawable area 之外，SVG 引导线不会覆盖此处 */}
-      {/* 始终用相同的 flex 比例让输入框对齐中间主视图，无论有无侧栏 */}
+      {/* 输入框：左栏已删，直接占满中间主对话区（减去右侧概览） */}
+      {/* Input bar: left rail removed — spans the main column (minus the right overview). */}
       <div className="flex">
-        <div className="flex-[1] flex-shrink-0" />
-        <div className="flex-[3.5] min-w-0">
+        <div className="flex-1 min-w-0">
           <InputBar
             sessionId={sessionId}
             onSend={handleSend}
             disabled={isStreaming || !activeThreadId}
             webSearch={webSearch}
             onWebSearchToggle={setWebSearch}
+            turnCount={sessionTurnCount}
+            isAnon={isAnon}
           />
         </div>
-        <div className="flex-[1] flex-shrink-0" />
+        <div style={{ width: rightW + 4 }} className="flex-shrink-0" />
       </div>
 
       </div>

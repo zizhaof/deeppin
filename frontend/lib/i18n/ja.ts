@@ -136,4 +136,11 @@ export const ja: T = {
   later: "後で",
   // 言語セレクター
   languageLabel: "言語",
+  // アンカーホバーのポップオーバー
+  newReply: "新着",
+  enterThread: "開く",
+  generatingSuggestions: "フォローアップを生成中…",
+  // 無料枠のカウンター
+  quotaFree: "残り",
+  quotaFull: "トライアルの上限に達しました",
 };

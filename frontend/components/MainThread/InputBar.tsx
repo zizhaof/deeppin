@@ -28,9 +28,17 @@ interface Props {
   disabled?: boolean;
   webSearch?: boolean;
   onWebSearchToggle?: (enabled: boolean) => void;
+  /** 匿名试用额度计数（已发送轮数）。isAnon=false 时不展示。
+   *  Anonymous trial turn count. Not shown when isAnon is false. */
+  turnCount?: number;
+  isAnon?: boolean;
 }
 
-export default function InputBar({ sessionId, onSend, disabled, webSearch = false, onWebSearchToggle }: Props) {
+// 与 backend/services/stream_manager.py::ANON_TURN_LIMIT 保持一致
+// Mirrors backend/services/stream_manager.py::ANON_TURN_LIMIT
+const ANON_TURN_LIMIT = 20;
+
+export default function InputBar({ sessionId, onSend, disabled, webSearch = false, onWebSearchToggle, turnCount = 0, isAnon = false }: Props) {
   const t = useT();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -163,6 +171,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const quotaRemaining = Math.max(0, ANON_TURN_LIMIT - turnCount);
+  const quotaPct = Math.min(1, turnCount / ANON_TURN_LIMIT);
+  const quotaWarn = quotaRemaining <= 5 && quotaRemaining > 0;
+  const quotaFull = quotaRemaining === 0;
+
   return (
     <div className="border-t border-subtle bg-base px-4 pt-3 pb-5 relative">
       {/* 拖拽调整输入框高度的把手 */}
@@ -172,6 +185,30 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
       >
         <div className="w-10 h-0.5 rounded-full bg-subtle/50 group-hover/rh:bg-indigo-500/30 transition-colors" />
       </div>
+      {/* 匿名试用配额条 — 仅对匿名用户显示
+          Anonymous trial quota bar — shown to guests only */}
+      {isAnon && (
+        <div
+          className={`absolute top-2 right-4 flex items-center gap-1.5 text-[10px] font-mono tabular-nums select-none pointer-events-none transition-colors ${
+            quotaFull ? "text-red-400" : quotaWarn ? "text-amber-400" : "text-faint"
+          }`}
+          aria-live="polite"
+        >
+          <span className="tracking-wider">
+            {quotaFull ? t.quotaFull : `${quotaRemaining}/${ANON_TURN_LIMIT} ${t.quotaFree}`}
+          </span>
+          {!quotaFull && (
+            <span className="relative h-1 w-10 rounded-full bg-subtle overflow-hidden">
+              <span
+                className={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] ${
+                  quotaWarn ? "bg-amber-400" : "bg-indigo-500/60"
+                }`}
+                style={{ width: `${quotaPct * 100}%` }}
+              />
+            </span>
+          )}
+        </div>
+      )}
       <div className={`bg-surface rounded-2xl border overflow-hidden transition-all ${
         disabled
           ? "border-subtle"

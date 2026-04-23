@@ -134,4 +134,11 @@ export const fr: T = {
   later: "Plus tard",
   // Sélecteur de langue
   languageLabel: "Langue",
+  // Popover au survol de l'ancre
+  newReply: "Nouveau",
+  enterThread: "Ouvrir",
+  generatingSuggestions: "Génération des questions de suivi…",
+  // Compteur de quota gratuit
+  quotaFree: "restant",
+  quotaFull: "Limite d'essai atteinte",
 };

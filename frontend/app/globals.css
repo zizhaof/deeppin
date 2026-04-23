@@ -233,3 +233,41 @@ body {
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--t-dim);
 }
+
+/* ── 锚点呼吸下划线（未读状态）/ Anchor breathing underline — unread state ─────
+   有未读回复的 sub-thread 锚点，下划线亮度在 85%↔115% 脉动，
+   并在文字下方叠一层 indigo wash（0%↔22%）。0.95s 周期，hover 暂停。
+   替代了之前的尾部小点，避免把文字流撑开。
+   Anchor for a sub-thread with an unread reply: underline brightness breathes,
+   with a soft indigo wash behind the word. 0.95s cycle, pauses on hover.
+   Replaces the old tail dot so the unread signal doesn't push nearby text.
+   ────────────────────────────────────────────────────────────────────── */
+.anchor-span { position: relative; }
+.anchor-unread {
+  position: relative;
+  animation: anchor-underline-pulse 0.95s ease-in-out infinite;
+}
+.anchor-unread::before {
+  content: "";
+  position: absolute;
+  inset: 0 -2px -2px -2px;
+  border-radius: 3px;
+  /* 取 indigo-400 作为 wash 基色；与 5 色锚点下划线的首色保持一致 */
+  background: #818cf8;
+  opacity: 0;
+  z-index: -1;
+  animation: anchor-wash-pulse 0.95s ease-in-out infinite;
+  pointer-events: none;
+}
+.anchor-unread:hover,
+.anchor-unread:hover::before {
+  animation-play-state: paused;
+}
+@keyframes anchor-underline-pulse {
+  0%, 100% { filter: brightness(0.85); }
+  50%      { filter: brightness(1.15); }
+}
+@keyframes anchor-wash-pulse {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 0.22; }
+}

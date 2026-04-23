@@ -134,4 +134,11 @@ export const pt: T = {
   later: "Depois",
   // Seletor de idioma
   languageLabel: "Idioma",
+  // Popover ao passar o mouse sobre a âncora
+  newReply: "Novo",
+  enterThread: "Abrir",
+  generatingSuggestions: "Gerando perguntas de acompanhamento…",
+  // Contador de cota gratuita
+  quotaFree: "livres",
+  quotaFull: "Limite do teste atingido",
 };
