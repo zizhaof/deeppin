@@ -291,9 +291,16 @@ export default function MobileChatLayout({
         )}
 
         <div className="flex-1 min-w-0 flex items-center justify-center">
-          {/* 当前线程标题；子线程时显示 sub title，主线时显示 brand */}
+          {/* 当前线程标题；子线程时显示 sub title，主线时显示 brand（点击回首页）
+              Main thread → BrandMark doubles as a home-link; sub-thread → title. */}
           {activeThread?.parent_thread_id === null ? (
-            <BrandMark />
+            <button
+              onClick={() => router.push("/")}
+              className="active:scale-95 transition-transform"
+              aria-label="Deeppin home"
+            >
+              <BrandMark />
+            </button>
           ) : (
             <p
               className="font-serif text-[14px] truncate px-2"
@@ -420,12 +427,19 @@ export default function MobileChatLayout({
 
       {/* ── 左 drawer：sessions + 固定底部（lang / account） ── */}
       <Drawer open={leftOpen} onClose={() => setLeftOpen(false)} side="left">
-        {/* head */}
+        {/* head —— BrandMark 点了回首页（关 drawer + router.push("/")）
+            BrandMark doubles as a home-link: closes drawer + routes to /. */}
         <div
           className="flex items-center justify-between px-4 h-12 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule)" }}
         >
-          <BrandMark />
+          <button
+            onClick={() => { setLeftOpen(false); router.push("/"); }}
+            className="active:scale-95 transition-transform"
+            aria-label="Deeppin home"
+          >
+            <BrandMark />
+          </button>
           <button
             onClick={() => setLeftOpen(false)}
             className="w-8 h-8 flex items-center justify-center rounded-md active:scale-95 transition-colors"
