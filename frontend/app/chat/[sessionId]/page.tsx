@@ -814,6 +814,7 @@ export default function ChatPage() {
                   unreadCounts={unreadCounts}
                   messagesByThread={messagesByThread}
                   onSelect={handleNavigateTo}
+                  onNodeHover={handleAnchorHover}
                   width={Math.max(200, rightW - 24)}
                 />
               </div>

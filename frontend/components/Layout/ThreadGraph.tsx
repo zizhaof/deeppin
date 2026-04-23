@@ -27,6 +27,11 @@ interface Props {
   unreadCounts: Record<string, number>;
   messagesByThread: Record<string, Message[]>;
   onSelect: (threadId: string) => void;
+  /** 节点 hover 触发 —— 复用 MessageBubble 的 onAnchorHover 接口，让 chat page
+   *  共用同一个 AnchorPreviewPopover（Q + A 预览）。
+   *  Node hover — reuses the onAnchorHover contract so the chat page's
+   *  AnchorPreviewPopover (Q + A) handles graph hover too. */
+  onNodeHover?: (threadIds: string[], rect: DOMRect | null) => void;
   /** 渲染宽度，通常是父容器 clientWidth。默认 268。 */
   width?: number;
 }
@@ -48,7 +53,19 @@ function sortSiblings(siblings: Thread[], parentMessages: Message[]): Thread[] {
   });
 }
 
-/** 计算每个节点在其 depth 层的水平位置；同一父节点下兄弟按锚点顺序排 */
+/** 计算每个节点的位置。
+ *
+ *  旧版按 depth 分层、每层平铺整宽 —— depth 2 只有 2 个节点但被撑到左右两侧，
+ *  跟 depth 1 拉开的距离完全不对。新版用「叶子数加权」的递归布局：每棵子树拿到
+ *  跟其叶子数成比例的横向空间，每个节点居中于其所属区间内。这样子节点自然聚
+ *  拢在父节点下方，深度再多也不会空虚。
+ *
+ *  Old version laid out each depth across the full width, so 2 depth-2 nodes
+ *  got slammed to the edges with no visual relationship to their parent. This
+ *  replacement is a classic leaf-count-weighted tree layout: each subtree
+ *  claims horizontal space proportional to its leaves, and each node sits at
+ *  the center of its allocated slice. Children cluster under their parent at
+ *  any depth. */
 function layoutNodes(
   threads: Thread[],
   messagesByThread: Record<string, Message[]>,
@@ -61,41 +78,61 @@ function layoutNodes(
     byParent.set(thr.parent_thread_id, list);
   }
 
-  // 给每个非主线 thread 分配一个 pigment index（按其兄弟顺序）
+  // 给每个非主线 thread 分配一个 pigment index（按锚点顺序）
+  // Also pre-sort each parent's children in-place so recursion walks them in
+  // that order — this fixes the visual left-to-right sibling layout too.
   const pigIdxMap = new Map<string, number>();
   for (const [parentId, siblings] of byParent) {
     if (parentId === null) continue;
     const sorted = sortSiblings(siblings, messagesByThread[parentId] ?? []);
     sorted.forEach((thr, i) => pigIdxMap.set(thr.id, i % PIG_VAR.length));
+    byParent.set(parentId, sorted);
   }
 
-  // 按 depth 分层
-  const byDepth = new Map<number, Thread[]>();
-  for (const thr of threads) {
-    const list = byDepth.get(thr.depth) ?? [];
-    list.push(thr);
-    byDepth.set(thr.depth, list);
-  }
-
-  // 同 depth 内按兄弟顺序排序（沿父链走锚点顺序）—— 简化：按 created_at
+  const mainThread = threads.find((t) => t.parent_thread_id === null);
   const positions = new Map<string, { x: number; y: number }>();
-  const maxDepth = Math.max(0, ...Array.from(byDepth.keys()));
 
-  for (const [depth, arr] of byDepth) {
-    // 按父节点 pigment + anchor_start 排序，保证视觉稳定
-    arr.sort((a, b) => {
-      if (a.parent_thread_id !== b.parent_thread_id) {
-        return (a.parent_thread_id ?? "").localeCompare(b.parent_thread_id ?? "");
-      }
-      return (a.anchor_start_offset ?? 0) - (b.anchor_start_offset ?? 0);
-    });
-    const y = 36 + depth * ROW_H;
-    const usable = width - PAD * 2;
-    const gap = arr.length === 1 ? 0 : usable / (arr.length - 1);
-    arr.forEach((thr, i) => {
-      const x = arr.length === 1 ? width / 2 : PAD + i * gap;
-      positions.set(thr.id, { x, y });
-    });
+  // 递归：每个节点落在 [xLeft, xRight] 中心；子节点按 leafCount 占比瓜分区间
+  // Recursive: each node sits at the center of [xLeft, xRight]; children split
+  // the range proportional to their leaf counts.
+  const leafCountCache = new Map<string, number>();
+  function leafCount(id: string): number {
+    const cached = leafCountCache.get(id);
+    if (cached != null) return cached;
+    const kids = byParent.get(id) ?? [];
+    const n = kids.length === 0 ? 1 : kids.reduce((acc, k) => acc + leafCount(k.id), 0);
+    leafCountCache.set(id, n);
+    return n;
+  }
+
+  let maxDepth = 0;
+  function place(id: string, depth: number, xLeft: number, xRight: number) {
+    const thr = threads.find((t) => t.id === id);
+    if (!thr) return;
+    if (depth > maxDepth) maxDepth = depth;
+    positions.set(id, { x: (xLeft + xRight) / 2, y: 36 + depth * ROW_H });
+    const kids = byParent.get(id) ?? [];
+    if (kids.length === 0) return;
+    const totalLeaves = kids.reduce((acc, k) => acc + leafCount(k.id), 0);
+    let cursor = xLeft;
+    for (const k of kids) {
+      const w = ((xRight - xLeft) * leafCount(k.id)) / totalLeaves;
+      place(k.id, depth + 1, cursor, cursor + w);
+      cursor += w;
+    }
+  }
+
+  if (mainThread) {
+    place(mainThread.id, 0, PAD, width - PAD);
+  }
+
+  // 如果某线程没被 place（坏数据：父 id 指向不存在的 thread），兜底放在中间
+  // Fallback for orphan threads (parent_thread_id points to nothing).
+  for (const thr of threads) {
+    if (!positions.has(thr.id)) {
+      positions.set(thr.id, { x: width / 2, y: 36 + thr.depth * ROW_H });
+      if (thr.depth > maxDepth) maxDepth = thr.depth;
+    }
   }
 
   const nodes: Positioned[] = threads.map((thr) => {
@@ -145,6 +182,7 @@ export default function ThreadGraph({
   unreadCounts,
   messagesByThread,
   onSelect,
+  onNodeHover,
   width = 268,
 }: Props) {
   const t = useT();
@@ -228,6 +266,13 @@ export default function ThreadGraph({
               key={`node-${n.thread.id}`}
               style={{ cursor: "pointer" }}
               onClick={() => onSelect(n.thread.id)}
+              onMouseEnter={(e) => {
+                // 取 circle 的 bbox（node label + 圆）——位置给 popover 用
+                // Use the <g>'s bbox so the popover sits right under the node.
+                const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
+                onNodeHover?.([n.thread.id], rect);
+              }}
+              onMouseLeave={() => onNodeHover?.([], null)}
             >
               <circle
                 cx={n.x}
