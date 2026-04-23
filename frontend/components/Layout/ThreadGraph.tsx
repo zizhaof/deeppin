@@ -8,6 +8,7 @@
 import React, { useMemo } from "react";
 import type { Thread, Message } from "@/lib/api";
 import { useT } from "@/stores/useLangStore";
+import { useGraphZoomPan } from "@/lib/useGraphZoomPan";
 
 const PIG_VAR = ["var(--pig-1)", "var(--pig-2)", "var(--pig-3)", "var(--pig-4)", "var(--pig-5)"];
 
@@ -219,13 +220,28 @@ export default function ThreadGraph({
 
   const posById = new Map(nodes.map((n) => [n.thread.id, n]));
 
+  // 共享 zoom/pan —— 滚轮缩放（以光标为焦点）+ 拖拽平移 + 首次 fit
+  // Shared zoom/pan — wheel = cursor-anchored zoom, drag = pan, auto-fit on mount.
+  const zp = useGraphZoomPan({
+    contentWidth: width,
+    contentHeight: height,
+    refitOn: `${threads.length}:${height}:${width}`,
+  });
+
   return (
-    <div className="h-full overflow-auto scrollbar-thin px-3 py-4">
+    <div
+      ref={zp.containerRef}
+      {...zp.pointerHandlers}
+      className="h-full w-full overflow-hidden relative select-none touch-none"
+      style={{ cursor: zp.dragging ? "grabbing" : "grab" }}
+    >
       <svg
-        viewBox={`0 0 ${width} ${height}`}
+        width={zp.viewport.w || 1}
+        height={zp.viewport.h || 1}
         xmlns="http://www.w3.org/2000/svg"
-        style={{ display: "block", width: "100%", height: "auto" }}
+        style={{ display: "block" }}
       >
+        <g transform={zp.transformString}>
         {/* edges — 平滑贝塞尔，用 rule 灰作为底色 */}
         {nodes
           .filter((n) => n.thread.parent_thread_id)
@@ -305,6 +321,7 @@ export default function ThreadGraph({
             </g>
           );
         })}
+        </g>
       </svg>
     </div>
   );

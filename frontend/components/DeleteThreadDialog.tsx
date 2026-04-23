@@ -14,16 +14,15 @@
 // on mount. Deleting the main thread (parent_thread_id === null) wipes the
 // entire session.
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import type { Thread, Message } from "@/lib/api";
 import { useT } from "@/stores/useLangStore";
+import { useGraphZoomPan } from "@/lib/useGraphZoomPan";
 
 // ── 与 ThreadGraph 对齐的 pigment 色板 ─────────────────────────────
 const PIG_VAR = ["var(--pig-1)", "var(--pig-2)", "var(--pig-3)", "var(--pig-4)", "var(--pig-5)"];
 const ROW_H = 96;
 const PAD = 46;
-const MIN_SCALE = 0.3;
-const MAX_SCALE = 4;
 
 interface Positioned {
   thread: Thread;
@@ -166,11 +165,6 @@ export default function DeleteThreadDialog({
   onConfirm,
 }: Props) {
   const t = useT();
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 520, h: 360 });
-  const [transform, setTransform] = useState<{ s: number; tx: number; ty: number }>({ s: 1, tx: 0, ty: 0 });
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
 
   const target = targetThreadId ? threads.find((th) => th.id === targetThreadId) : null;
   const isMainTarget = target?.parent_thread_id === null;
@@ -180,16 +174,12 @@ export default function DeleteThreadDialog({
     return collectSubtree(threads, targetThreadId);
   }, [threads, targetThreadId]);
 
-  // 画布逻辑尺寸（供 layout 用）。实际 DOM 容器尺寸由 viewport 决定。
-  // Logical canvas size for layout — independent of container size; transform
-  // handles fit-to-viewport scaling.
   const CANVAS_W = 520;
   const { nodes, height: canvasH } = useMemo(
     () => layoutNodes(threads, messagesByThread, CANVAS_W),
     [threads, messagesByThread],
   );
 
-  // 每节点可用 label 宽度（与 ThreadGraph 同算法）
   const labelBudget = useMemo(() => {
     const m = new Map<string, number>();
     const byDepth = new Map<number, Positioned[]>();
@@ -211,31 +201,13 @@ export default function DeleteThreadDialog({
 
   const posById = useMemo(() => new Map(nodes.map((n) => [n.thread.id, n])), [nodes]);
 
-  // ── 容器尺寸跟随窗口 ─────────────────────────────────────────────
-  useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      const el = viewportRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setViewport({ w: r.width, h: r.height });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [open]);
-
-  // ── 首次挂载 + 目标变化：auto-fit ────────────────────────────────
-  useLayoutEffect(() => {
-    if (!open || viewport.w <= 0 || viewport.h <= 0) return;
-    const margin = 24;
-    const sx = (viewport.w - margin * 2) / CANVAS_W;
-    const sy = (viewport.h - margin * 2) / canvasH;
-    const s = Math.min(sx, sy, 1);
-    const tx = (viewport.w - CANVAS_W * s) / 2;
-    const ty = (viewport.h - canvasH * s) / 2;
-    setTransform({ s, tx, ty });
-  }, [open, viewport.w, viewport.h, canvasH, targetThreadId]);
+  // 共享 zoom/pan —— 滚轮缩放 + 拖拽平移 + auto-fit（target 切换时重拟合）
+  // Shared zoom/pan — target switch triggers a fresh auto-fit.
+  const zp = useGraphZoomPan({
+    contentWidth: CANVAS_W,
+    contentHeight: canvasH,
+    refitOn: `${open ? 1 : 0}:${targetThreadId ?? ""}`,
+  });
 
   // ── ESC 关闭 ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -246,68 +218,6 @@ export default function DeleteThreadDialog({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, busy, onCancel]);
-
-  // ── 滚轮缩放：以光标为焦点 ───────────────────────────────────────
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const el = viewportRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    setTransform((prev) => {
-      const newS = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.s * factor));
-      if (newS === prev.s) return prev;
-      const k = newS / prev.s;
-      return {
-        s: newS,
-        tx: mx - (mx - prev.tx) * k,
-        ty: my - (my - prev.ty) * k,
-      };
-    });
-  };
-
-  // ── 拖拽平移 ─────────────────────────────────────────────────────
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startTx: transform.tx,
-      startTy: transform.ty,
-    };
-    setDragging(true);
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = dragRef.current;
-    if (!d) return;
-    setTransform((prev) => ({
-      ...prev,
-      tx: d.startTx + (e.clientX - d.startX),
-      ty: d.startTy + (e.clientY - d.startY),
-    }));
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    const el = e.currentTarget as HTMLElement;
-    try { el.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-    dragRef.current = null;
-    setDragging(false);
-  };
-
-  const resetView = () => {
-    if (viewport.w <= 0 || viewport.h <= 0) return;
-    const margin = 24;
-    const sx = (viewport.w - margin * 2) / CANVAS_W;
-    const sy = (viewport.h - margin * 2) / canvasH;
-    const s = Math.min(sx, sy, 1);
-    setTransform({
-      s,
-      tx: (viewport.w - CANVAS_W * s) / 2,
-      ty: (viewport.h - canvasH * s) / 2,
-    });
-  };
 
   if (!open || !target) return null;
 
@@ -344,24 +254,20 @@ export default function DeleteThreadDialog({
 
         {/* Graph 视口 */}
         <div
-          ref={viewportRef}
-          onWheel={onWheel}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          ref={zp.containerRef}
+          {...zp.pointerHandlers}
           className="relative flex-1 min-h-[260px] overflow-hidden select-none touch-none"
           style={{
             background: "var(--paper-2)",
-            cursor: dragging ? "grabbing" : "grab",
+            cursor: zp.dragging ? "grabbing" : "grab",
           }}
         >
           <svg
-            width={viewport.w || 1}
-            height={viewport.h || 1}
+            width={zp.viewport.w || 1}
+            height={zp.viewport.h || 1}
             style={{ display: "block" }}
           >
-            <g transform={`translate(${transform.tx} ${transform.ty}) scale(${transform.s})`}>
+            <g transform={zp.transformString}>
               {/* edges */}
               {nodes
                 .filter((n) => n.thread.parent_thread_id)
@@ -453,7 +359,7 @@ export default function DeleteThreadDialog({
           <div className="absolute right-3 bottom-3 flex items-center gap-1">
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); resetView(); }}
+              onClick={(e) => { e.stopPropagation(); zp.fit(); }}
               className="px-2 h-7 rounded-md font-mono text-[10px] transition-colors"
               style={{
                 background: "var(--card)",
@@ -472,7 +378,7 @@ export default function DeleteThreadDialog({
                 color: "var(--ink-4)",
               }}
             >
-              {Math.round(transform.s * 100)}%
+              {Math.round(zp.transform.s * 100)}%
             </div>
           </div>
         </div>

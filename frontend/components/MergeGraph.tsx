@@ -11,6 +11,7 @@
 
 import React, { useMemo } from "react";
 import type { Thread, Message } from "@/lib/api";
+import { useGraphZoomPan } from "@/lib/useGraphZoomPan";
 
 const PIG_VAR = ["var(--pig-1)", "var(--pig-2)", "var(--pig-3)", "var(--pig-4)", "var(--pig-5)"];
 
@@ -188,13 +189,28 @@ export default function MergeGraph({
 
   const posById = new Map(nodes.map((n) => [n.thread.id, n]));
 
+  // 共享 zoom/pan —— 滚轮缩放 + 拖拽平移 + 自适应
+  // Shared zoom/pan — wheel = cursor-anchored zoom, drag = pan, auto-fit.
+  const zp = useGraphZoomPan({
+    contentWidth: width,
+    contentHeight: height,
+    refitOn: `${threads.length}:${height}:${width}`,
+  });
+
   return (
-    <div className="h-full w-full overflow-auto scrollbar-thin flex items-center justify-center p-4">
+    <div
+      ref={zp.containerRef}
+      {...zp.pointerHandlers}
+      className="h-full w-full overflow-hidden relative select-none touch-none"
+      style={{ cursor: zp.dragging ? "grabbing" : "grab" }}
+    >
       <svg
-        viewBox={`0 0 ${width} ${height}`}
+        width={zp.viewport.w || 1}
+        height={zp.viewport.h || 1}
         xmlns="http://www.w3.org/2000/svg"
-        style={{ display: "block", width: "100%", maxWidth: width, height: "auto" }}
+        style={{ display: "block" }}
       >
+        <g transform={zp.transformString}>
         {/* edges */}
         {nodes
           .filter((n) => n.thread.parent_thread_id)
@@ -286,6 +302,7 @@ export default function MergeGraph({
             </g>
           );
         })}
+        </g>
       </svg>
     </div>
   );
