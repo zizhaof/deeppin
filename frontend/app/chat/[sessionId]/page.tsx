@@ -953,7 +953,19 @@ export default function ChatPage() {
 
       <PinStartDialog
         info={pinDialog}
-        onSend={(threadId, question) => handleSendSuggestion(threadId, question)}
+        onSend={(threadId, question) => {
+          // 手机端只显示 activeThread,新建子线程后必须切过去,否则 AI
+          // 回复流进用户看不到的线程。桌面端有右栏 card 同屏显示,保持
+          // 在主线不跳转。
+          // Mobile shows only the active thread — navigate into the new
+          // sub-thread so the streaming answer is actually visible.
+          // Desktop keeps the main thread in view (sub-thread shows up
+          // as a rail card).
+          if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+            handleNavigateTo(threadId);
+          }
+          handleSendSuggestion(threadId, question);
+        }}
         onClose={() => setPinDialog(null)}
       />
 
