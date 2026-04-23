@@ -115,6 +115,18 @@ html, body {
   max-width: 100vw;
 }
 
+/* iOS Safari auto-zoom defense —— 任意 input / textarea 字号 < 16px 时
+   focus 会触发整页放大（再缩回）。所有可输入控件在手机视口下强制 ≥ 16px，
+   桌面视口下保留组件原本的字号设置。
+   iOS Safari auto-zooms the page when focusing an input/textarea whose
+   font-size is < 16px. Force ≥ 16px on all inputs/textareas/selects below
+   the md breakpoint; desktop keeps whatever the component sets. */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* ── 语义化工具类 / Semantic utility classes ──────────────────────────── */
 @layer utilities {
   /* 表面 */
