@@ -27,16 +27,19 @@ export default function LangSelector({ className }: Props) {
     <div
       className={
         className ??
-        "relative inline-flex items-center gap-1.5 pl-2 pr-6 py-1 rounded-lg border border-indigo-500/40 hover:border-indigo-400/70 bg-indigo-500/10 hover:bg-indigo-500/15 transition-colors flex-shrink-0"
+        "relative inline-flex items-center gap-1.5 pl-2.5 pr-7 h-[30px] rounded-md transition-colors flex-shrink-0"
       }
+      style={!className ? { border: "1px solid var(--rule)", color: "var(--ink-3)" } : undefined}
+      onMouseEnter={(e) => { if (!className) { (e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; } }}
+      onMouseLeave={(e) => { if (!className) { (e.currentTarget as HTMLElement).style.borderColor = "var(--rule)"; (e.currentTarget as HTMLElement).style.color = "var(--ink-3)"; } }}
     >
       {/* 地球仪图标 / Globe icon — signals "language" at a glance */}
       <svg
-        className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0 pointer-events-none"
+        className="w-3.5 h-3.5 flex-shrink-0 pointer-events-none"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={2}
+        strokeWidth={1.75}
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden
@@ -50,22 +53,23 @@ export default function LangSelector({ className }: Props) {
         value={lang}
         onChange={(e) => setLang(e.target.value as Lang)}
         aria-label="Language"
-        className="text-[11px] font-medium text-indigo-200 bg-transparent appearance-none cursor-pointer focus:outline-none pr-1"
+        className="font-mono text-[11px] bg-transparent appearance-none cursor-pointer focus:outline-none pr-1"
+        style={{ color: "currentColor" }}
       >
         {SUPPORTED_LOCALES.map((l) => (
-          <option key={l} value={l} className="bg-surface text-md">
+          <option key={l} value={l} style={{ background: "var(--card)", color: "var(--ink)" }}>
             {LOCALE_DISPLAY_NAMES[l]}
           </option>
         ))}
       </select>
 
-      {/* 自定义下拉箭头 / Custom chevron (native arrow is hidden via appearance-none) */}
+      {/* 自定义下拉箭头 / Custom chevron */}
       <svg
-        className="absolute right-1.5 w-3 h-3 text-indigo-400 pointer-events-none"
+        className="absolute right-2 w-3 h-3 pointer-events-none"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={2.5}
+        strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden

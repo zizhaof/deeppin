@@ -58,7 +58,12 @@ export default function MessageList({
   const isEmpty = messages.length === 0 && !streamingText && !statusText;
 
   return (
-    <div className="flex-1 overflow-y-auto px-3 py-6">
+    // Claude-style 阅读列：居中 max-w-3xl 容器 + 宽水平 padding，
+    // 消息不贴左右边，长文更易读。
+    // Claude-style reading column: centered max-w container + generous
+    // side padding so messages aren't flush against the edges.
+    <div className="flex-1 overflow-y-auto py-8 px-6 md:px-10">
+     <div className="mx-auto w-full max-w-[780px]">
       {isEmpty ? (
         <div className="h-full flex flex-col items-center justify-center min-h-[60vh]">
           {suggestions.length > 0 ? (
@@ -93,7 +98,7 @@ export default function MessageList({
                   </svg>
                 </div>
               </div>
-              <h2 className="text-sm font-semibold text-md tracking-tight">{t.welcomeTitle}</h2>
+              <h2 className="font-serif text-base font-medium text-md tracking-tight">{t.welcomeTitle}</h2>
               <p className="text-xs text-faint leading-relaxed">{t.welcomeSub}</p>
             </div>
           )}
@@ -145,6 +150,7 @@ export default function MessageList({
         </>
       )}
       <div ref={bottomRef} />
+     </div>
     </div>
   );
 }

@@ -87,41 +87,61 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
 
   return createPortal(
     <>
-      {/* ── 桌面端：浮动 popup ── */}
+      {/* ── 桌面端：浮动 popup — ink 底 + 朝下小三角 + accent Pin seg
+           Desktop floating popover — ink background with a downward-pointing
+           tail, accent-highlighted Pin segment (matches design's .selpop). ── */}
       <div
         ref={menuRef}
-        style={{ top: floatTop, left: floatLeft }}
+        style={{
+          top: floatTop,
+          left: floatLeft,
+          background: "var(--ink)",
+          color: "var(--paper)",
+        }}
         onMouseDown={e => e.preventDefault()}
-        className="hidden md:flex fixed z-50 -translate-x-1/2 items-center gap-0.5 bg-surface-95 backdrop-blur-md border border-base text-hi rounded-xl px-1.5 py-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.15),0_0_0_1px_rgba(0,0,0,0.04)] text-sm select-none"
+        className="pin-menu-desktop hidden md:flex fixed z-50 -translate-x-1/2 items-center gap-0.5 rounded-md px-[3px] py-[3px] shadow-[0_6px_20px_rgba(27,26,23,0.2)] text-sm select-none"
       >
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-glass transition-colors whitespace-nowrap"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-colors whitespace-nowrap text-[12px] hover:bg-white/10"
+          style={{ color: "var(--paper)" }}
         >
-          <svg className="w-3.5 h-3.5 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-3 h-3" style={{ opacity: 0.75 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
           </svg>
-          <span className="text-xs text-dim">{t.copy ?? "复制"}</span>
+          <span>{t.copy}</span>
         </button>
-        <div className="w-px h-4 bg-glass-md mx-0.5" />
         <button
           onClick={() => onPin(selection)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-colors whitespace-nowrap text-[12px] font-medium"
+          style={{ background: "var(--accent)", color: "var(--paper)" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--accent-2)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--accent)")}
         >
-          <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
           </svg>
-          <span className="text-xs text-indigo-300 font-medium">{t.pinAction}</span>
+          <span>{t.pinAction}</span>
         </button>
+        {/* 朝下小三角 — 用旋转的方形 */}
+        <span
+          aria-hidden
+          className="absolute left-1/2 -bottom-1 w-2 h-2 rotate-45 -translate-x-1/2"
+          style={{ background: "var(--ink)" }}
+        />
       </div>
 
       {/* ── 移动端：底部 action bar（与浏览器原生 Copy 菜单共存，不冲突） ── */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 animate-in slide-in-from-bottom-2 duration-150">
-        {/* 选中文字预览 */}
-        <div className="mx-3 mb-1 px-3 py-1.5 bg-zinc-900/90 rounded-xl border border-zinc-700/50">
-          <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
-            <span className="text-zinc-500 mr-1">&quot;</span>
+        {/* 选中文字预览 — ink 底 paper 字，跟桌面端 selpop 同一语言
+            Selected-text preview — ink bg + paper text (mirrors desktop selpop). */}
+        <div
+          className="mx-3 mb-1 px-3 py-1.5 rounded-xl"
+          style={{ background: "var(--ink)", border: "1px solid var(--accent-ink)" }}
+        >
+          <p className="text-[11px] leading-relaxed line-clamp-2" style={{ color: "var(--ink-5)" }}>
+            <span className="mr-1" style={{ color: "var(--ink-4)" }}>&quot;</span>
             {selection.text.length > 80 ? selection.text.slice(0, 80) + "…" : selection.text}
           </p>
         </div>

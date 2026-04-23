@@ -7,7 +7,7 @@ import type { Thread, Message } from "@/lib/api";
 import type { ThreadCardItem } from "@/components/SubThread/types";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import ThreadTree from "@/components/Layout/ThreadTree";
-import MergeTreeCanvas from "@/components/MergeTreeCanvas";
+import ThreadGraph from "@/components/Layout/ThreadGraph";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
 import { useT } from "@/stores/useLangStore";
@@ -26,7 +26,7 @@ function MobilePinCard({
   isActive: boolean;
   onClick: () => void;
 }) {
-  const title = item.thread.title ?? item.thread.anchor_text?.slice(0, 40) ?? "子线程";
+  const title = item.thread.title ?? item.thread.anchor_text?.slice(0, 40) ?? "Sub-thread";
   const lastMsg = item.messages[item.messages.length - 1];
   const isStreaming = item.streamingText !== undefined;
   const preview = isStreaming
@@ -163,8 +163,6 @@ export default function MobileChatLayout({
   /** 右面板视图：列表（dots）或节点图（canvas） */
   const [treeView, setTreeView] = useState<"dots" | "canvas">("dots");
 
-  /** MergeTreeCanvas 需要的 selected set（全选） */
-  const allSelected = useMemo(() => new Set(threads.map((t) => t.id)), [threads]);
 
   /** 有未读回复的 thread id 集合；传给 MessageList 驱动锚点呼吸动画
    *  Thread IDs with unread replies — drives anchor breathing animation in MessageList. */
@@ -196,9 +194,9 @@ export default function MobileChatLayout({
 
   const panelTitle =
     panelIdx === PANEL_PINS
-      ? `子问题 (${rollItems.length})`
+      ? `${t.subQuestions} (${rollItems.length})`
       : panelIdx === PANEL_TREE
-      ? `线程树 (${threads.length})`
+      ? `${t.overview} (${threads.length})`
       : activeTitle;
 
   // ── CSS transform：三面板横向排列 ────────────────────────────────────
@@ -289,7 +287,7 @@ export default function MobileChatLayout({
                   </svg>
                 </div>
                 <p className="text-sm text-ph text-center leading-relaxed">
-                  选中 AI 回复中的文字，点击「插针」创建子线程
+                  {t.selectToPin}
                 </p>
               </div>
             ) : (
@@ -309,8 +307,15 @@ export default function MobileChatLayout({
           {/* ── 中面板：主对话 ── */}
           <div className="flex flex-col h-full overflow-hidden" style={{ width: "33.333%" }}>
             {activeThread?.anchor_text && activeThread.parent_thread_id !== null && (
-              <div className="flex-shrink-0 mx-4 mt-3 px-3 py-2 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-xs text-indigo-300/80 leading-snug line-clamp-2">
-                <span className="text-indigo-400/50 mr-1">锚点 ›</span>
+              <div
+                className="flex-shrink-0 mx-4 mt-3 px-3 py-2 rounded-lg text-xs leading-snug line-clamp-2"
+                style={{
+                  background: "var(--accent-soft)",
+                  border: "1px solid color-mix(in oklch, var(--accent) 20%, transparent)",
+                  color: "var(--accent)",
+                }}
+              >
+                <span className="mr-1" style={{ color: "color-mix(in oklch, var(--accent) 60%, var(--ink-4))" }}>›</span>
                 {activeThread.anchor_text}
               </div>
             )}
@@ -381,12 +386,12 @@ export default function MobileChatLayout({
                   onSelect={(threadId) => navigateAndReturnToChat(threadId)}
                 />
               ) : (
-                <MergeTreeCanvas
+                <ThreadGraph
                   threads={threads}
-                  selected={allSelected}
                   activeThreadId={activeThreadId}
-                  onToggle={(threadId) => navigateAndReturnToChat(threadId)}
-                  compact
+                  unreadCounts={unreadCounts}
+                  messagesByThread={messagesByThread}
+                  onSelect={(threadId) => navigateAndReturnToChat(threadId)}
                 />
               )}
             </div>
@@ -421,7 +426,7 @@ export default function MobileChatLayout({
               <span className="text-xs text-dim">
                 {panelIdx === PANEL_CHAT ? (
                   <span className="flex items-center gap-1">
-                    子问题
+                    {t.subQuestions}
                     {rollItems.length > 0 && (
                       <span className="w-4 h-4 rounded-full bg-indigo-500/80 text-white text-[9px] flex items-center justify-center font-semibold">
                         {rollItems.length > 9 ? "9+" : rollItems.length}
@@ -429,7 +434,7 @@ export default function MobileChatLayout({
                     )}
                   </span>
                 ) : (
-                  "对话"
+                  t.mainThread
                 )}
               </span>
             </button>
@@ -456,7 +461,7 @@ export default function MobileChatLayout({
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-subtle active:bg-glass transition-colors"
             >
               <span className="text-xs text-dim">
-                {panelIdx === PANEL_CHAT ? "线程树" : "对话"}
+                {panelIdx === PANEL_CHAT ? t.overview : t.mainThread}
               </span>
               <svg className="w-3.5 h-3.5 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 5l7 7-7 7" />

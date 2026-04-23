@@ -19,7 +19,7 @@ export const ru: T = {
   noThreads: "Нет тредов",
   // Welcome
   welcomeTitle: "Глубокое мышление начинается здесь",
-  welcomeSub: "Спросите ИИ о чём угодно. Выделите текст в ответе, чтобы открыть подвопрос.",
+  welcomeSub: "Спросите Deeppin о чём угодно. Выделите текст в ответе, чтобы открыть подвопрос.",
   chooseQuestion: "Выберите вопрос для исследования",
   tagline: "Выделите любой текст, чтобы копнуть глубже",
   // InputBar
@@ -107,6 +107,7 @@ export const ru: T = {
   articles: "Статьи",
   // Аккаунт
   logout: "Выйти",
+  deleteAccount: "Удалить аккаунт",
   // Ошибки
   deleteError: "Ошибка удаления: ",
   unknownError: "Неизвестная ошибка",
@@ -141,4 +142,21 @@ export const ru: T = {
   // Счётчик бесплатного лимита
   quotaFree: "осталось",
   quotaFull: "Лимит пробной достигнут",
+  you: "ВЫ",
+  ai: "Deeppin",
+  flattenPreviewBefore: "До",
+  flattenPreviewAfter: "После",
+  flattenPreviewEmpty: "Только главная ветка — нечего уплощать.",
+  mergeHintSelect: "Выберите подвопросы для объединения · клик по узлу",
+  mergeHintDrag: "Прокрутка — панорама · перетаскивание — перемещение",
+  mergeSelectAll: "Выбрать все",
+  mergeSelectNone: "Снять выделение",
+  mergeCta: "Объединить {n} подвопрос(ов)",
+  mergeSelectedOf: "{selected} / {total} выбрано",
+  mergeGeneratingReport: "Создание отчёта…",
+  mergeSavedToChat: "Сохранено",
+  mergeSaving: "Сохранение…",
+  mergeSaveToChat: "Сохранить в чат",
+  mergeReselect: "Выбрать заново",
+  signInTerms: "Войдя, вы соглашаетесь с Условиями и Политикой конфиденциальности Deeppin.",
 };

@@ -51,23 +51,54 @@ export default function QuotaExceededModal({ open, onClose, message, variant = "
   return createPortal(
     <>
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+        className="fixed inset-0 [background:rgba(27,26,23,0.45)] backdrop-blur-sm z-40"
         onClick={onClose}
       />
-      <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface border border-base rounded-2xl shadow-2xl shadow-black/40 p-6">
-        <h2 className="text-base font-semibold text-hi mb-2">{title}</h2>
-        <p className="text-sm text-lo leading-relaxed mb-5 whitespace-pre-line">{desc}</p>
-        <div className="flex gap-2 justify-end">
+      <div
+        className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-xl overflow-hidden"
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--rule)",
+          boxShadow: "0 24px 64px rgba(27,26,23,0.18)",
+        }}
+      >
+        <div className="px-6 pt-5 pb-4 flex items-start gap-3" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+          {/* brand 小徽章 */}
+          <span
+            className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full grid place-items-center"
+            style={{ background: "var(--accent)", color: "var(--paper)" }}
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+            </svg>
+          </span>
+          <div className="flex-1">
+            <h2 className="font-serif text-[17px] font-medium" style={{ color: "var(--ink)" }}>{title}</h2>
+            <p className="mt-1 text-[13px] leading-relaxed whitespace-pre-line" style={{ color: "var(--ink-3)" }}>
+              {desc}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end px-6 py-3" style={{ borderTop: "1px solid var(--rule-soft)" }}>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-faint hover:text-md rounded-lg transition-colors"
+            className="px-3.5 py-1.5 text-[12.5px] font-medium rounded-md transition-colors"
+            style={{ color: "var(--ink-3)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-3)"; }}
           >
             {t.later}
           </button>
           <button
             onClick={handleSignIn}
-            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors"
+            className="px-4 py-1.5 text-[12.5px] font-medium rounded-md inline-flex items-center gap-2 transition-colors"
+            style={{ background: "var(--ink)", color: "var(--paper)" }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--accent)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--ink)")}
           >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#fff" opacity="0.95" />
+            </svg>
             {t.signInGoogle}
           </button>
         </div>

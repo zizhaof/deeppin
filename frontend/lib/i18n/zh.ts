@@ -20,7 +20,7 @@ export const zh: T = {
   noThreads: "暂无线程",
   // Welcome
   welcomeTitle: "深度思考，从这里开始",
-  welcomeSub: "向 AI 提问，选中回复中的任意文字可开启子问题深入探讨",
+  welcomeSub: "向 Deeppin 提问，选中回复中的任意文字可开启子问题深入探讨",
   chooseQuestion: "选择一个问题开始追问",
   tagline: "选中任意文字，插针深挖",
   // InputBar
@@ -108,6 +108,7 @@ export const zh: T = {
   articles: "文章",
   // 账号
   logout: "退出",
+  deleteAccount: "删除账号",
   // 错误消息
   deleteError: "删除失败：",
   unknownError: "未知错误",
@@ -142,4 +143,21 @@ export const zh: T = {
   // 输入框配额计数器
   quotaFree: "剩余",
   quotaFull: "试用已达上限",
+  you: "我",
+  ai: "Deeppin",
+  flattenPreviewBefore: "扁平前",
+  flattenPreviewAfter: "扁平后",
+  flattenPreviewEmpty: "只有主线 — 没有可扁平化的子线程。",
+  mergeHintSelect: "选择要合并的子问题 · 点击节点反选",
+  mergeHintDrag: "滚轮平移 · 拖拽移动",
+  mergeSelectAll: "全选",
+  mergeSelectNone: "全不选",
+  mergeCta: "合并 {n} 个子问题",
+  mergeSelectedOf: "已选 {selected} / {total}",
+  mergeGeneratingReport: "正在生成合并报告…",
+  mergeSavedToChat: "已保存",
+  mergeSaving: "保存中…",
+  mergeSaveToChat: "保存到对话",
+  mergeReselect: "重新选择",
+  signInTerms: "登录即代表你同意 Deeppin 的服务条款和隐私政策。",
 };

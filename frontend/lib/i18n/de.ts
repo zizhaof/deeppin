@@ -19,7 +19,7 @@ export const de: T = {
   noThreads: "Keine Threads",
   // Welcome
   welcomeTitle: "Tiefes Denken beginnt hier",
-  welcomeSub: "Frag die KI alles. Markiere Text in einer Antwort, um eine Unterfrage zu öffnen.",
+  welcomeSub: "Frag Deeppin alles. Markiere Text in einer Antwort, um eine Unterfrage zu öffnen.",
   chooseQuestion: "Wähle eine Frage zum Erkunden",
   tagline: "Markiere beliebigen Text, um tiefer zu graben",
   // InputBar
@@ -107,6 +107,7 @@ export const de: T = {
   articles: "Artikel",
   // Konto
   logout: "Abmelden",
+  deleteAccount: "Konto löschen",
   // Fehler
   deleteError: "Löschen fehlgeschlagen: ",
   unknownError: "Unbekannter Fehler",
@@ -141,4 +142,21 @@ export const de: T = {
   // Zähler für kostenloses Kontingent
   quotaFree: "frei",
   quotaFull: "Testlimit erreicht",
+  you: "DU",
+  ai: "Deeppin",
+  flattenPreviewBefore: "Vorher",
+  flattenPreviewAfter: "Nachher",
+  flattenPreviewEmpty: "Nur der Hauptthread — nichts zu flachen.",
+  mergeHintSelect: "Wähle Unterfragen zum Zusammenführen · Klicke auf einen Knoten",
+  mergeHintDrag: "Scrollen zum Pannen · Ziehen zum Bewegen",
+  mergeSelectAll: "Alle auswählen",
+  mergeSelectNone: "Auswahl löschen",
+  mergeCta: "{n} Unterfrage(n) zusammenführen",
+  mergeSelectedOf: "{selected} / {total} ausgewählt",
+  mergeGeneratingReport: "Bericht wird erstellt…",
+  mergeSavedToChat: "Gespeichert",
+  mergeSaving: "Speichern…",
+  mergeSaveToChat: "In Chat speichern",
+  mergeReselect: "Erneut wählen",
+  signInTerms: "Mit der Anmeldung stimmst du den AGB und der Datenschutzerklärung von Deeppin zu.",
 };

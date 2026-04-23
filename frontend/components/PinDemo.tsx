@@ -1,1219 +1,1274 @@
 "use client";
-// components/PinDemo.tsx — 插针完整流程演示
+// components/PinDemo.tsx
+// Welcome-page 插针交互动画。
+//
+// 内容 = Deeppin 产品自述（用户: "Deeppin 有什么不一样？" → AI 给出
+// 两个烂选择 / pin 解法 / 4 步用法 —— 等于把之前首页上那两块解释性 section
+// 直接嵌进了 demo 里）。
+//
+// 设计特点：
+//   - 2 栏（main + right overview）
+//   - 右栏用 graph view（圆点 + bezier），不是 list
+//   - 演示窗口固定高度，避免 phase 切换时抖动
+//   - 9 语种 CONTENT 表内聚，不污染全局 i18n（本组件独立使用）
+//
+// The welcome-page demo, retooled for the new UI:
+//   - 2-col (main + right overview), right rail in **graph** view
+//   - Dialogue content is Deeppin's self-introduction (replacing the
+//     old CAP-theorem demo). The "two bad options" + "pin" fix + how-it-works
+//     flow lives inside the AI reply so the landing page no longer needs
+//     separate Why / How sections.
+//   - Fixed container height; content swaps via absolute-positioned panels
+//     so the demo doesn't shrink/grow between phases.
+//   - 9 locales baked into a local CONTENT table — this demo has a lot of
+//     specific copy and doesn't belong in the global i18n dictionary.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
 import type { Lang } from "@/lib/i18n";
 
-// ── 颜色常量 ──────────────────────────────────────────────────────────────────
-const C = {
-  bg:          "#0d0e18",
-  surface:     "#141626",
-  border:      "rgba(255,255,255,0.08)",
-  borderSub:   "rgba(255,255,255,0.05)",
-  textHi:      "rgb(226,232,240)",
-  textMd:      "rgb(148,163,184)",
-  textLo:      "rgb(100,116,139)",
-  textFaint:   "rgb(71,85,105)",
-  indigo:      "rgba(99,102,241,",
-  indigoSolid: "rgb(99,102,241)",
-  indigoText:  "rgb(165,180,252)",
-  indigoLight: "rgb(199,210,254)",
-};
-const ind = (a: number) => `${C.indigo}${a})`;
-
-// ── 阶段 ──────────────────────────────────────────────────────────────────────
+// ── Phases ──────────────────────────────────────────────────────────────
+// 增加 sub-depth 阶段：在 sub-thread 里再 pin 一次，展示「无限嵌套」。
+// Added sub-depth: pin again inside the sub-thread to demonstrate infinite nesting.
 type Phase =
-  | "idle" | "sweeping" | "pin-menu" | "pin-click"
-  | "dialog-open" | "dialog-ready" | "hover-suggest" | "click-suggest"
-  | "card-in" | "streaming" | "unread" | "card-hover" | "card-click"
-  | "thread-view" | "thread-done" | "back-click" | "back-main";
+  | "idle"
+  | "sweep"
+  | "selpop"
+  | "dialog"
+  | "pick"
+  | "underline-appear"
+  | "ai-replying"
+  | "unread-breathing"
+  | "popover"
+  | "enter"
+  | "sub-thread"
+  | "sub-depth"
+  | "back";
+
+const NEXT: Record<Phase, Phase> = {
+  idle: "sweep",
+  sweep: "selpop",
+  selpop: "dialog",
+  dialog: "pick",
+  pick: "underline-appear",
+  "underline-appear": "ai-replying",
+  "ai-replying": "unread-breathing",
+  "unread-breathing": "popover",
+  popover: "enter",
+  enter: "sub-thread",
+  "sub-thread": "sub-depth",
+  "sub-depth": "back",
+  back: "idle",
+};
 
 const DELAYS: Record<Phase, number> = {
-  "idle": 2000, "sweeping": 1400, "pin-menu": 1600, "pin-click": 600,
-  "dialog-open": 1600, "dialog-ready": 1400, "hover-suggest": 1200,
-  "click-suggest": 600, "card-in": 1200, "streaming": 3600,
-  "unread": 1600, "card-hover": 2600, "card-click": 600,
-  "thread-view": 4000, "thread-done": 2000, "back-click": 700, "back-main": 2200,
+  // 整体节奏放慢 ~1.5× —— 用户在欢迎页第一次看 demo 要有时间读每一步。
+  // Paced 1.5× slower so first-time viewers have time to read each step.
+  idle: 2000,
+  sweep: 1800,
+  selpop: 2200,
+  dialog: 2800,
+  pick: 800,
+  "underline-appear": 1500,
+  "ai-replying": 3600,
+  "unread-breathing": 3200,
+  popover: 3600,
+  enter: 800,
+  "sub-thread": 3800,
+  "sub-depth": 3600,
+  back: 2200,
 };
-const NEXT: Record<Phase, Phase> = {
-  "idle": "sweeping", "sweeping": "pin-menu", "pin-menu": "pin-click",
-  "pin-click": "dialog-open", "dialog-open": "dialog-ready",
-  "dialog-ready": "hover-suggest", "hover-suggest": "click-suggest",
-  "click-suggest": "card-in", "card-in": "streaming", "streaming": "unread",
-  "unread": "card-hover", "card-hover": "card-click", "card-click": "thread-view",
-  "thread-view": "thread-done", "thread-done": "back-click",
-  "back-click": "back-main", "back-main": "idle",
-};
-const PHASE_ORDER: Phase[] = [
-  "idle","sweeping","pin-menu","pin-click",
-  "dialog-open","dialog-ready","hover-suggest","click-suggest",
-  "card-in","streaming","unread","card-hover","card-click",
-  "thread-view","thread-done","back-click","back-main",
-];
 
-// ── 多语种内容 / Multi-locale content ───────────────────────────────────────
-type Content = {
-  aiText: string;
+// ── Copy type + 9 locales ───────────────────────────────────────────────
+interface Copy {
+  mainQuestion: string;
   anchor: string;
-  raftInText: string;
-  hashInText: string;
-  suggestions: readonly string[];
-  cardReply: string;
-  threadReplyFull: string;
-  existingCard: { label: string; anchor: string; preview: string };
-  nodeRaft: readonly [string, string];
-  nodeHash: readonly [string, string];
-  nodeCap: readonly [string, string];
-  nodeLeader: string;
-  nodeMain: string;
+  aiPre: string;
+  aiPost: string;
+  suggestions: [string, string, string];
+  threadReply: string;
+  /** 在 sub-thread AI 回复里再 pin 一次的短语 —— 必须在 threadReply 里存在。
+   *  A short phrase within threadReply that gets pinned during sub-depth. */
+  deeperAnchor: string;
+  /** 更深一层 sub-thread 的标题（显示在 graph 第三层节点下）。
+   *  Title for the depth-2 sub-thread (shown under the 3rd-level graph node). */
+  deeperSubTitle: string;
+  subTitle: string;
   questionTitle: string;
-  subThreadsLabel: string;
-  overviewLabel: string;
-  listLabel: string;
-  graphLabel: string;
-  mergeLabel: string;
-  mainLabel: string;
-  hintText: string;
-  customPlaceholder: string;
-  continuePrompt: string;
-  suggestionsLabel: string;
-  copyLabel: string;
+  mainCrumb: string;
+  newReplyLabel: string;
+  enterLabel: string;
   pinLabel: string;
-  preparingReply: string;
-  captions: Record<Phase, string>;
-};
+  copyLabel: string;
+  suggestionsLabel: string;
+  overviewLabel: string;
+  graphTabLabel: string;
+  listTabLabel: string;
+  replyingLabel: string;
+  generatingLabel: string;
+  caption: Record<Phase, string>;
+}
 
-const CONTENT: Record<Lang, Content> = {
-  zh: {
-    aiText:     "在分布式系统中，CAP 定理指出你只能同时保证「一致性」「可用性」「分区容忍性」三者中的两个。Raft 协议通过 Leader 选举解决了这一权衡，而一致性哈希让节点扩缩容时数据迁移量最小化。",
-    anchor:     "CAP 定理",
-    raftInText: "Raft 协议",
-    hashInText: "一致性哈希",
+const CONTENT: Record<Lang, Copy> = {
+  en: {
+    mainQuestion: "What makes Deeppin different?",
+    anchor: "pin that detail",
+    aiPre:
+      "When you're reading an AI reply and want to dig deeper into one part, you have two bad options — start a new chat (lose all context) or ask in the same chat (interrupt the main thread, topic drifts). Deeppin lets you ",
+    aiPost:
+      " and keep digging — as deep as you want. The main thread? Not a word interrupted.",
     suggestions: [
-      "CAP 定理在实际系统中如何取舍？",
-      "一致性和可用性哪个更重要？",
-      "举个 CAP 权衡的真实案例？",
+      "Show me exactly how pinning works, step by step",
+      "How deep can sub-threads go?",
+      "What happens when I merge everything?",
     ],
-    cardReply:  "CAP 由 Brewer 提出：发生网络分区（P）时，系统只能在一致性（C）和可用性（A）中选一。银行系统选 CP，保证每笔交易强一致；DNS 选 AP，即使部分节点宕机也能继续响应查询……",
-    threadReplyFull: "CAP 定理（Consistency、Availability、Partition tolerance）由 Eric Brewer 在 2000 年提出，正式证明由 Gilbert 和 Lynch 在 2002 年完成。\n\n核心结论：当网络分区（P）不可避免时，系统设计者必须在一致性（C）和可用性（A）之间做出取舍。\n\n• **CP 系统**：HBase、ZooKeeper — 分区时拒绝写入，保证数据绝对一致\n• **AP 系统**：Cassandra、CouchDB — 分区时继续服务，但可能读到旧数据\n• **实践中**：大多数系统在 C 和 A 之间动态权衡，根据业务场景调整一致性级别",
-    existingCard: {
-      label:   "Raft 协议",
-      anchor:  "Raft 协议",
-      preview: "通过 Leader 选举 + 日志复制实现强一致性，相比 Paxos 实现更清晰……",
-    },
-    nodeRaft:   ["Raft", "协议"],
-    nodeHash:   ["一致性", "哈希"],
-    nodeCap:    ["CAP", "定理"],
-    nodeLeader: "Leader 选举",
-    nodeMain:   "主线对话",
-    questionTitle:     "如何设计一个分布式系统？",
-    subThreadsLabel:   "子问题",
-    overviewLabel:     "概览",
-    listLabel:         "列表",
-    graphLabel:        "节点图",
-    mergeLabel:        "合并输出",
-    mainLabel:         "主线",
-    hintText:          "选中任意文字即可插针深探",
-    customPlaceholder: "或自己提问…",
-    continuePrompt:    "继续追问 CAP 定理…",
-    suggestionsLabel:  "推荐问题",
-    copyLabel:         "复制",
-    pinLabel:          "插针",
-    preparingReply:    "正在准备回复…",
-    captions: {
-      "idle":          "AI 回复完成。已有一根针「Raft 协议」挂在左侧，主线文字中对应词语显示高亮轮廓。",
-      "sweeping":      "鼠标按住拖过「CAP 定理」，蓝色高亮随光标展开，这就是选中的过程。",
-      "pin-menu":      "松开鼠标，浮动工具栏自动出现在选区上方：左侧「复制」，右侧「插针」。",
-      "pin-click":     "点击「插针」按钮，按钮发光高亮，选区被锁定。",
-      "dialog-open":   "插针弹窗出现。顶部引用锚点原文，AI 正在后台生成推荐追问（三点加载中）。",
-      "dialog-ready":  "推荐问题生成完毕，三个可点击的追问选项出现，也可以自己输入。",
-      "hover-suggest": "鼠标悬停第一个推荐问题，背景高亮。",
-      "click-suggest": "点击发送，问题进入子线程，弹窗关闭。",
-      "card-in":       "左侧子线程卡片从左边滑入。右侧概览图中，CAP 定理节点同步出现在与其他子问题同一层。",
-      "streaming":     "AI 在子线程里独立回答，左侧卡片实时显示流式输出。主线对话完全不受影响。",
-      "unread":        "回复完成，卡片角标变红，提示有未读内容。",
-      "card-hover":    "鼠标移到卡片上，一条曲线从卡片延伸、指向主线中「CAP 定理」的锚点位置。",
-      "card-click":    "点击卡片，进入子线程完整视图。",
-      "thread-view":   "中间栏切换为子线程对话：顶部面包屑导航，下方展示完整问答。",
-      "thread-done":   "子线程内容完整可见。可以继续追问，也可以点击面包屑中的「主线」返回。",
-      "back-click":    "点击面包屑「主线」——按钮高亮，触发返回动作。",
-      "back-main":     "中间栏滑回主线对话，所有锚点高亮保留。左侧卡片仍在，随时可以再次点击进入子线程。",
+    threadReply:
+      "Highlight any text in an AI reply, click 'Question' — a focused sub-thread opens right there. The main chat stays untouched. You can pin again inside sub-questions — no limit on depth. When you're done exploring, merge everything into one structured report.",
+    deeperAnchor: "no limit on depth",
+    deeperSubTitle: "no limit on depth",
+    subTitle: "pin that detail",
+    questionTitle: "deeppin — product intro",
+    mainCrumb: "Main",
+    newReplyLabel: "New",
+    enterLabel: "Enter",
+    pinLabel: "Pin",
+    copyLabel: "Copy",
+    suggestionsLabel: "suggestions",
+    overviewLabel: "overview",
+    graphTabLabel: "graph",
+    listTabLabel: "list",
+    replyingLabel: "replying in sub-thread…",
+    generatingLabel: "generating…",
+    caption: {
+      idle: "Main thread shows the reply. Right rail tracks the thread graph.",
+      sweep: "Drag across a phrase to select it.",
+      selpop: "A compact toolbar appears above the selection.",
+      dialog: "Pin opens a dialog with three auto-generated follow-ups.",
+      pick: "Pick the one you want.",
+      "underline-appear": "The anchor gets an underline in its pigment color.",
+      "ai-replying": "AI answers in the sub-thread — main stays untouched.",
+      "unread-breathing": "Back in main, the anchor breathes until you see the reply.",
+      popover: "Hover the underline for a preview — title, snippet, Enter.",
+      enter: "Click Enter to jump into the sub-thread.",
+      "sub-thread": "Full sub-thread view. Breadcrumb shows Main › pin that detail.",
+      "sub-depth": "Inside the sub-thread, you can pin again — sub-threads nest infinitely.",
+      back: "Click Main to return. Breathing stops — the reply is seen.",
     },
   },
-  en: {
-    aiText:     "In distributed systems, Raft uses leader election for consensus, directly addressing trade-offs defined by the CAP theorem: you can only guarantee two of three — Consistency, Availability, or Partition tolerance. Consistent hashing then minimizes data movement as nodes scale.",
-    anchor:     "CAP theorem",
-    raftInText: "Raft",
-    hashInText: "Consistent hashing",
+  zh: {
+    mainQuestion: "Deeppin 有什么不一样？",
+    anchor: "钉住那个细节",
+    aiPre:
+      "你在读 AI 回复，想深挖某一部分 —— 两个烂选择：开新对话（上下文全丢），或者在原对话里问（主线被打断、话题漂移）。Deeppin 让你直接",
+    aiPost: "，然后追问多深都可以。主线？一个字都不会被打扰。",
     suggestions: [
-      "How do you trade off CAP in practice?",
-      "Which matters more: consistency or availability?",
-      "Give a real-world CAP trade-off example?",
+      "具体演示一下插针怎么用",
+      "子线程能嵌多深？",
+      "「合并」后会得到什么？",
     ],
-    cardReply:  "CAP, proposed by Brewer: when partitions (P) occur, you must choose Consistency (C) or Availability (A). Banks choose CP for strong transaction guarantees; DNS chooses AP to keep responding even when nodes go down…",
-    threadReplyFull: "The CAP theorem (Consistency, Availability, Partition tolerance) was proposed by Eric Brewer in 2000 and formally proven by Gilbert and Lynch in 2002.\n\nCore conclusion: when network partitions (P) are unavoidable, architects must choose between Consistency (C) and Availability (A).\n\n• **CP systems**: HBase, ZooKeeper — reject writes during partitions to guarantee strong consistency\n• **AP systems**: Cassandra, CouchDB — keep serving during partitions, but may return stale data\n• **In practice**: most systems dynamically balance C and A, adjusting consistency levels per use case",
-    existingCard: {
-      label:   "Raft Protocol",
-      anchor:  "Raft",
-      preview: "Strong consistency via leader election + log replication; simpler than Paxos…",
-    },
-    nodeRaft:   ["Raft", "Protocol"],
-    nodeHash:   ["Hash", "Ring"],
-    nodeCap:    ["CAP", "Theorem"],
-    nodeLeader: "Leader Election",
-    nodeMain:   "Main thread",
-    questionTitle:     "How do you design a distributed system?",
-    subThreadsLabel:   "Threads",
-    overviewLabel:     "Overview",
-    listLabel:         "List",
-    graphLabel:        "Graph",
-    mergeLabel:        "Merge",
-    mainLabel:         "Main",
-    hintText:          "Select any text to open a sub-thread",
-    customPlaceholder: "Or ask your own…",
-    continuePrompt:    "Continue asking about CAP theorem…",
-    suggestionsLabel:  "Suggestions",
-    copyLabel:         "Copy",
-    pinLabel:          "Pin",
-    preparingReply:    "Preparing reply…",
-    captions: {
-      "idle":          "AI response complete. An existing pin 'Raft Protocol' is on the left, with its anchor highlighted in the main thread.",
-      "sweeping":      "Click and drag over 'CAP theorem' — the blue highlight expands with the cursor as you select.",
-      "pin-menu":      "Release the mouse. A floating toolbar appears above the selection: 'Copy' on the left, 'Pin' on the right.",
-      "pin-click":     "Click 'Pin' — the button glows and the selection is locked.",
-      "dialog-open":   "The pin dialog appears. Anchor text is quoted at top; AI is generating suggested follow-ups (loading).",
-      "dialog-ready":  "Suggestions ready — three clickable follow-up options appear. You can also type your own.",
-      "hover-suggest": "Hover over the first suggestion — background highlights.",
-      "click-suggest": "Click to send. The question enters the sub-thread and the dialog closes.",
-      "card-in":       "A sub-thread card slides in from the left. In the overview graph, the CAP theorem node appears alongside existing sub-questions.",
-      "streaming":     "AI answers independently in the sub-thread. The card shows live output. The main thread is unaffected.",
-      "unread":        "Reply complete — the card badge turns red, signaling unread content.",
-      "card-hover":    "Hover over the card — a curved line extends from the card to the 'CAP theorem' anchor in the main thread.",
-      "card-click":    "Click the card to enter the full sub-thread view.",
-      "thread-view":   "The center column switches to the sub-thread: breadcrumb navigation at top, full Q&A below.",
-      "thread-done":   "Full sub-thread content visible. Continue asking, or click 'Main' in the breadcrumb to return.",
-      "back-click":    "Click 'Main' in the breadcrumb — button highlights and return triggers.",
-      "back-main":     "The center slides back to the main thread. All anchor highlights remain. The card stays — click anytime to re-enter.",
+    threadReply:
+      "在 AI 回复里选中任意一段文字，点「插针」—— 焦点子线程立刻在旁边打开。主线原封不动。子线程里还能再插针，深度不限。读完再把所有分支一键合并成一份结构化报告。",
+    deeperAnchor: "深度不限",
+    deeperSubTitle: "深度不限",
+    subTitle: "钉住那个细节",
+    questionTitle: "deeppin — 产品介绍",
+    mainCrumb: "主线",
+    newReplyLabel: "新",
+    enterLabel: "进入",
+    pinLabel: "插针",
+    copyLabel: "复制",
+    suggestionsLabel: "推荐问题",
+    overviewLabel: "概览",
+    graphTabLabel: "图",
+    listTabLabel: "列表",
+    replyingLabel: "正在子线程回复…",
+    generatingLabel: "生成中…",
+    caption: {
+      idle: "主线显示 AI 回复，右栏是整个线程的图。",
+      sweep: "拖选一段文字。",
+      selpop: "选区上方自动弹出小工具栏。",
+      dialog: "点击「插针」打开对话框，AI 已生成 3 条追问。",
+      pick: "选一个你想问的。",
+      "underline-appear": "锚点立刻浮现 —— 颜料色下划线。",
+      "ai-replying": "AI 在子线程里独立回答，主线不受打扰。",
+      "unread-breathing": "回到主线，锚点呼吸直到你看过回复。",
+      popover: "悬停下划线 —— 浮出预览：标题、摘要、进入按钮。",
+      enter: "点击「进入」跳进子线程。",
+      "sub-thread": "完整子线程视图。面包屑：主线 › 钉住那个细节。",
+      "sub-depth": "子线程里还能再插针 —— 嵌套深度不限。",
+      back: "点「主线」返回。呼吸停下 —— 表示已读。",
     },
   },
   ja: {
-    aiText:     "分散システムでは、Raft プロトコルが Leader 選挙でコンセンサスを実現し、CAP 定理が定める「一貫性・可用性・分断耐性」の三つのうち二つしか同時に保証できないというトレードオフを直接扱う。ノード追加・削減時のデータ移動はコンシステントハッシュで最小化される。",
-    anchor:     "CAP 定理",
-    raftInText: "Raft プロトコル",
-    hashInText: "コンシステントハッシュ",
+    mainQuestion: "Deeppin は何が違う？",
+    anchor: "そこをピン留め",
+    aiPre:
+      "AI の返答を読んでいて、ある部分をもっと深掘りしたい時、選択肢は二つしかない —— 新しいチャットを開く（文脈が全て失われる）か、同じチャットで聞く（メインが中断され、話題がずれる）。Deeppin なら",
+    aiPost: "して、好きなだけ掘り下げられる。メインスレッドは一言も遮られない。",
     suggestions: [
-      "CAP 定理は実システムでどう選ぶ？",
-      "一貫性と可用性、どちらが重要？",
-      "CAP トレードオフの実例は？",
+      "ピン留めの手順をステップごとに見せて",
+      "サブスレッドはどこまで深くできる？",
+      "マージするとどうなる？",
     ],
-    cardReply:  "CAP は Brewer が提唱：ネットワーク分断（P）が発生すると、一貫性（C）か可用性（A）のどちらかしか選べない。銀行は CP を選び強一貫性を保証、DNS は AP を選び一部ノード停止時も応答を継続……",
-    threadReplyFull: "CAP 定理（Consistency、Availability、Partition tolerance）は 2000 年に Eric Brewer が提唱し、2002 年に Gilbert と Lynch が正式に証明した。\n\n核心結論：ネットワーク分断（P）が避けられないとき、設計者は一貫性（C）と可用性（A）のどちらかを選ばなければならない。\n\n• **CP システム**：HBase、ZooKeeper — 分断時に書き込みを拒否し強一貫性を保証\n• **AP システム**：Cassandra、CouchDB — 分断時も応答を継続、ただし古いデータを返す可能性あり\n• **実践では**：多くのシステムは C と A を動的に調整し、ユースケースに応じて一貫性レベルを変える",
-    existingCard: {
-      label:   "Raft プロトコル",
-      anchor:  "Raft プロトコル",
-      preview: "Leader 選挙 + ログ複製で強一貫性を実現。Paxos より実装が明快……",
-    },
-    nodeRaft:   ["Raft", "プロトコル"],
-    nodeHash:   ["一貫", "ハッシュ"],
-    nodeCap:    ["CAP", "定理"],
-    nodeLeader: "Leader 選挙",
-    nodeMain:   "メインスレッド",
-    questionTitle:     "分散システムはどう設計する？",
-    subThreadsLabel:   "スレッド",
-    overviewLabel:     "概要",
-    listLabel:         "リスト",
-    graphLabel:        "グラフ",
-    mergeLabel:        "統合",
-    mainLabel:         "メイン",
-    hintText:          "テキストを選択してサブスレッドを開く",
-    customPlaceholder: "自分で質問…",
-    continuePrompt:    "CAP 定理についてさらに質問…",
-    suggestionsLabel:  "候補",
-    copyLabel:         "コピー",
-    pinLabel:          "ピン",
-    preparingReply:    "返信を準備中…",
-    captions: {
-      "idle":          "AI の回答が完了。左には既存のピン「Raft プロトコル」があり、本文中の対応語がハイライト表示されている。",
-      "sweeping":      "マウスをドラッグして「CAP 定理」を選択、青色のハイライトがカーソルとともに広がる。",
-      "pin-menu":      "マウスを離すと、選択範囲の上にツールバーが出現：左「コピー」、右「ピン」。",
-      "pin-click":     "「ピン」をクリック、ボタンが発光し選択がロックされる。",
-      "dialog-open":   "ピン作成ダイアログが出現。上部にアンカー原文、AI が候補質問を生成中（ローディング）。",
-      "dialog-ready":  "候補が生成され、3 つのクリック可能な質問が表示される。自分で入力もできる。",
-      "hover-suggest": "マウスを 1 番目の候補にホバー、背景がハイライト。",
-      "click-suggest": "クリックして送信。質問はサブスレッドに入り、ダイアログが閉じる。",
-      "card-in":       "左側にサブスレッドのカードがスライドイン。右の概要図では CAP 定理ノードが他の子問題と同じ階層に追加される。",
-      "streaming":     "AI がサブスレッドで独立に回答、カードにはストリーミング出力が表示される。メインスレッドには影響なし。",
-      "unread":        "回答が完了、カードの角バッジが赤に変わり未読を知らせる。",
-      "card-hover":    "カードにホバーすると、カードから本文中の「CAP 定理」アンカー位置まで曲線が伸びる。",
-      "card-click":    "カードをクリックしてサブスレッドの全体ビューへ。",
-      "thread-view":   "中央カラムがサブスレッド対話に切り替わる：上部にパンくず、下に完全な問答。",
-      "thread-done":   "サブスレッドの内容がすべて表示される。さらに追問するか、パンくずの「メイン」で戻れる。",
-      "back-click":    "パンくずの「メイン」をクリック、ボタンがハイライトし戻りアクションが発動。",
-      "back-main":     "中央がメインスレッドに戻る。すべてのアンカーハイライトは保持。左のカードはそのまま、いつでも再入場できる。",
+    threadReply:
+      "AI の返答から任意のテキストを選択し、「ピン」をクリック —— その場に焦点を絞ったサブスレッドが開く。メインのチャットはそのまま。サブ質問の中でさらにピン留めもでき、深さに制限なし。探索が終わったら、すべてを一つの構造化レポートにマージできる。",
+    deeperAnchor: "深さに制限なし",
+    deeperSubTitle: "深さ無制限",
+    subTitle: "そこをピン留め",
+    questionTitle: "deeppin — 製品紹介",
+    mainCrumb: "メイン",
+    newReplyLabel: "新着",
+    enterLabel: "開く",
+    pinLabel: "ピン",
+    copyLabel: "コピー",
+    suggestionsLabel: "提案",
+    overviewLabel: "概要",
+    graphTabLabel: "グラフ",
+    listTabLabel: "リスト",
+    replyingLabel: "サブスレッドで応答中…",
+    generatingLabel: "生成中…",
+    caption: {
+      idle: "メインが返答を表示、右側がスレッドのグラフ。",
+      sweep: "フレーズをドラッグして選択。",
+      selpop: "選択範囲の上に小さなツールバーが現れる。",
+      dialog: "ピンを押すと自動生成されたフォローアップが 3 つ出る。",
+      pick: "欲しいものを選ぶ。",
+      "underline-appear": "アンカーに顔料色の下線が浮かぶ。",
+      "ai-replying": "AI がサブスレッドで答える —— メインは触れない。",
+      "unread-breathing": "メインに戻ると、既読になるまでアンカーが呼吸する。",
+      popover: "下線にホバーでプレビュー —— タイトル、抜粋、Enter。",
+      enter: "Enter をクリックしてサブスレッドに入る。",
+      "sub-thread": "サブスレッドの完全ビュー。パンくず：メイン › ここをピン留め。",
+      "sub-depth": "サブスレッド内でもさらにピン留めできる —— 入れ子は無制限。",
+      back: "メインをクリックで戻る。呼吸は止まり、既読を示す。",
     },
   },
   ko: {
-    aiText:     "분산 시스템에서 Raft 프로토콜은 리더 선출로 합의를 달성하며, CAP 정리가 정의하는 트레이드오프를 직접 다룬다: 일관성·가용성·분할 내성 중 두 가지만 동시에 보장할 수 있다. 노드 확장·축소 시 데이터 이동은 일관성 해싱으로 최소화된다.",
-    anchor:     "CAP 정리",
-    raftInText: "Raft 프로토콜",
-    hashInText: "일관성 해싱",
+    mainQuestion: "Deeppin은 무엇이 다른가?",
+    anchor: "그 부분을 고정",
+    aiPre:
+      "AI 답변을 읽다가 어느 부분을 더 파고들고 싶을 때, 나쁜 선택지 두 가지 —— 새 대화 시작(맥락 전부 잃음), 같은 대화에서 질문(메인이 끊기고 주제가 흔들림). Deeppin은 당신이",
+    aiPost: "하고 원하는 만큼 깊게 파고들 수 있게 한다. 메인 스레드? 단 한 단어도 방해받지 않는다.",
     suggestions: [
-      "실제 시스템에서 CAP 정리를 어떻게 선택할까?",
-      "일관성과 가용성 중 어느 것이 더 중요한가?",
-      "CAP 트레이드오프의 실제 사례는?",
+      "핀 작동 방식을 단계별로 보여줘",
+      "서브 스레드는 얼마나 깊어질 수 있나?",
+      "모든 걸 병합하면 어떻게 되나?",
     ],
-    cardReply:  "CAP는 Brewer가 제안: 네트워크 분할(P)이 발생하면 일관성(C)과 가용성(A) 중 하나만 선택 가능. 은행 시스템은 강한 일관성을 위해 CP를 선택하고, DNS는 일부 노드 장애에도 응답을 유지하기 위해 AP를 선택한다……",
-    threadReplyFull: "CAP 정리(Consistency, Availability, Partition tolerance)는 2000년 Eric Brewer가 제안했고, 2002년 Gilbert와 Lynch가 정식으로 증명했다.\n\n핵심 결론: 네트워크 분할(P)이 불가피할 때, 설계자는 일관성(C)과 가용성(A) 중 하나를 선택해야 한다.\n\n• **CP 시스템**: HBase, ZooKeeper — 분할 시 쓰기를 거부하여 강한 일관성 보장\n• **AP 시스템**: Cassandra, CouchDB — 분할 중에도 서비스를 계속하지만 오래된 데이터를 반환할 수 있음\n• **실무에서는**: 대부분의 시스템이 C와 A를 동적으로 조정하며, 사용 사례에 따라 일관성 수준을 변경한다",
-    existingCard: {
-      label:   "Raft 프로토콜",
-      anchor:  "Raft 프로토콜",
-      preview: "리더 선출 + 로그 복제로 강한 일관성 구현. Paxos보다 명확한 구현……",
-    },
-    nodeRaft:   ["Raft", "프로토콜"],
-    nodeHash:   ["일관성", "해싱"],
-    nodeCap:    ["CAP", "정리"],
-    nodeLeader: "리더 선출",
-    nodeMain:   "메인 스레드",
-    questionTitle:     "분산 시스템을 어떻게 설계할까?",
-    subThreadsLabel:   "스레드",
-    overviewLabel:     "개요",
-    listLabel:         "목록",
-    graphLabel:        "그래프",
-    mergeLabel:        "병합",
-    mainLabel:         "메인",
-    hintText:          "텍스트를 선택하여 하위 스레드 열기",
-    customPlaceholder: "직접 질문하기…",
-    continuePrompt:    "CAP 정리에 대해 계속 질문…",
-    suggestionsLabel:  "제안",
-    copyLabel:         "복사",
-    pinLabel:          "핀",
-    preparingReply:    "답변 준비 중…",
-    captions: {
-      "idle":          "AI 답변 완료. 왼쪽에 기존 핀 'Raft 프로토콜'이 있고, 본문의 해당 단어가 하이라이트된다.",
-      "sweeping":      "마우스를 드래그하여 'CAP 정리'를 선택, 파란 하이라이트가 커서를 따라 확장된다.",
-      "pin-menu":      "마우스를 놓으면 선택 영역 위에 도구 모음이 나타난다: 왼쪽 '복사', 오른쪽 '핀'.",
-      "pin-click":     "'핀' 버튼을 클릭, 버튼이 빛나고 선택이 잠긴다.",
-      "dialog-open":   "핀 대화 상자 출현. 상단에 앵커 원문, AI가 제안 질문을 생성 중(로딩).",
-      "dialog-ready":  "제안 준비 완료 — 클릭 가능한 후속 질문 세 개가 나타난다. 직접 입력할 수도 있다.",
-      "hover-suggest": "첫 번째 제안 위에 호버, 배경이 하이라이트된다.",
-      "click-suggest": "클릭하여 전송. 질문이 하위 스레드에 들어가고 대화 상자가 닫힌다.",
-      "card-in":       "왼쪽에서 하위 스레드 카드가 슬라이드 인. 오른쪽 개요 그래프에 CAP 정리 노드가 기존 하위 질문과 같은 층에 나타난다.",
-      "streaming":     "AI가 하위 스레드에서 독립적으로 답변하고, 카드는 스트리밍 출력을 표시한다. 메인 스레드는 영향받지 않는다.",
-      "unread":        "답변 완료, 카드 배지가 빨간색으로 바뀌어 읽지 않은 내용을 알린다.",
-      "card-hover":    "카드 위에 호버하면, 카드에서 본문의 'CAP 정리' 앵커 위치까지 곡선이 뻗는다.",
-      "card-click":    "카드를 클릭하여 전체 하위 스레드 뷰로 진입.",
-      "thread-view":   "중앙 열이 하위 스레드 대화로 전환된다: 상단 브레드크럼, 하단 전체 문답.",
-      "thread-done":   "하위 스레드 내용이 모두 보인다. 추가 질문하거나 브레드크럼의 '메인'을 클릭해 돌아갈 수 있다.",
-      "back-click":    "브레드크럼 '메인' 클릭 — 버튼이 하이라이트되고 복귀 동작이 촉발된다.",
-      "back-main":     "중앙이 메인 스레드로 슬라이드 백. 모든 앵커 하이라이트가 유지된다. 카드는 남아 있어 언제든 다시 들어갈 수 있다.",
+    threadReply:
+      "AI 답변에서 아무 텍스트나 선택하고 '핀'을 클릭 —— 집중된 서브 스레드가 그 자리에 열린다. 메인 대화는 그대로. 서브 질문 안에서 다시 핀 가능하고 깊이 제한 없다. 다 탐색한 뒤 모든 걸 하나의 구조화된 보고서로 병합하면 끝.",
+    deeperAnchor: "깊이 제한 없다",
+    deeperSubTitle: "깊이 무제한",
+    subTitle: "그 부분을 고정",
+    questionTitle: "deeppin — 제품 소개",
+    mainCrumb: "메인",
+    newReplyLabel: "새글",
+    enterLabel: "열기",
+    pinLabel: "핀",
+    copyLabel: "복사",
+    suggestionsLabel: "제안",
+    overviewLabel: "개요",
+    graphTabLabel: "그래프",
+    listTabLabel: "목록",
+    replyingLabel: "서브 스레드에서 답변 중…",
+    generatingLabel: "생성 중…",
+    caption: {
+      idle: "메인이 답변을 표시하고 오른쪽 레일이 스레드 그래프를 보여준다.",
+      sweep: "구절을 가로질러 드래그해 선택.",
+      selpop: "선택 영역 위에 작은 도구 모음이 나타남.",
+      dialog: "핀을 누르면 자동 생성된 후속 질문 3개가 나온다.",
+      pick: "원하는 걸 선택.",
+      "underline-appear": "앵커에 안료색 밑줄이 떠오른다.",
+      "ai-replying": "AI가 서브 스레드에서 답변 —— 메인은 건드리지 않음.",
+      "unread-breathing": "메인에 돌아오면 앵커가 읽기 전까지 호흡한다.",
+      popover: "밑줄에 호버하면 미리보기 —— 제목, 발췌, Enter.",
+      enter: "Enter 클릭으로 서브 스레드 진입.",
+      "sub-thread": "서브 스레드 전체 뷰. 브레드크럼: 메인 › 그 부분을 고정.",
+      "sub-depth": "서브 스레드 안에서 다시 핀 —— 중첩 깊이 제한 없음.",
+      back: "메인 클릭으로 돌아가기. 호흡 멈춤 —— 읽음 표시.",
     },
   },
   es: {
-    aiText:     "En los sistemas distribuidos, el protocolo Raft usa la elección de líder para lograr consenso, abordando directamente el compromiso definido por el teorema CAP: solo puedes garantizar dos de tres — consistencia, disponibilidad o tolerancia a particiones. El hashing consistente luego minimiza el movimiento de datos al escalar nodos.",
-    anchor:     "teorema CAP",
-    raftInText: "protocolo Raft",
-    hashInText: "hashing consistente",
+    mainQuestion: "¿Qué hace diferente a Deeppin?",
+    anchor: "ancla ese detalle",
+    aiPre:
+      "Cuando lees una respuesta de IA y quieres profundizar en una parte, tienes dos malas opciones — iniciar un chat nuevo (pierdes todo el contexto) o preguntar en el mismo chat (interrumpes el hilo principal, el tema se desvía). Deeppin te deja",
+    aiPost: " y seguir profundizando — tan profundo como quieras. ¿El hilo principal? Ni una palabra interrumpida.",
     suggestions: [
-      "¿Cómo se negocia el CAP en la práctica?",
-      "¿Qué importa más: consistencia o disponibilidad?",
-      "¿Un ejemplo real de compromiso CAP?",
+      "Muéstrame exactamente cómo funciona anclar",
+      "¿Hasta qué profundidad llegan los sub-hilos?",
+      "¿Qué pasa cuando fusiono todo?",
     ],
-    cardReply:  "CAP, propuesto por Brewer: cuando ocurren particiones (P), debes elegir entre consistencia (C) y disponibilidad (A). Los bancos eligen CP para garantizar transacciones fuertes; DNS elige AP para seguir respondiendo incluso cuando caen nodos…",
-    threadReplyFull: "El teorema CAP (Consistency, Availability, Partition tolerance) fue propuesto por Eric Brewer en 2000 y demostrado formalmente por Gilbert y Lynch en 2002.\n\nConclusión principal: cuando las particiones de red (P) son inevitables, los arquitectos deben elegir entre consistencia (C) y disponibilidad (A).\n\n• **Sistemas CP**: HBase, ZooKeeper — rechazan escrituras durante particiones para garantizar consistencia fuerte\n• **Sistemas AP**: Cassandra, CouchDB — siguen atendiendo durante particiones, pero pueden devolver datos obsoletos\n• **En la práctica**: la mayoría de los sistemas equilibran C y A dinámicamente, ajustando el nivel de consistencia según el caso de uso",
-    existingCard: {
-      label:   "Protocolo Raft",
-      anchor:  "Raft",
-      preview: "Consistencia fuerte vía elección de líder + replicación de log; más simple que Paxos…",
-    },
-    nodeRaft:   ["Raft", "Protocolo"],
-    nodeHash:   ["Hash", "Anillo"],
-    nodeCap:    ["CAP", "Teorema"],
-    nodeLeader: "Elección de líder",
-    nodeMain:   "Hilo principal",
-    questionTitle:     "¿Cómo diseñar un sistema distribuido?",
-    subThreadsLabel:   "Hilos",
-    overviewLabel:     "Resumen",
-    listLabel:         "Lista",
-    graphLabel:        "Grafo",
-    mergeLabel:        "Fusionar",
-    mainLabel:         "Principal",
-    hintText:          "Selecciona texto para abrir un sub-hilo",
-    customPlaceholder: "O pregunta tú…",
-    continuePrompt:    "Seguir preguntando sobre el teorema CAP…",
-    suggestionsLabel:  "Sugerencias",
-    copyLabel:         "Copiar",
-    pinLabel:          "Anclar",
-    preparingReply:    "Preparando respuesta…",
-    captions: {
-      "idle":          "Respuesta de la IA completa. Un anclaje existente 'Protocolo Raft' está a la izquierda, con su ancla resaltada en el hilo principal.",
-      "sweeping":      "Haz clic y arrastra sobre 'teorema CAP' — el resaltado azul se expande con el cursor al seleccionar.",
-      "pin-menu":      "Suelta el ratón. Una barra flotante aparece sobre la selección: 'Copiar' a la izquierda, 'Anclar' a la derecha.",
-      "pin-click":     "Haz clic en 'Anclar' — el botón brilla y la selección queda bloqueada.",
-      "dialog-open":   "Aparece el diálogo de anclaje. El texto ancla se cita arriba; la IA genera preguntas sugeridas (cargando).",
-      "dialog-ready":  "Sugerencias listas — aparecen tres preguntas de seguimiento clicables. También puedes escribir la tuya.",
-      "hover-suggest": "Pasa sobre la primera sugerencia — el fondo se resalta.",
-      "click-suggest": "Haz clic para enviar. La pregunta entra al sub-hilo y el diálogo se cierra.",
-      "card-in":       "Una tarjeta de sub-hilo entra desde la izquierda. En el grafo de resumen, el nodo del teorema CAP aparece junto a las sub-preguntas existentes.",
-      "streaming":     "La IA responde de forma independiente en el sub-hilo. La tarjeta muestra la salida en vivo. El hilo principal no se altera.",
-      "unread":        "Respuesta completa — la insignia de la tarjeta se vuelve roja, señalando contenido no leído.",
-      "card-hover":    "Pasa sobre la tarjeta — una línea curva se extiende de la tarjeta hasta el ancla 'teorema CAP' en el hilo principal.",
-      "card-click":    "Haz clic en la tarjeta para entrar en la vista completa del sub-hilo.",
-      "thread-view":   "La columna central cambia al sub-hilo: navegación de migas arriba, Q&A completa debajo.",
-      "thread-done":   "Contenido completo del sub-hilo visible. Sigue preguntando, o haz clic en 'Principal' en las migas para volver.",
-      "back-click":    "Haz clic en 'Principal' en las migas — el botón se resalta y dispara el regreso.",
-      "back-main":     "El centro vuelve al hilo principal. Todos los resaltados de anclas permanecen. La tarjeta sigue ahí — haz clic cuando quieras para volver a entrar.",
+    threadReply:
+      "Selecciona cualquier texto en una respuesta de IA, haz clic en 'Anclar' — se abre un sub-hilo enfocado allí mismo. El chat principal permanece intacto. Puedes anclar de nuevo dentro de las sub-preguntas, sin límite de profundidad. Cuando termines, fusiona todo en un informe estructurado.",
+    deeperAnchor: "sin límite de profundidad",
+    deeperSubTitle: "sin límite de profundidad",
+    subTitle: "ancla ese detalle",
+    questionTitle: "deeppin — presentación del producto",
+    mainCrumb: "Principal",
+    newReplyLabel: "Nuevo",
+    enterLabel: "Abrir",
+    pinLabel: "Anclar",
+    copyLabel: "Copiar",
+    suggestionsLabel: "sugerencias",
+    overviewLabel: "resumen",
+    graphTabLabel: "grafo",
+    listTabLabel: "lista",
+    replyingLabel: "respondiendo en sub-hilo…",
+    generatingLabel: "generando…",
+    caption: {
+      idle: "El hilo principal muestra la respuesta. La barra derecha sigue el grafo de hilos.",
+      sweep: "Arrastra sobre una frase para seleccionarla.",
+      selpop: "Una barra de herramientas compacta aparece sobre la selección.",
+      dialog: "Anclar abre un diálogo con tres preguntas de seguimiento generadas.",
+      pick: "Elige la que quieras.",
+      "underline-appear": "El ancla se subraya con su color pigmentado.",
+      "ai-replying": "IA responde en el sub-hilo — el principal queda intacto.",
+      "unread-breathing": "De vuelta al principal, el ancla respira hasta que vea la respuesta.",
+      popover: "Pasa el ratón por el subrayado — título, extracto, Abrir.",
+      enter: "Haz clic en Abrir para saltar al sub-hilo.",
+      "sub-thread": "Vista completa del sub-hilo. Miga: Principal › ancla ese detalle.",
+      "sub-depth": "Dentro del sub-hilo puedes anclar otra vez — anidamiento sin límite.",
+      back: "Haz clic en Principal para volver. La respiración para — respuesta vista.",
     },
   },
   fr: {
-    aiText:     "Dans les systèmes distribués, le protocole Raft utilise l'élection d'un leader pour atteindre le consensus, ce qui traite directement le compromis défini par le théorème CAP : vous ne pouvez garantir que deux des trois — cohérence, disponibilité ou tolérance au partitionnement. Le hachage cohérent minimise ensuite le déplacement des données lors du passage à l'échelle.",
-    anchor:     "théorème CAP",
-    raftInText: "protocole Raft",
-    hashInText: "hachage cohérent",
+    mainQuestion: "Qu'est-ce qui rend Deeppin différent ?",
+    anchor: "épingle ce détail",
+    aiPre:
+      "En lisant une réponse d'IA et en voulant creuser une partie, tu as deux mauvais choix — ouvrir un nouveau chat (tu perds tout le contexte) ou demander dans le même chat (tu coupes le fil principal, le sujet dérive). Deeppin te laisse",
+    aiPost: " et continuer à creuser — aussi loin que tu veux. Le fil principal ? Pas un mot interrompu.",
     suggestions: [
-      "Comment arbitrer CAP en pratique ?",
-      "Qu'est-ce qui compte le plus : cohérence ou disponibilité ?",
-      "Un exemple concret de compromis CAP ?",
+      "Montre-moi exactement comment fonctionne l'épinglage",
+      "Jusqu'à quelle profondeur les sous-fils vont-ils ?",
+      "Que se passe-t-il quand je fusionne tout ?",
     ],
-    cardReply:  "CAP, proposé par Brewer : en cas de partition (P), vous devez choisir entre cohérence (C) et disponibilité (A). Les banques choisissent CP pour des garanties transactionnelles fortes ; le DNS choisit AP pour continuer à répondre même quand des nœuds tombent…",
-    threadReplyFull: "Le théorème CAP (Consistency, Availability, Partition tolerance) a été proposé par Eric Brewer en 2000 et formellement prouvé par Gilbert et Lynch en 2002.\n\nConclusion principale : lorsque les partitions réseau (P) sont inévitables, les architectes doivent choisir entre cohérence (C) et disponibilité (A).\n\n• **Systèmes CP** : HBase, ZooKeeper — refusent les écritures pendant les partitions pour garantir une cohérence forte\n• **Systèmes AP** : Cassandra, CouchDB — continuent à servir pendant les partitions, mais peuvent renvoyer des données obsolètes\n• **En pratique** : la plupart des systèmes équilibrent dynamiquement C et A, en ajustant le niveau de cohérence selon l'usage",
-    existingCard: {
-      label:   "Protocole Raft",
-      anchor:  "Raft",
-      preview: "Cohérence forte via élection de leader + réplication de journal ; plus simple que Paxos…",
-    },
-    nodeRaft:   ["Raft", "Protocole"],
-    nodeHash:   ["Hachage", "Anneau"],
-    nodeCap:    ["CAP", "Théorème"],
-    nodeLeader: "Élection du leader",
-    nodeMain:   "Fil principal",
-    questionTitle:     "Comment concevoir un système distribué ?",
-    subThreadsLabel:   "Fils",
-    overviewLabel:     "Vue d'ensemble",
-    listLabel:         "Liste",
-    graphLabel:        "Graphe",
-    mergeLabel:        "Fusionner",
-    mainLabel:         "Principal",
-    hintText:          "Sélectionnez du texte pour ouvrir un sous-fil",
-    customPlaceholder: "Ou posez votre propre question…",
-    continuePrompt:    "Continuer sur le théorème CAP…",
-    suggestionsLabel:  "Suggestions",
-    copyLabel:         "Copier",
-    pinLabel:          "Épingler",
-    preparingReply:    "Préparation de la réponse…",
-    captions: {
-      "idle":          "Réponse de l'IA terminée. Une épingle existante 'Protocole Raft' est à gauche, avec son ancre surlignée dans le fil principal.",
-      "sweeping":      "Cliquez et faites glisser sur 'théorème CAP' — le surlignage bleu s'étend avec le curseur.",
-      "pin-menu":      "Relâchez la souris. Une barre flottante apparaît au-dessus de la sélection : 'Copier' à gauche, 'Épingler' à droite.",
-      "pin-click":     "Cliquez sur 'Épingler' — le bouton s'illumine et la sélection est verrouillée.",
-      "dialog-open":   "Le dialogue d'épinglage apparaît. Le texte d'ancre est cité en haut ; l'IA génère des suggestions (chargement).",
-      "dialog-ready":  "Suggestions prêtes — trois questions cliquables apparaissent. Vous pouvez aussi saisir la vôtre.",
-      "hover-suggest": "Survolez la première suggestion — le fond se surligne.",
-      "click-suggest": "Cliquez pour envoyer. La question entre dans le sous-fil et le dialogue se ferme.",
-      "card-in":       "Une carte de sous-fil glisse depuis la gauche. Dans le graphe, le nœud du théorème CAP apparaît à côté des sous-questions existantes.",
-      "streaming":     "L'IA répond indépendamment dans le sous-fil. La carte montre la sortie en direct. Le fil principal n'est pas affecté.",
-      "unread":        "Réponse terminée — le badge de la carte devient rouge, signalant du contenu non lu.",
-      "card-hover":    "Survolez la carte — une courbe s'étend de la carte jusqu'à l'ancre 'théorème CAP' dans le fil principal.",
-      "card-click":    "Cliquez sur la carte pour entrer dans la vue complète du sous-fil.",
-      "thread-view":   "La colonne centrale bascule sur le sous-fil : fil d'Ariane en haut, Q&R complète en dessous.",
-      "thread-done":   "Contenu du sous-fil entièrement visible. Continuez à poser des questions, ou cliquez sur 'Principal' dans le fil d'Ariane pour revenir.",
-      "back-click":    "Cliquez sur 'Principal' dans le fil d'Ariane — le bouton se surligne et déclenche le retour.",
-      "back-main":     "Le centre revient au fil principal. Tous les surlignages d'ancre restent. La carte reste — cliquez à tout moment pour y revenir.",
+    threadReply:
+      "Sélectionne n'importe quel texte dans une réponse d'IA, clique sur 'Épingler' — un sous-fil ciblé s'ouvre sur place. Le chat principal reste intact. Tu peux épingler à nouveau dans les sous-questions — sans limite de profondeur. Quand c'est fini, fusionne tout en un rapport structuré.",
+    deeperAnchor: "sans limite de profondeur",
+    deeperSubTitle: "profondeur illimitée",
+    subTitle: "épingle ce détail",
+    questionTitle: "deeppin — présentation du produit",
+    mainCrumb: "Principal",
+    newReplyLabel: "Nouveau",
+    enterLabel: "Ouvrir",
+    pinLabel: "Épingler",
+    copyLabel: "Copier",
+    suggestionsLabel: "suggestions",
+    overviewLabel: "vue d'ensemble",
+    graphTabLabel: "graphe",
+    listTabLabel: "liste",
+    replyingLabel: "réponse dans le sous-fil…",
+    generatingLabel: "génération…",
+    caption: {
+      idle: "Le fil principal affiche la réponse. La barre droite suit le graphe des fils.",
+      sweep: "Glisse sur une phrase pour la sélectionner.",
+      selpop: "Une barre d'outils compacte apparaît au-dessus de la sélection.",
+      dialog: "Épingler ouvre une boîte avec trois suivis générés.",
+      pick: "Choisis celui que tu veux.",
+      "underline-appear": "L'ancre se souligne dans sa couleur de pigment.",
+      "ai-replying": "L'IA répond dans le sous-fil — le principal reste intact.",
+      "unread-breathing": "De retour dans le principal, l'ancre respire jusqu'à la lecture.",
+      popover: "Survole le soulignement pour un aperçu — titre, extrait, Ouvrir.",
+      enter: "Clique sur Ouvrir pour entrer dans le sous-fil.",
+      "sub-thread": "Vue complète du sous-fil. Fil d'ariane : Principal › épingle ce détail.",
+      "sub-depth": "Dans un sous-fil, tu peux épingler à nouveau — imbrication illimitée.",
+      back: "Clique sur Principal pour revenir. La respiration s'arrête — réponse vue.",
     },
   },
   de: {
-    aiText:     "In verteilten Systemen verwendet das Raft-Protokoll eine Leader-Wahl zur Konsensbildung und adressiert direkt den vom CAP-Theorem definierten Kompromiss: Sie können nur zwei von drei Eigenschaften garantieren — Konsistenz, Verfügbarkeit oder Partitionstoleranz. Konsistentes Hashing minimiert anschließend die Datenbewegung beim Skalieren von Knoten.",
-    anchor:     "CAP-Theorem",
-    raftInText: "Raft-Protokoll",
-    hashInText: "Konsistentes Hashing",
+    mainQuestion: "Was macht Deeppin anders?",
+    anchor: "Pin dieses Detail",
+    aiPre:
+      "Wenn du eine KI-Antwort liest und tiefer in einen Teil eintauchen willst, hast du zwei schlechte Optionen — neuen Chat starten (gesamter Kontext weg) oder im selben Chat fragen (Hauptthread unterbrochen, Thema driftet). Mit Deeppin kannst du",
+    aiPost: " und so tief weitergraben, wie du willst. Der Hauptthread? Kein Wort unterbrochen.",
     suggestions: [
-      "Wie wägt man CAP in der Praxis ab?",
-      "Was ist wichtiger: Konsistenz oder Verfügbarkeit?",
-      "Ein reales Beispiel für einen CAP-Kompromiss?",
+      "Zeig mir Schritt für Schritt, wie Anheften funktioniert",
+      "Wie tief können Sub-Threads gehen?",
+      "Was passiert, wenn ich alles zusammenführe?",
     ],
-    cardReply:  "CAP, vorgeschlagen von Brewer: Tritt eine Partition (P) auf, muss man zwischen Konsistenz (C) und Verfügbarkeit (A) wählen. Banken wählen CP für starke Transaktionsgarantien; DNS wählt AP, um auch bei Knotenausfällen weiter zu antworten…",
-    threadReplyFull: "Das CAP-Theorem (Consistency, Availability, Partition tolerance) wurde 2000 von Eric Brewer vorgeschlagen und 2002 von Gilbert und Lynch formal bewiesen.\n\nKernaussage: Wenn Netzwerkpartitionen (P) unvermeidlich sind, müssen Architekten zwischen Konsistenz (C) und Verfügbarkeit (A) wählen.\n\n• **CP-Systeme**: HBase, ZooKeeper — lehnen Schreibvorgänge bei Partitionen ab, um starke Konsistenz zu garantieren\n• **AP-Systeme**: Cassandra, CouchDB — bedienen weiter während Partitionen, können aber veraltete Daten liefern\n• **In der Praxis**: Die meisten Systeme balancieren C und A dynamisch und passen die Konsistenzstufe je Anwendungsfall an",
-    existingCard: {
-      label:   "Raft-Protokoll",
-      anchor:  "Raft",
-      preview: "Starke Konsistenz durch Leader-Wahl + Log-Replikation; einfacher als Paxos…",
-    },
-    nodeRaft:   ["Raft", "Protokoll"],
-    nodeHash:   ["Hash", "Ring"],
-    nodeCap:    ["CAP", "Theorem"],
-    nodeLeader: "Leader-Wahl",
-    nodeMain:   "Hauptthread",
-    questionTitle:     "Wie entwirft man ein verteiltes System?",
-    subThreadsLabel:   "Threads",
-    overviewLabel:     "Übersicht",
-    listLabel:         "Liste",
-    graphLabel:        "Graph",
-    mergeLabel:        "Zusammenführen",
-    mainLabel:         "Haupt",
-    hintText:          "Text markieren, um Unter-Thread zu öffnen",
-    customPlaceholder: "Oder eigene Frage…",
-    continuePrompt:    "Weiter zum CAP-Theorem fragen…",
-    suggestionsLabel:  "Vorschläge",
-    copyLabel:         "Kopieren",
-    pinLabel:          "Anheften",
-    preparingReply:    "Antwort wird vorbereitet…",
-    captions: {
-      "idle":          "KI-Antwort abgeschlossen. Eine vorhandene Pin 'Raft-Protokoll' ist links, mit markiertem Anker im Hauptthread.",
-      "sweeping":      "Klicken und über 'CAP-Theorem' ziehen — die blaue Markierung erweitert sich mit dem Cursor.",
-      "pin-menu":      "Maus loslassen. Eine schwebende Leiste erscheint über der Auswahl: 'Kopieren' links, 'Anheften' rechts.",
-      "pin-click":     "'Anheften' klicken — der Button leuchtet und die Auswahl wird fixiert.",
-      "dialog-open":   "Pin-Dialog erscheint. Ankertext oben zitiert; KI erzeugt Folgefragen (lädt).",
-      "dialog-ready":  "Vorschläge bereit — drei klickbare Folgefragen erscheinen. Eigene Frage ist auch möglich.",
-      "hover-suggest": "Über den ersten Vorschlag fahren — Hintergrund wird hervorgehoben.",
-      "click-suggest": "Klicken zum Senden. Die Frage wandert in den Unter-Thread, der Dialog schließt.",
-      "card-in":       "Eine Unter-Thread-Karte gleitet von links herein. Im Übersichtsgraphen erscheint der CAP-Theorem-Knoten neben bestehenden Unterfragen.",
-      "streaming":     "KI antwortet unabhängig im Unter-Thread. Die Karte zeigt Live-Ausgabe. Der Hauptthread bleibt unberührt.",
-      "unread":        "Antwort fertig — das Karten-Badge wird rot und signalisiert ungelesenen Inhalt.",
-      "card-hover":    "Über die Karte fahren — eine Kurve zieht von der Karte zum 'CAP-Theorem'-Anker im Hauptthread.",
-      "card-click":    "Karte klicken, um die vollständige Unter-Thread-Ansicht zu öffnen.",
-      "thread-view":   "Die Mittelspalte wechselt in den Unter-Thread: Breadcrumb oben, komplette Q&A unten.",
-      "thread-done":   "Unter-Thread vollständig sichtbar. Weiter fragen, oder auf 'Haupt' im Breadcrumb klicken, um zurückzukehren.",
-      "back-click":    "'Haupt' im Breadcrumb klicken — Button leuchtet, Rücksprung wird ausgelöst.",
-      "back-main":     "Die Mitte gleitet zurück zum Hauptthread. Alle Anker-Markierungen bleiben. Die Karte bleibt — jederzeit wieder aufrufbar.",
+    threadReply:
+      "Markiere beliebigen Text in einer KI-Antwort, klicke 'Anheften' — ein fokussierter Sub-Thread öffnet sich an Ort und Stelle. Der Haupt-Chat bleibt unberührt. Du kannst innerhalb von Unterfragen erneut anheften — keine Tiefenbegrenzung. Zum Schluss alles in einen strukturierten Bericht zusammenführen.",
+    deeperAnchor: "keine Tiefenbegrenzung",
+    deeperSubTitle: "keine Tiefenbegrenzung",
+    subTitle: "Pin dieses Detail",
+    questionTitle: "deeppin — Produktvorstellung",
+    mainCrumb: "Haupt",
+    newReplyLabel: "Neu",
+    enterLabel: "Öffnen",
+    pinLabel: "Anheften",
+    copyLabel: "Kopieren",
+    suggestionsLabel: "Vorschläge",
+    overviewLabel: "Übersicht",
+    graphTabLabel: "Graph",
+    listTabLabel: "Liste",
+    replyingLabel: "antwortet im Sub-Thread…",
+    generatingLabel: "wird generiert…",
+    caption: {
+      idle: "Haupt-Thread zeigt die Antwort. Rechts läuft der Thread-Graph mit.",
+      sweep: "Ziehe über einen Satz, um ihn zu markieren.",
+      selpop: "Eine kompakte Toolbar erscheint über der Auswahl.",
+      dialog: "Anheften öffnet einen Dialog mit drei generierten Folgefragen.",
+      pick: "Wähle die gewünschte.",
+      "underline-appear": "Der Anker bekommt eine Unterstreichung in seiner Pigmentfarbe.",
+      "ai-replying": "KI antwortet im Sub-Thread — Haupt bleibt unberührt.",
+      "unread-breathing": "Zurück im Haupt, atmet der Anker bis zur Lektüre.",
+      popover: "Fahre über die Unterstreichung für eine Vorschau — Titel, Ausschnitt, Öffnen.",
+      enter: "Klicke auf Öffnen, um in den Sub-Thread zu springen.",
+      "sub-thread": "Vollständige Sub-Thread-Ansicht. Breadcrumb: Haupt › Pin dieses Detail.",
+      "sub-depth": "Im Sub-Thread kannst du erneut anheften — unbegrenzt verschachtelt.",
+      back: "Klicke auf Haupt, um zurückzukehren. Atmen stoppt — Antwort gesehen.",
     },
   },
   pt: {
-    aiText:     "Em sistemas distribuídos, o protocolo Raft usa eleição de líder para consenso, lidando diretamente com o compromisso definido pelo teorema CAP: você só pode garantir dois de três — consistência, disponibilidade ou tolerância a partições. O hashing consistente então minimiza a movimentação de dados ao escalar nós.",
-    anchor:     "teorema CAP",
-    raftInText: "protocolo Raft",
-    hashInText: "hashing consistente",
+    mainQuestion: "O que faz o Deeppin diferente?",
+    anchor: "fixe esse detalhe",
+    aiPre:
+      "Quando você lê uma resposta de IA e quer aprofundar uma parte, tem duas opções ruins — começar um novo chat (perde todo o contexto) ou perguntar no mesmo chat (interrompe o tópico principal, o assunto desvia). O Deeppin permite que você",
+    aiPost: " e continue cavando — tão fundo quanto quiser. O tópico principal? Nenhuma palavra interrompida.",
     suggestions: [
-      "Como negociar CAP na prática?",
-      "O que importa mais: consistência ou disponibilidade?",
-      "Um exemplo real de trade-off CAP?",
+      "Mostre-me exatamente como fixar funciona",
+      "Quão profundos os sub-tópicos podem ir?",
+      "O que acontece quando eu mesclo tudo?",
     ],
-    cardReply:  "CAP, proposto por Brewer: quando ocorrem partições (P), você deve escolher entre consistência (C) e disponibilidade (A). Bancos escolhem CP para garantias fortes de transação; DNS escolhe AP para continuar respondendo mesmo com nós fora do ar…",
-    threadReplyFull: "O teorema CAP (Consistency, Availability, Partition tolerance) foi proposto por Eric Brewer em 2000 e formalmente provado por Gilbert e Lynch em 2002.\n\nConclusão central: quando partições de rede (P) são inevitáveis, arquitetos devem escolher entre consistência (C) e disponibilidade (A).\n\n• **Sistemas CP**: HBase, ZooKeeper — rejeitam escritas durante partições para garantir consistência forte\n• **Sistemas AP**: Cassandra, CouchDB — continuam atendendo durante partições, mas podem retornar dados desatualizados\n• **Na prática**: a maioria dos sistemas equilibra C e A dinamicamente, ajustando o nível de consistência por caso de uso",
-    existingCard: {
-      label:   "Protocolo Raft",
-      anchor:  "Raft",
-      preview: "Consistência forte via eleição de líder + replicação de log; mais simples que Paxos…",
-    },
-    nodeRaft:   ["Raft", "Protocolo"],
-    nodeHash:   ["Hash", "Anel"],
-    nodeCap:    ["CAP", "Teorema"],
-    nodeLeader: "Eleição de líder",
-    nodeMain:   "Thread principal",
-    questionTitle:     "Como projetar um sistema distribuído?",
-    subThreadsLabel:   "Threads",
-    overviewLabel:     "Visão geral",
-    listLabel:         "Lista",
-    graphLabel:        "Grafo",
-    mergeLabel:        "Mesclar",
-    mainLabel:         "Principal",
-    hintText:          "Selecione qualquer texto para abrir um sub-thread",
-    customPlaceholder: "Ou pergunte por conta própria…",
-    continuePrompt:    "Continuar perguntando sobre o teorema CAP…",
-    suggestionsLabel:  "Sugestões",
-    copyLabel:         "Copiar",
-    pinLabel:          "Fixar",
-    preparingReply:    "Preparando resposta…",
-    captions: {
-      "idle":          "Resposta da IA concluída. Um pin existente 'Protocolo Raft' está à esquerda, com sua âncora destacada no thread principal.",
-      "sweeping":      "Clique e arraste sobre 'teorema CAP' — o destaque azul se expande junto com o cursor.",
-      "pin-menu":      "Solte o mouse. Uma barra flutuante aparece acima da seleção: 'Copiar' à esquerda, 'Fixar' à direita.",
-      "pin-click":     "Clique em 'Fixar' — o botão brilha e a seleção é travada.",
-      "dialog-open":   "O diálogo de fixação aparece. O texto âncora é citado no topo; a IA está gerando sugestões (carregando).",
-      "dialog-ready":  "Sugestões prontas — três perguntas clicáveis aparecem. Você também pode digitar a sua.",
-      "hover-suggest": "Passe o mouse sobre a primeira sugestão — o fundo destaca.",
-      "click-suggest": "Clique para enviar. A pergunta entra no sub-thread e o diálogo fecha.",
-      "card-in":       "Um card de sub-thread desliza da esquerda. No grafo de visão geral, o nó do teorema CAP surge junto às sub-perguntas existentes.",
-      "streaming":     "A IA responde independentemente no sub-thread. O card mostra a saída ao vivo. O thread principal não é afetado.",
-      "unread":        "Resposta concluída — o badge do card fica vermelho, sinalizando conteúdo não lido.",
-      "card-hover":    "Passe o mouse sobre o card — uma linha curva se estende do card até a âncora 'teorema CAP' no thread principal.",
-      "card-click":    "Clique no card para entrar na visão completa do sub-thread.",
-      "thread-view":   "A coluna central troca para o sub-thread: migalhas no topo, Q&A completo abaixo.",
-      "thread-done":   "Conteúdo do sub-thread totalmente visível. Continue perguntando ou clique em 'Principal' nas migalhas para voltar.",
-      "back-click":    "Clique em 'Principal' nas migalhas — o botão destaca e dispara o retorno.",
-      "back-main":     "O centro volta para o thread principal. Todos os destaques de âncora permanecem. O card continua — clique a qualquer momento para reentrar.",
+    threadReply:
+      "Selecione qualquer texto numa resposta da IA, clique em 'Fixar' — um sub-tópico focado abre ali mesmo. O chat principal permanece intacto. Você pode fixar de novo dentro de sub-perguntas, sem limite de profundidade. Quando terminar, mescle tudo num relatório estruturado.",
+    deeperAnchor: "sem limite de profundidade",
+    deeperSubTitle: "sem limite de profundidade",
+    subTitle: "fixe esse detalhe",
+    questionTitle: "deeppin — apresentação do produto",
+    mainCrumb: "Principal",
+    newReplyLabel: "Novo",
+    enterLabel: "Abrir",
+    pinLabel: "Fixar",
+    copyLabel: "Copiar",
+    suggestionsLabel: "sugestões",
+    overviewLabel: "visão geral",
+    graphTabLabel: "grafo",
+    listTabLabel: "lista",
+    replyingLabel: "respondendo no sub-tópico…",
+    generatingLabel: "gerando…",
+    caption: {
+      idle: "O tópico principal mostra a resposta. A barra direita acompanha o grafo.",
+      sweep: "Arraste sobre uma frase para selecioná-la.",
+      selpop: "Uma barra de ferramentas compacta aparece sobre a seleção.",
+      dialog: "Fixar abre um diálogo com três perguntas de seguimento geradas.",
+      pick: "Escolha a que quiser.",
+      "underline-appear": "A âncora ganha um sublinhado na sua cor de pigmento.",
+      "ai-replying": "IA responde no sub-tópico — o principal fica intacto.",
+      "unread-breathing": "Voltando ao principal, a âncora respira até você ler.",
+      popover: "Passe o mouse no sublinhado para uma prévia — título, trecho, Abrir.",
+      enter: "Clique em Abrir para entrar no sub-tópico.",
+      "sub-thread": "Vista completa do sub-tópico. Navegação: Principal › fixe esse detalhe.",
+      "sub-depth": "Dentro do sub-tópico você pode fixar de novo — aninhamento sem limite.",
+      back: "Clique em Principal para voltar. A respiração para — lido.",
     },
   },
   ru: {
-    aiText:     "В распределённых системах протокол Raft использует выбор лидера для достижения консенсуса, напрямую решая компромисс, который формулирует теорема CAP: одновременно можно гарантировать только два свойства из трёх — согласованность, доступность или устойчивость к разделению. Согласованное хеширование затем минимизирует перемещение данных при масштабировании узлов.",
-    anchor:     "теорема CAP",
-    raftInText: "протокол Raft",
-    hashInText: "Согласованное хеширование",
+    mainQuestion: "Чем Deeppin отличается?",
+    anchor: "закрепите эту деталь",
+    aiPre:
+      "Когда вы читаете ответ ИИ и хотите углубиться в один момент, есть два плохих варианта — начать новый чат (потеряете весь контекст) или спросить в этом же (прервёте основную ветку, тема уйдёт в сторону). Deeppin позволяет вам",
+    aiPost: " и копать глубже — как угодно глубоко. Основная ветка? Ни одно слово не прервано.",
     suggestions: [
-      "Как выбирать CAP на практике?",
-      "Что важнее: согласованность или доступность?",
-      "Реальный пример компромисса CAP?",
+      "Покажи пошагово, как работает закрепление",
+      "Насколько глубоко могут идти подветки?",
+      "Что происходит, когда я объединяю всё?",
     ],
-    cardReply:  "CAP, предложенная Брюером: при возникновении разделения (P) необходимо выбрать между согласованностью (C) и доступностью (A). Банки выбирают CP для строгих транзакционных гарантий; DNS выбирает AP, чтобы продолжать отвечать даже при падении узлов…",
-    threadReplyFull: "Теорема CAP (Consistency, Availability, Partition tolerance) была предложена Эриком Брюером в 2000 году и формально доказана Гилбертом и Линчем в 2002 году.\n\nКлючевой вывод: когда сетевые разделения (P) неизбежны, архитекторы должны выбирать между согласованностью (C) и доступностью (A).\n\n• **CP-системы**: HBase, ZooKeeper — отклоняют записи при разделении, чтобы гарантировать строгую согласованность\n• **AP-системы**: Cassandra, CouchDB — продолжают обслуживать запросы при разделении, но могут возвращать устаревшие данные\n• **На практике**: большинство систем динамически балансируют C и A, подстраивая уровень согласованности под конкретный сценарий",
-    existingCard: {
-      label:   "Протокол Raft",
-      anchor:  "Raft",
-      preview: "Строгая согласованность через выбор лидера + репликацию журнала; проще Paxos…",
-    },
-    nodeRaft:   ["Raft", "Протокол"],
-    nodeHash:   ["Hash", "Кольцо"],
-    nodeCap:    ["CAP", "Теорема"],
-    nodeLeader: "Выбор лидера",
-    nodeMain:   "Главная ветка",
-    questionTitle:     "Как спроектировать распределённую систему?",
-    subThreadsLabel:   "Ветки",
-    overviewLabel:     "Обзор",
-    listLabel:         "Список",
-    graphLabel:        "Граф",
-    mergeLabel:        "Объединить",
-    mainLabel:         "Главная",
-    hintText:          "Выделите текст, чтобы открыть подветку",
-    customPlaceholder: "Или задайте свой вопрос…",
-    continuePrompt:    "Продолжить обсуждение теоремы CAP…",
-    suggestionsLabel:  "Варианты",
-    copyLabel:         "Копировать",
-    pinLabel:          "Закрепить",
-    preparingReply:    "Готовим ответ…",
-    captions: {
-      "idle":          "Ответ ИИ завершён. Слева уже есть булавка «Протокол Raft», соответствующее слово в главной ветке подсвечено.",
-      "sweeping":      "Нажмите и протяните по «теорема CAP» — синяя подсветка растёт вместе с курсором.",
-      "pin-menu":      "Отпустите мышь. Над выделением появляется панель: «Копировать» слева, «Закрепить» справа.",
-      "pin-click":     "Нажмите «Закрепить» — кнопка засветится, выделение зафиксируется.",
-      "dialog-open":   "Открывается диалог закрепления. Текст якоря цитируется сверху; ИИ генерирует подсказки (загрузка).",
-      "dialog-ready":  "Подсказки готовы — появляются три кликабельных вопроса. Можно ввести свой.",
-      "hover-suggest": "Наведите на первую подсказку — фон подсвечивается.",
-      "click-suggest": "Кликните, чтобы отправить. Вопрос уходит в подветку, диалог закрывается.",
-      "card-in":       "Карточка подветки вылетает слева. В обзорном графе узел «теорема CAP» появляется на одном уровне с другими подвопросами.",
-      "streaming":     "ИИ отвечает в подветке независимо. Карточка показывает потоковый вывод. Главная ветка не тронута.",
-      "unread":        "Ответ завершён — бейдж карточки становится красным, сигнализируя о непрочитанном.",
-      "card-hover":    "Наведите на карточку — кривая линия тянется от карточки к якорю «теорема CAP» в главной ветке.",
-      "card-click":    "Кликните по карточке, чтобы войти в полный вид подветки.",
-      "thread-view":   "Центральная колонка переключается на подветку: хлебные крошки сверху, полный диалог снизу.",
-      "thread-done":   "Подветка полностью видна. Продолжайте задавать вопросы или кликните «Главная» в крошках, чтобы вернуться.",
-      "back-click":    "Клик по «Главная» в крошках — кнопка подсвечивается, срабатывает возврат.",
-      "back-main":     "Центр возвращается к главной ветке. Все подсветки якорей сохраняются. Карточка на месте — в любой момент можно войти снова.",
+    threadReply:
+      "Выделите любой текст в ответе ИИ, нажмите «Закрепить» — сфокусированная подветка откроется тут же. Основной чат остаётся нетронутым. Можно закреплять внутри подвопросов — без ограничений по глубине. Когда закончите, объедините всё в один структурированный отчёт.",
+    deeperAnchor: "без ограничений по глубине",
+    deeperSubTitle: "без ограничений по глубине",
+    subTitle: "закрепите эту деталь",
+    questionTitle: "deeppin — презентация продукта",
+    mainCrumb: "Главная",
+    newReplyLabel: "Новое",
+    enterLabel: "Открыть",
+    pinLabel: "Закрепить",
+    copyLabel: "Копировать",
+    suggestionsLabel: "подсказки",
+    overviewLabel: "обзор",
+    graphTabLabel: "граф",
+    listTabLabel: "список",
+    replyingLabel: "отвечает в подветке…",
+    generatingLabel: "генерация…",
+    caption: {
+      idle: "Главная ветка показывает ответ. Правая панель следит за графом.",
+      sweep: "Проведите по фразе для выделения.",
+      selpop: "Над выделением появляется компактная панель.",
+      dialog: "Закрепить открывает диалог с тремя сгенерированными подсказками.",
+      pick: "Выберите нужную.",
+      "underline-appear": "Якорь получает подчёркивание пигментного цвета.",
+      "ai-replying": "ИИ отвечает в подветке — главная не трогается.",
+      "unread-breathing": "Вернувшись, якорь «дышит» пока не прочитан.",
+      popover: "Наведите на подчёркивание для предпросмотра — заголовок, фрагмент, Открыть.",
+      enter: "Щёлкните «Открыть», чтобы войти в подветку.",
+      "sub-thread": "Полный вид подветки. Хлебные крошки: Главная › закрепите эту деталь.",
+      "sub-depth": "Внутри подветки можно закреплять ещё раз — вложенность без ограничений.",
+      back: "Щёлкните «Главная», чтобы вернуться. Дыхание прекращается — прочитано.",
     },
   },
 };
 
-// ── 组件 ──────────────────────────────────────────────────────────────────────
+// ── Component ────────────────────────────────────────────────────────────
 export default function PinDemo() {
-  const lang    = useLangStore((s) => s.lang);
-  const content = CONTENT[lang];
+  const lang = useLangStore((s) => s.lang);
+  const c = CONTENT[lang] ?? CONTENT.en;
 
-  // 从 content 中提取常用变量
-  const AI_TEXT          = content.aiText;
-  const ANCHOR           = content.anchor;
-  const SUGGESTIONS      = content.suggestions;
-  const CARD_REPLY       = content.cardReply;
-  const THREAD_REPLY_FULL = content.threadReplyFull;
-  const EXISTING_CARD    = content.existingCard;
-
-  // 动态计算锚点位置
-  const A_START  = AI_TEXT.indexOf(ANCHOR);
-  const A_END    = A_START + ANCHOR.length;
-  const before   = AI_TEXT.slice(0, A_START);
-  const after    = AI_TEXT.slice(A_END);
-  const raftIdx  = before.indexOf(content.raftInText);
-  const hashIdx  = after.indexOf(content.hashInText);
-
-  const [phase, setPhase]       = useState<Phase>("idle");
+  const [phase, setPhase] = useState<Phase>("idle");
   const [sweepPct, setSweepPct] = useState(0);
   const [streamLen, setStreamLen] = useState(0);
-  const [playing, setPlaying]   = useState(true);
+  const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 语言切换时重置 / Reset when the UI language changes
+  // 自动前进 / Auto-advance phases
   useEffect(() => {
-    setPhase("idle");
-    setSweepPct(0);
-    setStreamLen(0);
-  }, [lang]);
-
-  // 自动推进
-  useEffect(() => {
-    if (!playing) return;
-    const t = setTimeout(() => setPhase(p => NEXT[p]), DELAYS[phase]);
-    return () => clearTimeout(t);
-  }, [phase, playing]);
-
-  useEffect(() => {
-    if (phase === "idle") { setSweepPct(0); setStreamLen(0); }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setPhase(NEXT[phase]), DELAYS[phase]);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [phase]);
 
-  const sweepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // sweep 动画：0 → 1
   useEffect(() => {
-    if (phase !== "sweeping") { setSweepPct(0); return; }
-    let v = 0;
-    sweepTimer.current = setInterval(() => {
-      v += 9; setSweepPct(Math.min(v, 100));
-      if (v >= 100) clearInterval(sweepTimer.current!);
-    }, 42);
-    return () => clearInterval(sweepTimer.current!);
-  }, [phase]);
-
-  useEffect(() => {
-    if (phase !== "streaming") return;
-    if (streamLen >= CARD_REPLY.length) return;
-    const t = setTimeout(() => setStreamLen(n => n + 2), 30);
-    return () => clearTimeout(t);
-  }, [phase, streamLen, CARD_REPLY.length]);
-
-  const goTo = (p: Phase) => {
-    setPhase(p);
-    if (p === "idle") { setSweepPct(0); setStreamLen(0); }
-    if (!["streaming","sweeping"].includes(p)) {
-      if (p !== "streaming") setStreamLen(CARD_REPLY.length);
-      if (p === "idle" || PHASE_ORDER.indexOf(p) < PHASE_ORDER.indexOf("streaming")) setStreamLen(0);
+    if (phase !== "sweep") {
+      setSweepPct(phase === "idle" ? 0 : 1);
+      return;
     }
-  };
+    let start = 0;
+    const step = (ts: number) => {
+      if (!start) start = ts;
+      const pct = Math.min(1, (ts - start) / 1000);
+      setSweepPct(pct);
+      if (pct < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [phase]);
 
-  const stepBy = (delta: number) => {
-    const idx  = PHASE_ORDER.indexOf(phase);
-    const next = PHASE_ORDER[Math.max(0, Math.min(PHASE_ORDER.length - 1, idx + delta))];
-    goTo(next);
-  };
+  // streaming 子线程回复：逐字打出
+  useEffect(() => {
+    if (phase !== "sub-thread") {
+      setStreamLen(phase === "idle" ? 0 : c.threadReply.length);
+      return;
+    }
+    setStreamLen(0);
+    const total = c.threadReply.length;
+    let i = 0;
+    const tick = () => {
+      i = Math.min(total, i + 3);
+      setStreamLen(i);
+      if (i < total) timerRef.current = setTimeout(tick, 22);
+    };
+    tick();
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [phase, c.threadReply]);
 
-  // ── 布尔状态 ────────────────────────────────────────────────────────────────
-  const isSweeping     = phase === "sweeping";
-  const isHighlit      = phase !== "idle";
-  const showPinMenu    = ["pin-menu","pin-click"].includes(phase);
-  const pinClicking    = phase === "pin-click";
-  const showDialog     = ["dialog-open","dialog-ready","hover-suggest","click-suggest"].includes(phase);
-  const dialogReady    = ["dialog-ready","hover-suggest","click-suggest"].includes(phase);
-  const hoverIdx       = ["hover-suggest","click-suggest"].includes(phase) ? 0 : -1;
-  const clickIdx       = phase === "click-suggest" ? 0 : -1;
-  const showCard       = ["card-in","streaming","unread","card-hover","card-click","thread-view","thread-done","back-click","back-main"].includes(phase);
-  const showStream     = ["streaming","unread","card-hover","card-click","thread-view","thread-done","back-click","back-main"].includes(phase);
-  const showUnread     = ["unread","card-hover","card-click"].includes(phase);
-  const cardHovering   = phase === "card-hover";
-  const cardClicking   = phase === "card-click";
-  const showThreadView = ["thread-view","thread-done","back-click"].includes(phase);
-  const backClicking   = phase === "back-click";
-  const showCap        = ["card-in","streaming","unread","card-hover","card-click","thread-view","thread-done","back-click","back-main"].includes(phase);
+  // 布尔 state 派生 / Derived phase booleans
+  const showSelpop = phase === "selpop";
+  const showDialog = phase === "dialog" || phase === "pick";
+  const pickedIdx = phase === "pick" ? 0 : -1;
+  const anchorVisible = [
+    "underline-appear",
+    "ai-replying",
+    "unread-breathing",
+    "popover",
+    "enter",
+    "sub-thread",
+    "sub-depth",
+    "back",
+  ].includes(phase);
+  const anchorBreathing = phase === "unread-breathing" || phase === "popover";
+  const showPopover = phase === "popover" || phase === "enter";
+  const inSub = phase === "ai-replying" || phase === "sub-thread" || phase === "enter" || phase === "sub-depth";
+  const showNewReplyTag = phase === "popover" || phase === "enter";
+  const showCapNode = anchorVisible;
+  // sub-depth 及以后展示第三级节点（深度 2 的 sub-sub-thread）
+  // Show a 3rd-level node (depth-2 grandchild) at sub-depth onward.
+  const showDeeperNode = phase === "sub-depth";
+  const activeThread: "main" | "cap" | "deeper" =
+    phase === "sub-depth" ? "deeper" : inSub ? "cap" : "main";
+
+  const goToSubThread = useCallback(() => setPhase("sub-thread"), []);
+
+  // 整个 demo 的固定盒子尺寸 —— 在动画过程中保持不变。
+  // 标题栏 38px + 主区 GRID_H + caption 40px = 总高度
+  // The demo's fixed dimensions — stable across the entire animation.
+  const GRID_H = 420;
+  const RIGHT_W = 320;
+  const TOTAL_H = 38 + GRID_H + 40;
 
   return (
-    <div className="w-full max-w-[960px] select-none">
-      <div className="relative rounded-2xl border overflow-hidden"
-        style={{ background: C.bg, borderColor: ind(0.12), boxShadow: `0 0 0 1px ${ind(0.1)}, 0 24px 64px rgba(0,0,0,0.4)` }}>
-
-        {/* 顶部光线 */}
-        <div className="absolute top-0 left-0 right-0 h-px"
-          style={{ background: "linear-gradient(90deg,transparent,rgba(99,102,241,0.45),transparent)" }} />
-
-        {/* 标题栏 */}
-        <div className="flex items-center gap-2 px-4 border-b" style={{ borderColor: C.border, height: 38 }}>
+    <div className="w-full select-none mx-auto" style={{ maxWidth: 1080 }}>
+      {/* 横向滚动兜底：viewport 比 demo 窄时允许左右滑而不是塌缩
+          Horizontal scroll fallback so narrow viewports show the full demo
+          rather than collapsing the inner grid. */}
+      <div className="overflow-x-auto" style={{ minHeight: TOTAL_H }}>
+      <div
+        className="relative rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(27,26,23,0.12)] mx-auto"
+        style={{
+          background: "var(--paper)",
+          border: "1px solid var(--rule)",
+          // 最小宽度兜底，保证 1fr 那一栏永远 ≥ 480px、不会塌缩
+          minWidth: 880,
+          maxWidth: 1080,
+          height: TOTAL_H,
+        }}
+      >
+        {/* Mac 窗口标题栏 / Mac window chrome — 固定 38px 高 */}
+        <div
+          className="flex items-center gap-2 px-4 h-[38px]"
+          style={{ borderBottom: "1px solid var(--rule)" }}
+        >
           <div className="flex gap-1.5">
-            {["#ff5f57","#ffbd2e","#28c840"].map(c => (
-              <div key={c} className="w-2.5 h-2.5 rounded-full" style={{ background: c, opacity: 0.7 }} />
+            {["#ff5f57", "#ffbd2e", "#28c840"].map((col) => (
+              <span key={col} className="w-2.5 h-2.5 rounded-full" style={{ background: col, opacity: 0.85 }} />
             ))}
           </div>
-          <span className="text-[11px] font-medium ml-2" style={{ color: C.textFaint }}>
-            {content.questionTitle}
+          <span className="font-mono text-[11px] ml-2" style={{ color: "var(--ink-4)" }}>
+            {c.questionTitle}
+          </span>
+          <span className="flex-1" />
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.15em]" style={{ color: "var(--ink-4)" }}>
+            demo
           </span>
         </div>
 
-        {/* ── 三栏 ── */}
-        <div className="grid grid-cols-3 relative" style={{ height: 340 }}>
-
-          {/* 跨栏曲线：悬停卡片 → 锚点 */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 300 340" preserveAspectRatio="none" style={{ zIndex: 15 }}>
-            <path
-              d="M 96 152 C 110 152, 110 95, 138 95"
-              fill="none" stroke={C.indigoSolid} strokeWidth="0.8" strokeDasharray="4 3"
-              strokeOpacity={cardHovering ? 0.7 : 0}
-              style={{ transition: "stroke-opacity 0.3s ease" }}
-            />
-            <circle cx="138" cy="95" r="3.5" fill={C.indigoSolid}
-              opacity={cardHovering ? 0.8 : 0}
-              style={{ transition: "opacity 0.3s ease" }}
-            />
-          </svg>
-
-          {/* ── 左：子线程列 ─────────────────────────────────────────── */}
-          <div className="relative border-r flex flex-col overflow-hidden" style={{ borderColor: C.border }}>
-            <div className="px-3 py-1.5 border-b" style={{ borderColor: C.borderSub }}>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.12em]" style={{ color: C.textFaint }}>
-                {content.subThreadsLabel}
-              </span>
+        {/* ── 两栏：main + 更宽 right overview，固定高度 / 2-col, fixed height ──
+             用 minmax(480px, 1fr) 防止主栏在窄容器里塌缩。
+             minmax(480, 1fr) for the main column so it can't collapse below 480px. */}
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: `minmax(480px, 1fr) ${RIGHT_W}px`, height: GRID_H }}
+        >
+          {/* Main 栏 — relative 容器，两个视图绝对定位叠加，不影响外层高度
+              Relative container; main + sub views are absolutely layered so
+              swapping between them doesn't reflow the demo. */}
+          <div
+            className="relative overflow-hidden"
+            style={{ background: "var(--paper)" }}
+          >
+            <div className={`absolute inset-0 transition-opacity duration-200 ${inSub ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+              <MainView
+                c={c}
+                sweepPct={sweepPct}
+                anchorVisible={anchorVisible}
+                anchorBreathing={anchorBreathing}
+                showSelpop={showSelpop}
+                phase={phase}
+                showPopover={showPopover}
+                showNewReplyTag={showNewReplyTag}
+                onEnter={goToSubThread}
+              />
+            </div>
+            <div className={`absolute inset-0 transition-opacity duration-200 ${inSub ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+              <SubThreadView c={c} streamLen={streamLen} phase={phase} />
             </div>
 
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ top: 28, zIndex: 0 }}>
-              <path d="M 0 52 C 4 52, 4 52, 8 52"
-                fill="none" stroke={C.indigoSolid} strokeWidth="0.9" strokeOpacity="0.4" />
-              {showCard && (
-                <path d="M 0 148 C 4 148, 4 148, 8 148"
-                  fill="none" stroke={C.indigoSolid} strokeWidth="0.9" strokeOpacity="0.6"
-                  style={{ transition: "stroke-opacity 0.3s" }} />
-              )}
-            </svg>
-
-            <div className="relative flex-1 px-2 py-2 space-y-2 overflow-hidden" style={{ zIndex: 1 }}>
-              {/* 已有针 */}
-              <div className="rounded-xl border overflow-hidden text-xs"
-                style={{ background: ind(0.06), borderColor: ind(0.2) }}>
-                <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
-                  <DragHandle />
-                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: ind(0.5) }} />
-                  <p className="font-medium truncate flex-1 text-[10px]" style={{ color: C.textMd }}>{EXISTING_CARD.label}</p>
-                </div>
-                <div className="mx-2.5 mb-1.5 px-2 py-1 rounded-md text-[9px] leading-snug"
-                  style={{ background: ind(0.06), border: `1px solid ${ind(0.12)}`, color: C.textFaint }}>
-                  「{EXISTING_CARD.anchor}」
-                </div>
-                <p className="px-2.5 pb-2 text-[10px] leading-relaxed" style={{ color: C.textFaint }}>{EXISTING_CARD.preview}</p>
-              </div>
-
-              {/* 新针卡片 */}
-              <div style={{
-                opacity: showCard ? 1 : 0,
-                transform: showCard ? "translateX(0)" : "translateX(-14px)",
-                transition: "opacity 0.3s ease, transform 0.35s ease",
-              }}>
-                <div className="rounded-xl border overflow-hidden text-xs cursor-pointer"
-                  style={{
-                    background:  cardClicking ? ind(0.2) : cardHovering ? ind(0.17) : ind(0.13),
-                    borderColor: cardClicking ? ind(0.7) : cardHovering ? ind(0.55) : ind(0.35),
-                    boxShadow:   cardClicking ? `0 0 0 2px ${ind(0.3)}` : cardHovering ? `0 0 0 1px ${ind(0.25)}, 0 0 12px ${ind(0.2)}` : "none",
-                    transition: "all 0.15s ease",
-                  }}>
-                  <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
-                    <DragHandle />
-                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: C.indigoSolid }} />
-                    <p className="font-medium truncate flex-1 text-[10px]" style={{ color: C.indigoLight }}>{ANCHOR}</p>
-                    {showCard && !showStream && (
-                      <span className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-bold"
-                        style={{ background: ind(0.6) }}>1</span>
-                    )}
-                    {showUnread && (
-                      <span className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-bold"
-                        style={{ background: "#ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)", animation: "ping 1s ease-in-out" }}>
-                        1
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mx-2.5 mb-1.5 px-2 py-1 rounded-md text-[9px] leading-snug"
-                    style={{ background: ind(0.07), border: `1px solid ${ind(0.13)}`, color: C.indigoText, opacity: 0.8 }}>
-                    「{ANCHOR}」
-                  </div>
-
-                  {showStream && (
-                    <div className="mx-2.5 mb-1 flex justify-end">
-                      <div className="text-[9px] px-2 py-1 rounded-xl rounded-tr-sm leading-snug"
-                        style={{ background: ind(0.25), border: `1px solid ${ind(0.2)}`, color: C.indigoLight, maxWidth: "92%" }}>
-                        {SUGGESTIONS[0]}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="px-2.5 pb-2 text-[10px] leading-relaxed overflow-hidden" style={{ color: C.textMd, maxHeight: 52 }}>
-                    {showStream
-                      ? <>{CARD_REPLY.slice(0, streamLen)}{phase === "streaming" && streamLen < CARD_REPLY.length && <Cursor />}</>
-                      : <span style={{ color: C.textFaint, fontStyle: "italic" }}>{content.preparingReply}</span>
-                    }
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Pin dialog 浮层 */}
+            {showDialog && <PinDialog c={c} pickedIdx={pickedIdx} />}
           </div>
 
-          {/* ── 中：主线 / 子线程视图 ─────────────────────────────────── */}
-          <div className="relative overflow-hidden">
+          {/* 右栏 — graph view */}
+          <RightRail c={c} activeThread={activeThread} showCapNode={showCapNode} showDeeperNode={showDeeperNode} phase={phase} />
+        </div>
 
-            {/* 主线视图 */}
-            <div style={{
-              position: "absolute", inset: 0, padding: 20,
-              opacity: showThreadView ? 0 : 1,
-              transform: showThreadView ? "translateX(-24px)" : "translateX(0)",
-              transition: "opacity 0.4s ease, transform 0.4s ease",
-              pointerEvents: showThreadView ? "none" : "auto",
-            }}>
-              {/* 用户气泡 */}
-              <div className="flex justify-end mb-4">
-                <div className="text-[12px] leading-relaxed px-3.5 py-2 rounded-2xl rounded-tr-sm max-w-[80%]"
-                  style={{ background: ind(0.18), border: `1px solid ${ind(0.2)}`, color: C.indigoLight }}>
-                  {content.questionTitle}
-                </div>
-              </div>
+        {/* Caption — 底部提示条，固定高度 */}
+        <div
+          className="px-5 h-[40px] flex items-center font-mono text-[11px] leading-snug tracking-wide"
+          style={{
+            borderTop: "1px solid var(--rule)",
+            color: "var(--ink-3)",
+            background: "var(--paper-2)",
+          }}
+        >
+          <span className="truncate">{c.caption[phase]}</span>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
 
-              {/* AI 气泡 */}
-              <div className="flex gap-2.5">
-                <AIAvatar />
-                <div className="flex-1 text-[12.5px] leading-[1.75] relative" style={{ color: C.textMd }}>
-                  {/* 前段，包含 Raft */}
-                  {before.slice(0, raftIdx)}
-                  <span className="px-0.5 rounded" style={{ color: C.indigoText, boxShadow: `inset 0 0 0 1px ${ind(0.3)}` }}>
-                    {content.raftInText}
-                  </span>
-                  {before.slice(raftIdx + content.raftInText.length)}
+// ── Main view (主线) ────────────────────────────────────────────────────
+function MainView({
+  c,
+  sweepPct,
+  anchorVisible,
+  anchorBreathing,
+  showSelpop,
+  phase,
+  showPopover,
+  showNewReplyTag,
+  onEnter,
+}: {
+  c: Copy;
+  sweepPct: number;
+  anchorVisible: boolean;
+  anchorBreathing: boolean;
+  showSelpop: boolean;
+  phase: Phase;
+  showPopover: boolean;
+  showNewReplyTag: boolean;
+  onEnter: () => void;
+}) {
+  void onEnter;
+  return (
+    <div className="relative h-full p-6 overflow-hidden">
+      {/* 面包屑 Main */}
+      <div className="flex items-center gap-2 mb-4 font-mono text-[11px]" style={{ color: "var(--ink-3)" }}>
+        <span
+          className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded"
+          style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)" }}
+        >
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--paper)" }} />
+          {c.mainCrumb}
+        </span>
+      </div>
 
-                  {/* CAP 定理 / CAP theorem — 选中/高亮 */}
-                  <span className="relative inline">
-                    <span className="relative">
-                      {isSweeping && (
-                        <span className="absolute inset-y-0 left-0 rounded pointer-events-none"
-                          style={{ width: `${sweepPct}%`, background: ind(0.45), transition: "width 0.04s linear" }} />
-                      )}
-                      <span className="relative px-0.5 rounded" style={{
-                        background: isHighlit && !isSweeping ? ind(0.28) : "transparent",
-                        color: isHighlit ? C.indigoLight : "inherit",
-                        boxShadow: (showCard && !showThreadView) ? `inset 0 0 0 1px ${ind(0.3)}` : "none",
-                        transition: "background 0.2s, color 0.2s",
-                      }}>
-                        {ANCHOR}
-                      </span>
-                    </span>
+      {/* User question */}
+      <div className="flex flex-col items-end mb-4">
+        <div className="flex items-center gap-[7px] mb-[4px] font-mono text-[9.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--ink-3)" }} />
+          <span>YOU</span>
+        </div>
+        <div
+          className="max-w-[78%] px-[14px] py-[10px] text-[14px] leading-[1.55]"
+          style={{
+            background: "var(--accent)",
+            color: "var(--paper)",
+            borderRadius: 14,
+            borderBottomRightRadius: 4,
+          }}
+        >
+          {c.mainQuestion}
+        </div>
+      </div>
 
-                    {/* PinMenu */}
-                    <span className="absolute left-1/2 z-30 pointer-events-none" style={{
-                      bottom: "calc(100% + 8px)",
-                      transform: `translateX(-50%) translateY(${showPinMenu ? 0 : 6}px)`,
-                      opacity: showPinMenu ? 1 : 0,
-                      transition: "opacity 0.18s, transform 0.18s",
-                    }}>
-                      <span className="flex items-center gap-0.5 rounded-xl px-1.5 py-1.5"
-                        style={{ background: "rgba(18,20,34,0.97)", border: `1px solid ${C.border}`, boxShadow: "0 8px 40px rgba(0,0,0,0.4)", backdropFilter: "blur(8px)" }}>
-                        <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg whitespace-nowrap" style={{ color: C.textMd }}>
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                          </svg>
-                          <span className="text-xs">{content.copyLabel}</span>
-                        </span>
-                        <span className="w-px h-4" style={{ background: C.border }} />
-                        <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg whitespace-nowrap" style={{
-                          background: pinClicking ? ind(0.3) : ind(0.1),
-                          border: `1px solid ${ind(0.3)}`,
-                          boxShadow: pinClicking ? `0 0 10px ${ind(0.4)}` : "none",
-                          transition: "all 0.15s",
-                        }}>
-                          <StarIcon className="w-3.5 h-3.5" style={{ color: C.indigoText }} />
-                          <span className="text-xs font-medium" style={{ color: "rgb(165,180,252)" }}>{content.pinLabel}</span>
-                        </span>
-                      </span>
-                    </span>
-                  </span>
+      {/* AI bubble */}
+      <div className="flex flex-col items-start">
+        <div className="flex items-center gap-[7px] mb-[4px] font-mono text-[9.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--accent)" }} />
+          <span>Deeppin</span>
+        </div>
+        <div
+          className="relative max-w-[86%] px-[14px] py-[11px] text-[13.5px] leading-[1.6]"
+          style={{
+            background: "var(--card)",
+            border: "1px solid var(--rule-soft)",
+            color: "var(--ink)",
+            borderRadius: 14,
+            borderBottomLeftRadius: 4,
+          }}
+        >
+          {c.aiPre}
+          <AnchorSpan
+            text={c.anchor}
+            sweepPct={sweepPct}
+            visible={anchorVisible}
+            breathing={anchorBreathing}
+            phase={phase}
+          >
+            {/* selpop 和 popover 都挂在 AnchorSpan 的子元素上
+                 → 位置相对锚点本身，不再相对气泡框 */}
+            {/* Both selpop and popover mount as AnchorSpan children so they
+                 position relative to the anchor span itself, not the bubble. */}
+            {showSelpop && <SelPop c={c} />}
+            {showPopover && <AnchorPopover c={c} showNew={showNewReplyTag} />}
+          </AnchorSpan>
+          {c.aiPost}
+        </div>
+      </div>
 
-                  {/* 后半段，包含 hash */}
-                  {after.slice(0, hashIdx)}
-                  <span className="px-0.5 rounded" style={{ color: C.textMd, boxShadow: `inset 0 0 0 1px ${ind(0.18)}` }}>
-                    {content.hashInText}
-                  </span>
-                  {after.slice(hashIdx + content.hashInText.length)}
+      {/* Replying indicator（仅 ai-replying phase）*/}
+      {phase === "ai-replying" && (
+        <div
+          className="absolute bottom-3 left-6 font-mono text-[10px] flex items-center gap-2"
+          style={{ color: "var(--accent)" }}
+        >
+          <span className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="w-[4px] h-[4px] rounded-full"
+                style={{
+                  background: "var(--accent)",
+                  animation: "pin-demo-dot 900ms ease-in-out infinite",
+                  animationDelay: `${i * 150}ms`,
+                }}
+              />
+            ))}
+          </span>
+          <span style={{ opacity: 0.8 }}>{c.replyingLabel}</span>
+        </div>
+      )}
 
-                  {phase === "idle" && <BlinkCursor />}
-                </div>
-              </div>
+      <style jsx>{`
+        @keyframes pin-demo-dot {
+          0%, 100% { transform: translateY(0); opacity: 0.4; }
+          50% { transform: translateY(-3px); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
 
-              {/* 提示文字 */}
-              <div className="absolute bottom-3 left-5 flex items-center gap-1.5 text-[10px]" style={{ color: C.textFaint }}>
-                <svg className="w-3 h-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
-                </svg>
-                {content.hintText}
-              </div>
+// ── Anchor span — 文字里带下划线的高亮，子元素用来挂 selpop / popover ──
+// AnchorSpan — the anchored phrase; children are portals (selpop / popover)
+// that should position relative to the anchor itself.
+function AnchorSpan({
+  text,
+  sweepPct,
+  visible,
+  breathing,
+  phase,
+  children,
+}: {
+  text: string;
+  sweepPct: number;
+  visible: boolean;
+  breathing: boolean;
+  phase: Phase;
+  children?: React.ReactNode;
+}) {
+  const sweeping = phase === "sweep";
+  // 扫过时半透明的 accent 光标痕；其它阶段不画背景高亮
+  // Only the sweep phase renders a transient accent wash; other phases keep
+  // the text clean (no background highlight).
+  const bg = sweeping
+    ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 22)}%, transparent)`
+    : undefined;
+  // 下划线粗细区分状态：sweeping 没落笔；visible 时按 breathing（未读 3px）or 1px 细
+  // Underline thickness encodes state — 3px unread, 1px read, none while
+  // sweeping (the accent wash is the sweep's visual instead).
+  const bb = visible
+    ? `${breathing ? 3 : 1}px solid var(--pig-1)`
+    : sweeping
+      ? "1px solid transparent"
+      : "none";
+  return (
+    <span
+      className="relative inline-block"
+      style={{
+        background: bg,
+        borderBottom: bb,
+        paddingBottom: 1,
+        color: "var(--ink)",
+        transition: "background 120ms ease-out, border-bottom 220ms ease-out",
+      }}
+    >
+      {text}
+      {children}
+    </span>
+  );
+}
 
-              {/* PinStartDialog */}
-              <div className="absolute inset-x-3 z-20 rounded-2xl overflow-hidden" style={{
-                top: showDialog ? "50%" : "110%",
-                transform: showDialog ? "translateY(-50%)" : "translateY(0)",
-                transition: "top 0.35s cubic-bezier(0.16,1,0.3,1), transform 0.35s cubic-bezier(0.16,1,0.3,1)",
-                background: C.surface,
-                border: `1px solid rgba(255,255,255,0.09)`,
-                boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
-              }}>
-                <div className="px-5 pt-4 pb-3 flex gap-3 items-start">
-                  <div className="w-0.5 flex-shrink-0 self-stretch rounded-full" style={{ background: ind(0.4) }} />
-                  <p className="text-sm italic leading-relaxed flex-1" style={{ color: C.textMd }}>{ANCHOR}</p>
-                  <span className="w-6 h-6 flex items-center justify-center rounded-lg flex-shrink-0" style={{ color: C.textFaint }}>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                  </span>
-                </div>
+// ── Selpop ──────────────────────────────────────────────────────────────
+function SelPop({ c }: { c: Copy }) {
+  return (
+    <span
+      className="absolute left-0 -top-11 z-20 inline-flex items-center gap-[2px] rounded-md shadow-[0_6px_20px_rgba(27,26,23,0.18)]"
+      style={{ background: "var(--ink)", color: "var(--paper)", padding: 3 }}
+    >
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[12px]" style={{ color: "var(--paper)" }}>
+        <svg className="w-3 h-3" style={{ opacity: 0.75 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+        </svg>
+        {c.copyLabel}
+      </span>
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[12px] font-medium"
+        style={{ background: "var(--accent)", color: "var(--paper)" }}
+      >
+        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+        </svg>
+        {c.pinLabel}
+      </span>
+      <span aria-hidden className="absolute left-[22px] -bottom-1 w-2 h-2 rotate-45" style={{ background: "var(--ink)" }} />
+    </span>
+  );
+}
 
-                <div className="px-5 pb-3 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color: C.textFaint }}>{content.suggestionsLabel}</span>
-                    {!dialogReady && (
-                      <span className="flex gap-0.5 items-center">
-                        {[0,150,300].map(d => (
-                          <span key={d} className="w-1 h-1 rounded-full animate-bounce"
-                            style={{ background: C.textFaint, animationDelay: `${d}ms`, animationDuration: "800ms" }} />
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                  {SUGGESTIONS.map((q, i) => (
-                    <div key={q} className="text-left text-sm rounded-xl px-4 py-2.5 leading-snug"
-                      style={{
-                        background: i === hoverIdx || i === clickIdx ? "rgba(255,255,255,0.07)" : dialogReady ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.015)",
-                        border: `1px solid ${i === hoverIdx || i === clickIdx ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.06)"}`,
-                        color: dialogReady ? (i === hoverIdx || i === clickIdx ? C.textHi : C.textMd) : "rgba(100,116,139,0.4)",
-                        transform: i === clickIdx ? "scale(0.98)" : "scale(1)",
-                        transition: "all 0.15s",
-                      }}>
-                      {q}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mx-5 border-t" style={{ borderColor: C.borderSub }} />
-
-                <div className="px-5 py-3 flex gap-2 items-end">
-                  <div className="flex-1 text-sm px-3 py-2 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.borderSub}`, color: "rgba(100,116,139,0.5)", minHeight: 36 }}>
-                    {content.customPlaceholder}
-                  </div>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: ind(0.35), opacity: 0.4 }}>
-                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7"/>
-                    </svg>
-                  </div>
-                </div>
-              </div>
+// ── Pin dialog ──────────────────────────────────────────────────────────
+function PinDialog({ c, pickedIdx }: { c: Copy; pickedIdx: number }) {
+  return (
+    <div className="absolute inset-0 z-30 flex items-center justify-center animate-in fade-in-0 duration-150">
+      <div className="absolute inset-0" style={{ background: "rgba(27,26,23,0.35)" }} />
+      <div
+        className="relative w-[84%] max-w-[440px] rounded-xl shadow-[0_16px_48px_rgba(27,26,23,0.18)]"
+        style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
+      >
+        <div className="px-5 pt-4 pb-3 flex items-start gap-3" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+          <span className="w-[3px] h-7 rounded-[2px] flex-shrink-0" style={{ background: "var(--pig-1)" }} />
+          <div className="flex-1">
+            <div className="font-mono text-[9px] uppercase tracking-[0.15em] mb-1" style={{ color: "var(--accent)" }}>
+              {c.pinLabel}
             </div>
-
-            {/* 子线程视图 */}
-            <div style={{
-              position: "absolute", inset: 0,
-              opacity: showThreadView ? 1 : 0,
-              transform: showThreadView ? "translateX(0)" : "translateX(28px)",
-              transition: "opacity 0.4s ease, transform 0.4s ease",
-              pointerEvents: showThreadView ? "auto" : "none",
-              display: "flex", flexDirection: "column",
-            }}>
-              <div className="flex items-center gap-1.5 px-4 py-2 border-b text-[11px]" style={{ borderColor: C.borderSub, color: C.textFaint }}>
-                <span className="cursor-pointer rounded px-1 py-0.5 transition-all duration-150"
-                  style={{
-                    color: backClicking ? C.indigoLight : C.textMd,
-                    background: backClicking ? ind(0.18) : "transparent",
-                    boxShadow: backClicking ? `0 0 8px ${ind(0.3)}` : "none",
-                    fontWeight: backClicking ? 600 : 400,
-                  }}>
-                  {content.mainLabel}
-                </span>
-                <span style={{ color: C.textFaint }}>›</span>
-                <span style={{ color: C.indigoText, fontWeight: 500 }}>{ANCHOR}</span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                <div className="flex gap-2.5">
-                  <div className="w-0.5 flex-shrink-0 rounded-full self-stretch" style={{ background: ind(0.35) }} />
-                  <p className="text-sm italic leading-relaxed" style={{ color: C.textMd }}>{ANCHOR}</p>
-                </div>
-
-                <div className="flex justify-end">
-                  <div className="text-[12px] leading-relaxed px-3.5 py-2 rounded-2xl rounded-tr-sm max-w-[82%]"
-                    style={{ background: ind(0.18), border: `1px solid ${ind(0.2)}`, color: C.indigoLight }}>
-                    {SUGGESTIONS[0]}
-                  </div>
-                </div>
-
-                <div className="flex gap-2.5">
-                  <AIAvatar />
-                  <div className="flex-1 text-[12px] leading-[1.8]" style={{ color: C.textMd }}>
-                    {THREAD_REPLY_FULL.split("\n").map((line, i) => {
-                      if (!line) return <div key={i} className="h-2" />;
-                      if (line.startsWith("•") || line.startsWith("• ")) {
-                        const clean = line.startsWith("• ") ? line.slice(2) : line.slice(1).trimStart();
-                        const parts = clean.split("**");
-                        return (
-                          <div key={i} className="flex gap-2 mb-1">
-                            <span style={{ color: C.indigoText, flexShrink: 0 }}>•</span>
-                            <span>
-                              {parts.map((p, j) => j % 2 === 1
-                                ? <strong key={j} style={{ color: C.indigoText, fontWeight: 600 }}>{p}</strong>
-                                : <span key={j}>{p}</span>
-                              )}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return <p key={i} className="mb-1">{line}</p>;
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-4 py-2 border-t flex items-center gap-2" style={{ borderColor: C.borderSub }}>
-                <div className="flex-1 text-[11px] px-3 py-2 rounded-xl"
-                  style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.borderSub}`, color: C.textFaint }}>
-                  {content.continuePrompt}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── 右：概览节点图 ────────────────────────────────────────── */}
-          <div className="border-l flex flex-col overflow-hidden" style={{ borderColor: C.border }}>
-            <div className="px-2 py-1.5 border-b flex items-center gap-1" style={{ borderColor: C.borderSub }}>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.1em] flex-1" style={{ color: C.textFaint }}>{content.overviewLabel}</span>
-              <div className="flex gap-0.5 rounded-md p-0.5" style={{ border: `1px solid ${C.borderSub}`, background: "rgba(255,255,255,0.02)" }}>
-                <div className="flex items-center gap-0.5 px-1 h-4 rounded" style={{ color: C.textFaint }}>
-                  <svg className="w-2 h-2" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
-                    <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
-                  </svg>
-                  <span className="text-[8px]">{content.listLabel}</span>
-                </div>
-                <div className="flex items-center gap-0.5 px-1 h-4 rounded" style={{ background: "rgba(255,255,255,0.08)", color: C.textHi }}>
-                  <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                    <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
-                    <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
-                  </svg>
-                  <span className="text-[8px]">{content.graphLabel}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 p-1.5">
-              <svg viewBox="0 0 165 185" className="w-full h-full">
-                {/* 主线 */}
-                <rect x="32" y="8" width="100" height="22" rx="6" fill={ind(0.12)} stroke={ind(0.35)} strokeWidth="0.6"/>
-                <text x="82" y="23" textAnchor="middle" fontSize="8" fill={C.indigoText} fontFamily="sans-serif" fontWeight="500">{content.nodeMain}</text>
-
-                <line x1="82" y1="30" x2="82" y2="42" stroke={ind(0.25)} strokeWidth="0.6"/>
-                <line x1="29" y1="42" x2="82" y2="42" stroke={ind(0.25)} strokeWidth="0.6"/>
-                <line x1="82" y1="42" x2="135" y2="42"
-                  stroke={ind(showCap ? 0.25 : 0.08)} strokeWidth="0.6"
-                  style={{ transition: "stroke 0.4s" }}/>
-                <line x1="29" y1="42" x2="29" y2="52" stroke={ind(0.25)} strokeWidth="0.6"/>
-                <line x1="82" y1="42" x2="82" y2="52" stroke={ind(0.25)} strokeWidth="0.6"/>
-                <line x1="135" y1="42" x2="135" y2="52"
-                  stroke={ind(showCap ? 0.25 : 0.08)} strokeWidth="0.6"
-                  style={{ transition: "stroke 0.4s" }}/>
-
-                {/* Raft 节点 */}
-                <rect x="7" y="52" width="44" height="22" rx="6" fill={ind(0.1)} stroke={ind(0.3)} strokeWidth="0.6"/>
-                <text x="29" y="63" textAnchor="middle" fontSize="7" fill={C.textMd} fontFamily="sans-serif">{content.nodeRaft[0]}</text>
-                <text x="29" y="71" textAnchor="middle" fontSize="7" fill={C.textMd} fontFamily="sans-serif">{content.nodeRaft[1]}</text>
-
-                {/* Raft 子节点 */}
-                <line x1="29" y1="74" x2="29" y2="86" stroke={ind(0.2)} strokeWidth="0.6"/>
-                <rect x="7" y="86" width="44" height="20" rx="5" fill={ind(0.06)} stroke={ind(0.18)} strokeWidth="0.6"/>
-                <text x="29" y="100" textAnchor="middle" fontSize="6.5" fill={C.textFaint} fontFamily="sans-serif">{content.nodeLeader}</text>
-
-                {/* Hash 节点 */}
-                <rect x="60" y="52" width="44" height="22" rx="6" fill={ind(0.08)} stroke={ind(0.22)} strokeWidth="0.6"/>
-                <text x="82" y="63" textAnchor="middle" fontSize="7" fill={C.textLo} fontFamily="sans-serif">{content.nodeHash[0]}</text>
-                <text x="82" y="71" textAnchor="middle" fontSize="7" fill={C.textLo} fontFamily="sans-serif">{content.nodeHash[1]}</text>
-
-                {/* CAP 节点 */}
-                <rect x="113" y="52" width="44" height="22" rx="6"
-                  fill={showCap ? ind(0.22) : ind(0.03)}
-                  stroke={showCap ? ind(0.65) : ind(0.1)}
-                  strokeWidth="0.6"
-                  style={{ transition: "fill 0.45s, stroke 0.45s" }}
-                />
-                <text x="135" y="63" textAnchor="middle" fontSize="7"
-                  fill={showCap ? C.indigoLight : "rgba(99,102,241,0.15)"}
-                  fontFamily="sans-serif" fontWeight={showCap ? "600" : "400"}
-                  style={{ transition: "fill 0.45s" }}>{content.nodeCap[0]}</text>
-                <text x="135" y="71" textAnchor="middle" fontSize="7"
-                  fill={showCap ? C.indigoLight : "rgba(99,102,241,0.15)"}
-                  fontFamily="sans-serif" fontWeight={showCap ? "600" : "400"}
-                  style={{ transition: "fill 0.45s" }}>{content.nodeCap[1]}</text>
-                {showUnread && <circle cx="152" cy="52" r="4" fill="#ef4444" opacity="0.9"/>}
-              </svg>
-            </div>
-
-            <div className="px-2 pb-2">
-              <div className="flex items-center gap-1 rounded-lg px-2 py-1.5 cursor-pointer"
-                style={{ background: ind(0.08), border: `1px solid ${ind(0.18)}` }}>
-                <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke={C.indigoText} strokeWidth={2} strokeLinecap="round">
-                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
-                </svg>
-                <span className="text-[9px] font-medium" style={{ color: C.indigoText }}>{content.mergeLabel}</span>
-                <span className="ml-auto text-[9px] tabular-nums" style={{ color: ind(0.6) }}>
-                  {showCap ? "3" : "2"}
-                </span>
-              </div>
+            <div className="font-serif text-[13px] italic leading-snug" style={{ color: "var(--ink-2)" }}>
+              “{c.anchor}”
             </div>
           </div>
         </div>
-
-        {/* 底部：说明 + 控制栏 */}
-        <div className="border-t" style={{ borderColor: C.border, background: "rgba(0,0,0,0.2)" }}>
-          <div className="px-5 pt-3 pb-1 overflow-hidden" style={{ height: 50 }}>
-            <p className="text-[11px] leading-relaxed line-clamp-2" style={{ color: C.textMd }}>
-              {content.captions[phase]}
-            </p>
+        <div className="px-5 py-4 flex flex-col gap-[6px]">
+          <div className="font-mono text-[9px] uppercase tracking-[0.15em] mb-[2px]" style={{ color: "var(--ink-4)" }}>
+            {c.suggestionsLabel}
           </div>
-
-          <div className="px-5 flex items-center gap-3" style={{ height: 44 }}>
-            <div className="flex items-center gap-1 flex-1 min-w-0">
-              {PHASE_ORDER.map(p => (
-                <button key={p} onClick={() => goTo(p)}
-                  className="h-1 rounded-full transition-all duration-300 flex-shrink-0 cursor-pointer"
-                  style={{ width: phase === p ? "16px" : "4px", background: phase === p ? C.indigoSolid : ind(0.2) }} />
-              ))}
-            </div>
-
-            <button onClick={() => stepBy(-1)}
-              className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors flex-shrink-0"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.textLo }}>
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M15 18l-6-6 6-6"/>
-              </svg>
-            </button>
-
-            <button onClick={() => setPlaying(p => !p)}
-              className="flex items-center justify-center w-7 h-7 rounded-lg transition-all flex-shrink-0"
+          {c.suggestions.map((q, i) => (
+            <div
+              key={q}
+              className="text-left px-3 py-2 rounded-md text-[12.5px] transition-colors"
               style={{
-                background: playing ? ind(0.2) : "rgba(255,255,255,0.05)",
-                border: `1px solid ${playing ? ind(0.4) : C.border}`,
-                color: playing ? C.indigoText : C.textLo,
-              }}>
-              {playing
-                ? <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                : <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-              }
-            </button>
-
-            <button onClick={() => stepBy(1)}
-              className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors flex-shrink-0"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.textLo }}>
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-                <path d="M9 18l6-6-6-6"/>
-              </svg>
-            </button>
-          </div>
+                background: pickedIdx === i ? "var(--accent-soft)" : "var(--paper-2)",
+                border: `1px solid ${pickedIdx === i ? "var(--accent)" : "var(--rule-soft)"}`,
+                color: pickedIdx === i ? "var(--accent)" : "var(--ink-2)",
+              }}
+            >
+              {q}
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-// ── 小组件 ────────────────────────────────────────────────────────────────────
-function DragHandle() {
+// ── Anchor preview popover ────────────────────────────────────────────
+function AnchorPopover({ c, showNew }: { c: Copy; showNew: boolean }) {
   return (
-    <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 10 16" fill="rgb(71,85,105)">
-      <circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/>
-      <circle cx="3" cy="6" r="1.2"/><circle cx="7" cy="6" r="1.2"/>
-      <circle cx="3" cy="10" r="1.2"/><circle cx="7" cy="10" r="1.2"/>
-    </svg>
+    <span
+      className="absolute left-0 top-[calc(100%+4px)] z-20 inline-block rounded-xl overflow-hidden shadow-[0_10px_32px_rgba(27,26,23,0.12)] animate-in fade-in-0 duration-150"
+      style={{ background: "var(--card)", border: "1px solid var(--rule)", width: 280 }}
+    >
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "var(--pig-1)" }} />
+        <span className="flex-1 font-serif text-[13px] font-medium truncate" style={{ color: "var(--ink)" }}>
+          {c.subTitle}
+        </span>
+        {showNew && (
+          <span
+            className="font-mono text-[9px] uppercase tracking-[0.08em] px-1.5 py-[1px] rounded-sm"
+            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+          >
+            {c.newReplyLabel}
+          </span>
+        )}
+      </div>
+      <div className="px-3 py-2 text-[11.5px] leading-snug" style={{ borderTop: "1px solid var(--rule-soft)", color: "var(--ink-2)" }}>
+        {c.threadReply.slice(0, 88)}…
+      </div>
+      <div className="flex items-center justify-end px-3 py-2" style={{ borderTop: "1px solid var(--rule-soft)", background: "var(--paper-2)" }}>
+        <span className="inline-flex items-center gap-1 font-medium text-[11px]" style={{ color: "var(--accent)" }}>
+          {c.enterLabel}
+          <svg className="w-[11px] h-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </span>
+      </div>
+    </span>
   );
 }
 
-function AIAvatar() {
+// ── Sub-thread view ─────────────────────────────────────────────────────
+function SubThreadView({ c, streamLen, phase }: { c: Copy; streamLen: number; phase: Phase }) {
+  const streaming = phase === "sub-thread" && streamLen < c.threadReply.length;
   return (
-    <div className="w-6 h-6 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5"
-      style={{ background: "rgba(99,102,241,0.1)", borderColor: "rgba(255,255,255,0.08)" }}>
-      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="rgb(165,180,252)">
-        <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-      </svg>
+    <div className="relative h-full p-6 overflow-hidden">
+      {/* 面包屑 main / sub */}
+      <div className="flex items-center gap-1.5 mb-4 font-mono text-[11px]" style={{ color: "var(--ink-3)" }}>
+        <span
+          className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded"
+          style={{ border: "1px solid transparent", color: "var(--ink-3)" }}
+        >
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--ink-5)" }} />
+          {c.mainCrumb}
+        </span>
+        <span style={{ color: "var(--ink-5)" }}>›</span>
+        <span
+          className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded"
+          style={{ background: "var(--ink)", color: "var(--paper)", border: "1px solid var(--ink)" }}
+        >
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--pig-1)" }} />
+          {c.subTitle}
+        </span>
+      </div>
+
+      {/* User question in sub */}
+      <div className="flex flex-col items-end mb-3">
+        <div className="flex items-center gap-[7px] mb-[4px] font-mono text-[9.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--ink-3)" }} />
+          <span>YOU</span>
+        </div>
+        <div
+          className="max-w-[80%] px-[14px] py-[10px] text-[13px] leading-[1.55]"
+          style={{
+            background: "var(--accent)",
+            color: "var(--paper)",
+            borderRadius: 14,
+            borderBottomRightRadius: 4,
+          }}
+        >
+          {c.suggestions[0]}
+        </div>
+      </div>
+
+      {/* AI reply */}
+      <div className="flex flex-col items-start">
+        <div className="flex items-center gap-[7px] mb-[4px] font-mono text-[9.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
+          <span className="w-[5px] h-[5px] rounded-full" style={{ background: "var(--accent)" }} />
+          <span>Deeppin</span>
+        </div>
+        <div
+          className="max-w-[86%] px-[14px] py-[11px] text-[13px] leading-[1.6]"
+          style={{
+            background: "var(--card)",
+            border: "1px solid var(--rule-soft)",
+            color: "var(--ink)",
+            borderRadius: 14,
+            borderBottomLeftRadius: 4,
+          }}
+        >
+          {(() => {
+            // 在 sub-depth 阶段，把 deeperAnchor 在 reply 里高亮成第二层 pin
+            // At sub-depth, highlight deeperAnchor as a pigment-2 anchor in the reply.
+            const text = c.threadReply.slice(0, streamLen);
+            if (phase !== "sub-depth") {
+              return (
+                <>
+                  {text}
+                  {streaming && (
+                    <span
+                      className="inline-block w-[2px] h-3 align-middle ml-[1px]"
+                      style={{ background: "var(--accent)", animation: "pin-demo-caret 1s steps(2) infinite" }}
+                    />
+                  )}
+                </>
+              );
+            }
+            const idx = text.indexOf(c.deeperAnchor);
+            if (idx < 0) return text;
+            return (
+              <>
+                {text.slice(0, idx)}
+                <span
+                  className="relative inline-block"
+                  style={{
+                    color: "var(--ink)",
+                    // sub-depth 阶段展示刚插的针 = 未读粗线（3px）
+                    // At sub-depth, the freshly-pinned deeper anchor shows as
+                    // unread = 3px pigment-2 underline. No bg highlight.
+                    borderBottom: "3px solid var(--pig-2)",
+                    paddingBottom: 1,
+                  }}
+                >
+                  {c.deeperAnchor}
+                </span>
+                {text.slice(idx + c.deeperAnchor.length)}
+              </>
+            );
+          })()}
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes pin-demo-caret {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }
 
-function StarIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
+// ── Right rail — graph view（圆点 + bezier）─────────────────────────────
+function RightRail({
+  c,
+  activeThread,
+  showCapNode,
+  showDeeperNode,
+  phase,
+}: {
+  c: Copy;
+  activeThread: "main" | "cap" | "deeper";
+  showCapNode: boolean;
+  showDeeperNode: boolean;
+  phase: Phase;
+}) {
+  const capBreathing = phase === "unread-breathing" || phase === "popover";
+  // 布局：3 层垂直排列，给第三层留空间
+  // Layout: 3 levels stacked vertically.
+  const W = 300;
+  const mainX = W / 2;
+  const mainY = 50;
+  const subX = W / 2;
+  const subY = 140;
+  const deeperX = W / 2;
+  const deeperY = 230;
+
   return (
-    <svg className={className} style={style} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-    </svg>
+    <div className="flex flex-col" style={{ background: "var(--paper-2)", borderLeft: "1px solid var(--rule)" }}>
+      {/* rail-head */}
+      <div className="px-4 pt-4 pb-3" style={{ borderBottom: "1px solid var(--rule)" }}>
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: "var(--ink-3)" }}>
+          {c.overviewLabel}
+        </span>
+      </div>
+      {/* rail-tabs — graph active */}
+      <div className="flex flex-shrink-0" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+        <div
+          className="flex-1 text-center py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+          style={{ color: "var(--ink-4)", borderBottom: "2px solid transparent" }}
+        >
+          {c.listTabLabel}
+        </div>
+        <div
+          className="flex-1 text-center py-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+          style={{ color: "var(--ink)", borderBottom: "2px solid var(--ink)" }}
+        >
+          {c.graphTabLabel}
+        </div>
+      </div>
+      {/* rail-body — graph SVG */}
+      <div className="flex-1 relative flex items-center justify-center">
+        <svg
+          viewBox={`0 0 ${W} 300`}
+          style={{ width: "100%", height: "100%", maxHeight: 300 }}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* edge main → cap */}
+          {showCapNode && (
+            <path
+              d={`M ${mainX} ${mainY} C ${mainX} ${mainY + 45}, ${subX} ${subY - 45}, ${subX} ${subY}`}
+              fill="none"
+              stroke="var(--rule-strong)"
+              strokeWidth={1}
+              style={{ opacity: phase === "underline-appear" ? 0 : 1, transition: "opacity 400ms ease" }}
+            />
+          )}
+
+          {/* main node */}
+          <g>
+            <circle
+              cx={mainX}
+              cy={mainY}
+              r={activeThread === "main" ? 6 : 4.5}
+              fill={activeThread === "main" ? "var(--ink)" : "var(--paper-2)"}
+              stroke="var(--ink)"
+              strokeWidth={activeThread === "main" ? 0 : 1.25}
+            />
+            <text
+              x={mainX}
+              y={mainY + 22}
+              fontSize={11}
+              fill={activeThread === "main" ? "var(--ink)" : "var(--ink-3)"}
+              style={{ fontFamily: "var(--font-serif)" }}
+              textAnchor="middle"
+              fontWeight={activeThread === "main" ? 500 : 400}
+            >
+              {c.mainCrumb}
+            </text>
+          </g>
+
+          {/* cap node */}
+          {showCapNode && (
+            <g
+              style={{
+                opacity: phase === "underline-appear" ? 0 : 1,
+                transform: phase === "underline-appear" ? "translateY(-6px)" : "translateY(0)",
+                transition: "opacity 400ms ease, transform 400ms cubic-bezier(0.16, 1, 0.3, 1)",
+                transformOrigin: `${subX}px ${subY}px`,
+              }}
+            >
+              <circle
+                cx={subX}
+                cy={subY}
+                r={activeThread === "cap" ? 6 : 4.5}
+                fill={activeThread === "cap" ? "var(--pig-1)" : "var(--paper-2)"}
+                stroke="var(--pig-1)"
+                strokeWidth={activeThread === "cap" ? 0 : 1.25}
+              />
+              {/* unread pulse */}
+              {capBreathing && (
+                <circle cx={subX + 7} cy={subY - 5} r={3.5} fill="var(--accent)" stroke="var(--paper)" strokeWidth={1.25}>
+                  <animate attributeName="r" values="3.5;4.5;3.5" dur="1.6s" repeatCount="indefinite" />
+                </circle>
+              )}
+              <text
+                x={subX}
+                y={subY + 22}
+                fontSize={11}
+                fill={activeThread === "cap" ? "var(--ink)" : "var(--ink-3)"}
+                style={{ fontFamily: "var(--font-serif)" }}
+                textAnchor="middle"
+                fontWeight={activeThread === "cap" ? 500 : 400}
+              >
+                {c.subTitle.length > 18 ? c.subTitle.slice(0, 17) + "…" : c.subTitle}
+              </text>
+              {/* generating label */}
+              {phase === "ai-replying" && (
+                <text
+                  x={subX}
+                  y={subY + 38}
+                  fontSize={9}
+                  fill="var(--accent)"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                  textAnchor="middle"
+                >
+                  {c.generatingLabel}
+                </text>
+              )}
+            </g>
+          )}
+
+          {/* deeper edge sub → deeper node, 仅 sub-depth 阶段出现 */}
+          {showDeeperNode && (
+            <path
+              d={`M ${subX} ${subY} C ${subX} ${subY + 40}, ${deeperX} ${deeperY - 40}, ${deeperX} ${deeperY}`}
+              fill="none"
+              stroke="var(--rule-strong)"
+              strokeWidth={1}
+              style={{ animation: "pin-demo-fade-in 320ms ease-out both" }}
+            />
+          )}
+
+          {/* 3rd-level node — 深度 2 的 sub-sub-thread */}
+          {showDeeperNode && (
+            <g style={{ animation: "pin-demo-node-in 380ms cubic-bezier(0.16,1,0.3,1) both" }}>
+              <circle
+                cx={deeperX}
+                cy={deeperY}
+                r={activeThread === "deeper" ? 6 : 4.5}
+                fill={activeThread === "deeper" ? "var(--pig-2)" : "var(--paper-2)"}
+                stroke="var(--pig-2)"
+                strokeWidth={activeThread === "deeper" ? 0 : 1.25}
+              />
+              <text
+                x={deeperX}
+                y={deeperY + 22}
+                fontSize={11}
+                fill={activeThread === "deeper" ? "var(--ink)" : "var(--ink-3)"}
+                style={{ fontFamily: "var(--font-serif)" }}
+                textAnchor="middle"
+                fontWeight={activeThread === "deeper" ? 500 : 400}
+              >
+                {c.deeperSubTitle.length > 18 ? c.deeperSubTitle.slice(0, 17) + "…" : c.deeperSubTitle}
+              </text>
+            </g>
+          )}
+        </svg>
+      </div>
+      <style jsx>{`
+        @keyframes pin-demo-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pin-demo-node-in {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
   );
-}
-
-function Cursor() {
-  return <span className="inline-block w-0.5 h-2.5 ml-0.5 align-middle animate-pulse" style={{ background: "rgb(99,102,241)" }} />;
-}
-
-function BlinkCursor() {
-  return <span className="inline-block w-0.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "rgb(99,102,241)" }} />;
 }

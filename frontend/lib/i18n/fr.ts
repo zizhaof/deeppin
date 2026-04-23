@@ -19,7 +19,7 @@ export const fr: T = {
   noThreads: "Aucun fil",
   // Welcome
   welcomeTitle: "La réflexion profonde commence ici",
-  welcomeSub: "Demande n'importe quoi à l'IA. Sélectionne du texte dans une réponse pour ouvrir une sous-question.",
+  welcomeSub: "Demande n'importe quoi à Deeppin. Sélectionne du texte dans une réponse pour ouvrir une sous-question.",
   chooseQuestion: "Choisis une question à explorer",
   tagline: "Sélectionne n'importe quel texte pour creuser",
   // InputBar
@@ -107,6 +107,7 @@ export const fr: T = {
   articles: "Articles",
   // Compte
   logout: "Déconnexion",
+  deleteAccount: "Supprimer le compte",
   // Erreurs
   deleteError: "Échec de la suppression : ",
   unknownError: "Erreur inconnue",
@@ -141,4 +142,21 @@ export const fr: T = {
   // Compteur de quota gratuit
   quotaFree: "restant",
   quotaFull: "Limite d'essai atteinte",
+  you: "TOI",
+  ai: "Deeppin",
+  flattenPreviewBefore: "Avant",
+  flattenPreviewAfter: "Après",
+  flattenPreviewEmpty: "Juste le fil principal — rien à aplatir.",
+  mergeHintSelect: "Sélectionne les sous-questions · clic pour basculer",
+  mergeHintDrag: "Molette pour panoramique · glisser pour déplacer",
+  mergeSelectAll: "Tout sélectionner",
+  mergeSelectNone: "Tout désélectionner",
+  mergeCta: "Fusionner {n} sous-question(s)",
+  mergeSelectedOf: "{selected} / {total} sélectionnées",
+  mergeGeneratingReport: "Génération du rapport…",
+  mergeSavedToChat: "Enregistré",
+  mergeSaving: "Enregistrement…",
+  mergeSaveToChat: "Enregistrer dans le chat",
+  mergeReselect: "Re-sélectionner",
+  signInTerms: "En te connectant, tu acceptes les Conditions et la Politique de confidentialité de Deeppin.",
 };

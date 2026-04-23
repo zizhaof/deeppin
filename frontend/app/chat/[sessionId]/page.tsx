@@ -20,10 +20,11 @@ import type { PinDialogInfo } from "@/components/PinStartDialog";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import { clearActiveHighlight } from "@/components/MainThread/MessageBubble";
 import AnchorPreviewPopover from "@/components/MainThread/AnchorPreviewPopover";
+import FlattenPreview from "@/components/FlattenPreview";
 import type { ThreadCardItem } from "@/components/SubThread/types";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
-import MergeTreeCanvas from "@/components/MergeTreeCanvas";
+import ThreadGraph from "@/components/Layout/ThreadGraph";
 import MergeOutput from "@/components/MergeOutput";
 import SessionDrawer from "@/components/SessionDrawer";
 import MobileChatLayout from "@/components/Mobile/MobileChatLayout";
@@ -164,14 +165,17 @@ export default function ChatPage() {
     return () => clearTimeout(id);
   }, [flattenToast]);
 
-  // 右栏宽度（可拖拽调整）—— 左栏已移除，只剩右栏一个可调节点
-  // Right panel width (left panel was removed — only right resizer remains).
-  const [rightW, setRightW] = useState(() =>
-    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:right-w")) || 288 : 288
-  );
-  const MIN_SIDE = 200;
-  // 上限 = 窗口宽度的一半，为主对话区留出 >= 200px 的空间
-  // Max = half of viewport width; main column always keeps >= 200px.
+  // 右栏宽度（可拖拽调整）—— 默认按 4:1（main:rail）比例设定。
+  // Right panel width — defaults to a 4:1 main:rail ratio (rail ~= 20% of viewport).
+  const [rightW, setRightW] = useState(() => {
+    if (typeof window === "undefined") return 340;
+    const stored = Number(localStorage.getItem("deeppin:right-w"));
+    if (stored > 0) return stored;
+    return Math.max(240, Math.min(420, Math.round(window.innerWidth * 0.2)));
+  });
+  const MIN_SIDE = 220;
+  // 上限 = 窗口宽度的一半，为主对话区留出 >= 220px 的空间
+  // Max = half of viewport width; main column always keeps >= 220px.
   const maxSide = () =>
     typeof window !== "undefined" ? Math.max(MIN_SIDE, Math.floor(window.innerWidth / 2)) : 640;
 
@@ -704,67 +708,95 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* 右侧拖拽手柄 */}
+        {/* 右栏 resize handle — hover 显示 3-dash grip + accent 条，跟设计 .resizer 对齐
+            Right-rail resize handle — hover reveals 3-dash grip + accent stripe (design .resizer). */}
         <div
-          className="w-1 flex-shrink-0 hover:bg-indigo-500/30 cursor-col-resize transition-colors"
+          className="resize-handle group/rh relative flex-shrink-0 cursor-col-resize self-stretch"
+          style={{ width: 10 }}
           onMouseDown={(e) => { e.preventDefault(); startResizeRight(e.clientX, rightW); }}
-        />
-        {/* 右侧：概览面板 */}
+        >
+          {/* 1px 细线，hover / drag 时变 accent 2px */}
+          <span
+            className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all group-hover/rh:w-[2px] group-hover/rh:bg-accent"
+            style={{ background: "var(--rule)" }}
+          />
+          {/* 3-dash grip — hover opacity 0 → 1 */}
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col justify-between w-[3px] h-7 pointer-events-none opacity-0 transition-opacity group-hover/rh:opacity-100">
+            <span className="block w-[3px] h-[2px] rounded-full bg-accent" />
+            <span className="block w-[3px] h-[2px] rounded-full bg-accent" />
+            <span className="block w-[3px] h-[2px] rounded-full bg-accent" />
+          </span>
+        </div>
+        {/* 右栏：概览面板 — 按设计 rail-head / rail-tabs / rail-body 三段式
+            Right rail — design's rail-head / rail-tabs / rail-body three-section split. */}
         {(
-          <div style={{ width: rightW, flexShrink: 0 }} className="min-w-0 border-l border-subtle flex flex-col">
-            <div className="px-3 py-2 border-b border-subtle flex-shrink-0 flex items-center gap-2">
-              <h2 className="text-[9px] font-semibold text-faint uppercase tracking-[0.12em]">
+          <div style={{ width: rightW, flexShrink: 0 }} className="min-w-0 border-l border-subtle flex flex-col bg-elevated">
+            {/* rail-head：eyebrow + 线程计数 + merge/flatten 按钮
+                rail-head: eyebrow + count + merge/flatten actions */}
+            <div className="px-4 pt-4 pb-3 flex items-center gap-3 flex-shrink-0 border-b border-rule">
+              <h2 className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-lo">
                 {t.overview}
               </h2>
-              {/* 视图切换：紧跟「概览」文字 */}
-              <div className="flex gap-0.5 bg-surface-80 border border-subtle rounded-lg p-0.5">
-                <button
-                  onClick={() => switchRightView("dots")}
-                  className={`flex items-center gap-1 px-1.5 h-5 rounded-md transition-colors ${rightView === "dots" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
-                >
-                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
-                    <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
-                  </svg>
-                  <span className="text-[9px] font-medium">{t.viewList}</span>
-                </button>
-                <button
-                  onClick={() => switchRightView("canvas")}
-                  className={`flex items-center gap-1 px-1.5 h-5 rounded-md transition-colors ${rightView === "canvas" ? "bg-glass-md text-md" : "text-ph hover:text-dim"}`}
-                >
-                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
-                    <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
-                  </svg>
-                  <span className="text-[9px] font-medium">{t.viewGraph}</span>
-                </button>
-              </div>
-              <span className="text-[9px] text-ph tabular-nums select-none flex-1">{threads.length}</span>
+              <span className="font-mono text-[11px] text-faint tabular-nums">{threads.length}</span>
+              <span className="flex-1" />
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowMerge(true)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-md text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-400/50 transition-all"
                   title="合并输出 / Merge output"
+                  className="inline-flex items-center gap-1 font-mono text-[10px] tracking-wider uppercase text-md hover:text-ink-accent transition-colors"
+                  style={{ color: "var(--ink-2)" }}
                 >
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l8 9M20 4l-8 9m0 0v7" />
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4l8 9M20 4l-8 9m0 0v7" />
                   </svg>
-                  <span className="text-[10px] font-medium">{t.mergeButton}</span>
+                  <span>{t.mergeButton}</span>
                 </button>
               )}
               {pinCount > 0 && (
                 <button
                   onClick={() => setShowFlattenConfirm(true)}
                   disabled={flattening}
-                  className="flex items-center gap-1 px-2 py-1 rounded-md text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-400/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   title="扁平化：把所有子线程并回主线（不可逆） / Flatten: merge all sub-threads back into main (irreversible)"
+                  className="inline-flex items-center gap-1 font-mono text-[10px] tracking-wider uppercase transition-colors disabled:opacity-40"
+                  style={{ color: "var(--ink-2)" }}
                 >
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" />
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M3 12h18M3 18h18" />
                   </svg>
-                  <span className="text-[10px] font-medium">{t.flattenButton}</span>
+                  <span>{t.flattenButton}</span>
                 </button>
               )}
+            </div>
+
+            {/* rail-tabs：mono 大写 + active 下划线（代替 glass pill）
+                rail-tabs: mono uppercase + active bottom-border (replaces the glass pill toggle) */}
+            <div className="flex flex-shrink-0 border-b border-rule-soft">
+              <button
+                onClick={() => switchRightView("dots")}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 font-mono text-[10.5px] uppercase tracking-[0.14em] transition-colors ${
+                  rightView === "dots" ? "text-ink" : "text-faint hover:text-md"
+                }`}
+                style={{ borderBottom: `2px solid ${rightView === "dots" ? "var(--ink)" : "transparent"}` }}
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="5" cy="5" r="2.5"/><circle cx="5" cy="12" r="2.5"/><circle cx="5" cy="19" r="2.5"/>
+                  <circle cx="14" cy="9" r="2.5"/><circle cx="14" cy="19" r="2.5"/>
+                </svg>
+                <span>{t.viewList}</span>
+              </button>
+              <button
+                onClick={() => switchRightView("canvas")}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 font-mono text-[10.5px] uppercase tracking-[0.14em] transition-colors ${
+                  rightView === "canvas" ? "text-ink" : "text-faint hover:text-md"
+                }`}
+                style={{ borderBottom: `2px solid ${rightView === "canvas" ? "var(--ink)" : "transparent"}` }}
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>
+                  <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
+                </svg>
+                <span>{t.viewGraph}</span>
+              </button>
             </div>
             {rightView === "dots" ? (
               <ThreadTree
@@ -776,12 +808,14 @@ export default function ChatPage() {
               />
             ) : (
               <div className="flex-1 min-h-0 relative">
-                <MergeTreeCanvas
+                <ThreadGraph
                   threads={threads}
-                  selected={new Set(threads.map(t => t.id))}
                   activeThreadId={activeThreadId}
-                  onToggle={handleNavigateTo}
-                  compact
+                  unreadCounts={unreadCounts}
+                  messagesByThread={messagesByThread}
+                  onSelect={handleNavigateTo}
+                  onNodeHover={handleAnchorHover}
+                  width={Math.max(200, rightW - 24)}
                 />
               </div>
             )}
@@ -820,7 +854,7 @@ export default function ChatPage() {
             isAnon={isAnon}
           />
         </div>
-        <div style={{ width: rightW + 4 }} className="flex-shrink-0" />
+        <div style={{ width: rightW + 10 }} className="flex-shrink-0" />
       </div>
 
       </div>
@@ -881,38 +915,62 @@ export default function ChatPage() {
         />
       )}
 
-      {/* 扁平化确认弹窗 — 破坏性操作，必须二次确认 */}
-      {/* Flatten confirmation — destructive, requires second-step confirmation */}
+      {/* 扁平化确认弹窗 — 破坏性操作，带 before / after 可视化预览
+          Flatten confirmation — destructive, with before/after preview */}
       {showFlattenConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
+          style={{ background: "rgba(27,26,23,0.45)" }}
           onClick={() => !flattening && setShowFlattenConfirm(false)}
         >
           <div
-            className="max-w-md w-[90vw] rounded-lg border border-amber-500/40 bg-surface-95 shadow-xl p-5"
+            className="max-w-xl w-[90vw] rounded-lg shadow-2xl overflow-hidden"
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--rule)",
+              boxShadow: "0 24px 64px rgba(27,26,23,0.18)",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM9.75 3.75L1.5 18a1.5 1.5 0 001.31 2.25h18.38A1.5 1.5 0 0022.5 18L14.25 3.75a1.5 1.5 0 00-2.5 0z" />
-              </svg>
+            <div className="px-6 pt-5 pb-4 flex items-start gap-3" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+              <span
+                className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full grid place-items-center font-mono text-[13px] font-medium"
+                style={{ background: "var(--accent)", color: "var(--paper)" }}
+              >
+                !
+              </span>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-md">{t.flattenConfirmTitle}</h3>
-                <p className="mt-2 text-xs text-dim whitespace-pre-line leading-relaxed">{t.flattenConfirmBody}</p>
+                <h3 className="font-serif text-[17px] font-medium text-ink leading-tight">{t.flattenConfirmTitle}</h3>
+                <p className="mt-1 text-[12.5px] whitespace-pre-line leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                  {t.flattenConfirmBody}
+                </p>
               </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+
+            {/* Before / After 可视化 / preview */}
+            <div className="px-6 py-5" style={{ background: "var(--paper-2)" }}>
+              <FlattenPreview threads={threads} />
+            </div>
+
+            <div className="px-6 py-3 flex justify-end gap-2" style={{ borderTop: "1px solid var(--rule-soft)" }}>
               <button
                 onClick={() => setShowFlattenConfirm(false)}
                 disabled={flattening}
-                className="px-3 py-1.5 text-xs rounded-md text-dim hover:text-md hover:bg-glass-md transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50"
+                style={{ color: "var(--ink-3)" }}
               >
                 {t.flattenCancel}
               </button>
               <button
                 onClick={handleFlatten}
                 disabled={flattening}
-                className="px-3 py-1.5 text-xs rounded-md font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3.5 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: flattening ? "var(--accent-ink)" : "var(--ink)",
+                  color: "var(--paper)",
+                }}
+                onMouseEnter={(e) => { if (!flattening) (e.currentTarget as HTMLElement).style.background = "var(--accent)"; }}
+                onMouseLeave={(e) => { if (!flattening) (e.currentTarget as HTMLElement).style.background = "var(--ink)"; }}
               >
                 {flattening ? t.flattening : t.flattenConfirmCta}
               </button>

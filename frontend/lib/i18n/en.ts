@@ -20,7 +20,7 @@ export const en = {
   noThreads: "No threads",
   // Welcome
   welcomeTitle: "Deep thinking starts here",
-  welcomeSub: "Ask AI anything. Select text in any reply to open a sub-question.",
+  welcomeSub: "Ask Deeppin anything. Select text in any reply to open a sub-question.",
   chooseQuestion: "Choose a question to explore",
   tagline: "Select any text to deep-dive",
   // InputBar
@@ -108,6 +108,7 @@ export const en = {
   articles: "Articles",
   // 账号 / Account
   logout: "Log out",
+  deleteAccount: "Delete account",
   // 错误消息 / Errors
   deleteError: "Delete failed: ",
   unknownError: "Unknown error",
@@ -142,6 +143,27 @@ export const en = {
   // Composer 配额计数器 / Composer quota counter
   quotaFree: "free",
   quotaFull: "Trial limit reached",
+  // 消息气泡 WHO 标签 / Message bubble WHO labels
+  you: "YOU",
+  ai: "Deeppin",
+  // 扁平化 before/after 预览 / Flatten before-after preview
+  flattenPreviewBefore: "Before",
+  flattenPreviewAfter: "After",
+  flattenPreviewEmpty: "Only the main thread — nothing to flatten.",
+  // Merge 模态框 / Merge modal
+  mergeHintSelect: "Select sub-questions to merge · click a node to toggle",
+  mergeHintDrag: "Scroll to pan · drag to move",
+  mergeSelectAll: "Select all",
+  mergeSelectNone: "Clear all",
+  mergeCta: "Merge {n} sub-question{s}",
+  mergeSelectedOf: "{selected} / {total} selected",
+  mergeGeneratingReport: "Generating merged report…",
+  mergeSavedToChat: "Saved",
+  mergeSaving: "Saving…",
+  mergeSaveToChat: "Save to chat",
+  mergeReselect: "Reselect",
+  // 登录页底部免责声明 / Sign-in page footer disclaimer
+  signInTerms: "Signing in means you agree to Deeppin's Terms and Privacy Policy.",
 } as const;
 
 // T 是 en 的 key 集合 + 全部 string 值类型。

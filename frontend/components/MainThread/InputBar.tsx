@@ -177,7 +177,10 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const quotaFull = quotaRemaining === 0;
 
   return (
-    <div className="border-t border-subtle bg-base px-4 pt-3 pb-5 relative">
+    // 跟 MessageList 的阅读列对齐：max-w-[780px] 居中 + 宽 padding
+    // Aligned with MessageList's reading column for visual continuity.
+    <div className="border-t border-subtle bg-base pt-3 pb-5 relative px-6 md:px-10">
+     <div className="mx-auto w-full max-w-[780px] relative">
       {/* 拖拽调整输入框高度的把手 */}
       <div
         className="absolute top-0 left-0 right-0 h-2.5 cursor-ns-resize flex items-center justify-center group/rh"
@@ -317,6 +320,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
           </button>
         </div>
       </div>
+     </div>
     </div>
   );
 }

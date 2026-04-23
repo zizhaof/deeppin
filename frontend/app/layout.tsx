@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,9 +12,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/**
+ * Fraunces 只用于少量「editorial」场合 —— brand mark、hero 标题、popover 标题。
+ * 不作为全局默认，正文依然是 Geist（UI chrome）。
+ * Fraunces is reserved for editorial moments only — brand mark, hero titles,
+ * popover titles. Body copy stays Geist (UI chrome).
+ */
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  // 变量字体，不指定 weight；opsz 开启 optical-size 轴，小号字自动收紧
+  // Variable font; opsz axis enables automatic optical sizing.
+  axes: ["opsz"],
+});
+
 export const metadata: Metadata = {
-  title: "Deeppin — 深度思考工具",
-  description: "AI 辅助的结构化深度思考，支持子问题追问",
+  title: "Deeppin — structured deep thinking with AI",
+  description: "AI-assisted structured deep thinking. Pin anything in a reply to branch a sub-question without losing the main thread.",
 };
 
 export default function RootLayout({
@@ -25,14 +39,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
-      {/* 在 hydration 之前读取 localStorage 并设置主题 class，防止页面闪烁 */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `(function(){try{var s=localStorage.getItem('deeppin:theme');var t=s?JSON.parse(s).state?.theme:'system';if(t==='dark')document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.add('light');}catch(e){}})();`,
-        }}
-      />
       {/*
         首屏前根据浏览器语言预填 localStorage，zustand 水合时就是浏览器语言。
         无存储值 → 从 navigator.languages 选最接近的支持 locale，命中写入；未命中默认 en。

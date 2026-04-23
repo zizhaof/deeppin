@@ -19,7 +19,7 @@ export const es: T = {
   noThreads: "Sin hilos",
   // Welcome
   welcomeTitle: "El pensamiento profundo empieza aquí",
-  welcomeSub: "Pregunta cualquier cosa a la IA. Selecciona texto en una respuesta para abrir una subpregunta.",
+  welcomeSub: "Pregunta cualquier cosa a Deeppin. Selecciona texto en una respuesta para abrir una subpregunta.",
   chooseQuestion: "Elige una pregunta para explorar",
   tagline: "Selecciona cualquier texto para profundizar",
   // InputBar
@@ -107,6 +107,7 @@ export const es: T = {
   articles: "Artículos",
   // Cuenta
   logout: "Cerrar sesión",
+  deleteAccount: "Eliminar cuenta",
   // Errores
   deleteError: "Error al eliminar: ",
   unknownError: "Error desconocido",
@@ -141,4 +142,21 @@ export const es: T = {
   // Contador de cuota gratuita
   quotaFree: "libres",
   quotaFull: "Límite de prueba alcanzado",
+  you: "TÚ",
+  ai: "Deeppin",
+  flattenPreviewBefore: "Antes",
+  flattenPreviewAfter: "Después",
+  flattenPreviewEmpty: "Solo el hilo principal — nada que aplanar.",
+  mergeHintSelect: "Selecciona sub-preguntas para combinar · clic para alternar",
+  mergeHintDrag: "Rueda para desplazar · arrastra para mover",
+  mergeSelectAll: "Seleccionar todo",
+  mergeSelectNone: "Limpiar",
+  mergeCta: "Combinar {n} sub-pregunta(s)",
+  mergeSelectedOf: "{selected} / {total} seleccionadas",
+  mergeGeneratingReport: "Generando informe…",
+  mergeSavedToChat: "Guardado",
+  mergeSaving: "Guardando…",
+  mergeSaveToChat: "Guardar en el chat",
+  mergeReselect: "Reseleccionar",
+  signInTerms: "Al iniciar sesión, aceptas los Términos y la Política de Privacidad de Deeppin.",
 };

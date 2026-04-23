@@ -19,7 +19,7 @@ export const ko: T = {
   noThreads: "스레드 없음",
   // Welcome
   welcomeTitle: "깊이 있는 사고의 시작",
-  welcomeSub: "AI에게 무엇이든 물어보세요. 답변에서 텍스트를 선택해 하위 질문을 열 수 있습니다.",
+  welcomeSub: "Deeppin에게 무엇이든 물어보세요. 답변에서 텍스트를 선택해 하위 질문을 열 수 있습니다.",
   chooseQuestion: "탐색할 질문 선택",
   tagline: "아무 텍스트나 선택해 파고들기",
   // InputBar
@@ -107,6 +107,7 @@ export const ko: T = {
   articles: "아티클",
   // 계정
   logout: "로그아웃",
+  deleteAccount: "계정 삭제",
   // 오류 메시지
   deleteError: "삭제 실패: ",
   unknownError: "알 수 없는 오류",
@@ -141,4 +142,21 @@ export const ko: T = {
   // 무료 쿼터 카운터
   quotaFree: "남음",
   quotaFull: "체험 한도 도달",
+  you: "나",
+  ai: "Deeppin",
+  flattenPreviewBefore: "평탄화 전",
+  flattenPreviewAfter: "평탄화 후",
+  flattenPreviewEmpty: "메인 스레드만 있음 — 평탄화할 것이 없습니다.",
+  mergeHintSelect: "병합할 하위 질문을 선택 · 노드를 클릭하여 토글",
+  mergeHintDrag: "스크롤로 이동 · 드래그로 옮김",
+  mergeSelectAll: "모두 선택",
+  mergeSelectNone: "선택 해제",
+  mergeCta: "{n}개의 하위 질문 병합",
+  mergeSelectedOf: "{selected} / {total} 선택됨",
+  mergeGeneratingReport: "병합 보고서 생성 중…",
+  mergeSavedToChat: "저장됨",
+  mergeSaving: "저장 중…",
+  mergeSaveToChat: "대화에 저장",
+  mergeReselect: "다시 선택",
+  signInTerms: "로그인하면 Deeppin의 이용약관과 개인정보처리방침에 동의하는 것입니다.",
 };

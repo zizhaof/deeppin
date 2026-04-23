@@ -21,7 +21,7 @@ export const ja: T = {
   noThreads: "スレッドなし",
   // Welcome
   welcomeTitle: "深い思考はここから",
-  welcomeSub: "AI に何でも聞いてください。返信のテキストを選択してサブ質問を開けます。",
+  welcomeSub: "Deeppin に何でも聞いてください。返信のテキストを選択してサブ質問を開けます。",
   chooseQuestion: "掘り下げる質問を選択",
   tagline: "任意のテキストを選んで深掘り",
   // InputBar
@@ -109,6 +109,7 @@ export const ja: T = {
   articles: "記事",
   // アカウント
   logout: "ログアウト",
+  deleteAccount: "アカウント削除",
   // エラーメッセージ
   deleteError: "削除に失敗: ",
   unknownError: "不明なエラー",
@@ -143,4 +144,21 @@ export const ja: T = {
   // 無料枠のカウンター
   quotaFree: "残り",
   quotaFull: "トライアルの上限に達しました",
+  you: "あなた",
+  ai: "Deeppin",
+  flattenPreviewBefore: "フラット化前",
+  flattenPreviewAfter: "フラット化後",
+  flattenPreviewEmpty: "メインスレッドのみ — フラット化するものがありません。",
+  mergeHintSelect: "マージするサブ質問を選択 · ノードをクリックで切り替え",
+  mergeHintDrag: "スクロールでパン · ドラッグで移動",
+  mergeSelectAll: "すべて選択",
+  mergeSelectNone: "選択解除",
+  mergeCta: "{n} 件のサブ質問をマージ",
+  mergeSelectedOf: "{selected} / {total} 件選択中",
+  mergeGeneratingReport: "マージレポートを生成中…",
+  mergeSavedToChat: "保存しました",
+  mergeSaving: "保存中…",
+  mergeSaveToChat: "チャットに保存",
+  mergeReselect: "再選択",
+  signInTerms: "サインインすることで、Deeppin の利用規約とプライバシーポリシーに同意します。",
 };

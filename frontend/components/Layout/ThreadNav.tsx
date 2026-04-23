@@ -7,7 +7,6 @@ import { useState } from "react";
 import type { Thread } from "@/lib/api";
 import { deleteAccount } from "@/lib/api";
 import { useT } from "@/stores/useLangStore";
-import ThemeToggle from "@/components/ThemeToggle";
 import LangSelector from "@/components/LangSelector";
 import { createClient } from "@/lib/supabase";
 
@@ -79,66 +78,83 @@ export default function ThreadNav({
   const breadcrumb = buildBreadcrumb(activeThreadId);
 
   return (
-    <header className="h-11 border-b border-subtle bg-base flex items-center px-3 gap-2 flex-shrink-0">
-      {/* 菜单按钮 — 打开 session 抽屉 */}
-      <button
-        onClick={onOpenSessions}
-        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group cursor-pointer"
-        title="所有对话"
-      >
-        <svg className="w-3.5 h-3.5 text-faint group-hover:text-md transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
-
-      {/* 新对话按钮 — 登录用户直接新建；匿名用户由上层弹登录引导 */}
-      {/* New chat — signed-in goes straight to a new UUID; anon triggers the sign-in modal in the parent */}
-      <button
-        onClick={onNewChat}
-        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group cursor-pointer"
-        title={t.newChat}
-      >
-        <svg className="w-3.5 h-3.5 text-faint group-hover:text-md transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
-
-      {/* 品牌图标 */}
-      <Link
-        href="/"
-        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-glass transition-colors flex-shrink-0 group"
-        title="返回主页"
-      >
-        <svg className="w-3.5 h-3.5 text-indigo-400/60 group-hover:text-indigo-400 transition-colors" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-        </svg>
+    <header
+      className="h-14 flex items-center gap-3 flex-shrink-0 px-6"
+      style={{ borderBottom: "1px solid var(--rule)", background: "var(--paper)" }}
+    >
+      {/* 品牌 — 跟欢迎页的左上角一致：paper 小方块 + 深墨蓝 8 角星 + Fraunces Deeppin
+          Brand mark matches the welcome-page top-left exactly:
+          paper square box + deep-ink 8-point star + Fraunces "Deeppin". */}
+      <Link href="/" className="flex items-center gap-2 flex-shrink-0 group" title={t.newChat}>
+        <span
+          className="w-6 h-6 rounded-md flex items-center justify-center transition-colors"
+          style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
+        >
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--accent)" }}>
+            <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+          </svg>
+        </span>
+        <span className="font-serif text-[18px] tracking-[-0.01em] group-hover:opacity-80 transition-opacity" style={{ color: "var(--ink)" }}>
+          Deeppin
+        </span>
       </Link>
 
-      <div className="w-px h-3.5 bg-glass-md flex-shrink-0" />
+      <span className="w-px h-5 flex-shrink-0" style={{ background: "var(--rule)" }} />
 
-      {/* 前进后退 */}
-      <button
-        onClick={onBack}
-        disabled={!canBack}
-        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-glass disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-        aria-label={t.back}
-      >
-        <svg className="w-3.5 h-3.5 text-dim" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
-      <button
-        onClick={onForward}
-        disabled={!canForward}
-        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-glass disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-        aria-label={t.forward}
-      >
-        <svg className="w-3.5 h-3.5 text-dim" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
+      {/* 左侧按钮组：session 抽屉 / 新对话 / 前进后退
+          Left cluster: session drawer / new chat / back / forward */}
+      <div className="flex items-center gap-0.5">
+        <button
+          onClick={onOpenSessions}
+          className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-colors flex-shrink-0"
+          title={t.recentSessions}
+          style={{ color: "var(--ink-3)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-3)"; }}
+        >
+          <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+
+        <button
+          onClick={onNewChat}
+          className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-colors flex-shrink-0"
+          title={t.newChat}
+          style={{ color: "var(--ink-3)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-3)"; }}
+        >
+          <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+
+        <button
+          onClick={onBack}
+          disabled={!canBack}
+          className="w-[30px] h-[30px] rounded-md flex items-center justify-center disabled:opacity-30 transition-colors"
+          aria-label={t.back}
+          style={{ color: "var(--ink-3)" }}
+        >
+          <svg className="w-[14px] h-[14px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button
+          onClick={onForward}
+          disabled={!canForward}
+          className="w-[30px] h-[30px] rounded-md flex items-center justify-center disabled:opacity-30 transition-colors"
+          aria-label={t.forward}
+          style={{ color: "var(--ink-3)" }}
+        >
+          <svg className="w-[14px] h-[14px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
 
       {/* 面包屑 */}
       <div className="flex items-center gap-0 text-sm min-w-0 flex-1 overflow-hidden">
@@ -151,11 +167,24 @@ export default function ThreadNav({
             )}
             <button
               onClick={() => onSelect(thr.id)}
-              className={`truncate max-w-[150px] px-1.5 py-1 rounded-md hover:bg-glass transition-colors text-xs ${
-                thr.id === activeThreadId
-                  ? "text-md font-medium"
-                  : "text-faint hover:text-lo"
-              }`}
+              className="truncate max-w-[180px] px-2 py-[3px] rounded transition-colors font-mono text-[11px]"
+              style={{
+                background: thr.id === activeThreadId ? "var(--ink)" : "transparent",
+                color: thr.id === activeThreadId ? "var(--paper)" : "var(--ink-3)",
+                border: thr.id === activeThreadId ? "1px solid var(--ink)" : "1px solid transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (thr.id !== activeThreadId) {
+                  (e.currentTarget as HTMLElement).style.background = "var(--paper-2)";
+                  (e.currentTarget as HTMLElement).style.color = "var(--ink)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (thr.id !== activeThreadId) {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.color = "var(--ink-3)";
+                }
+              }}
             >
               {thr.parent_thread_id === null
                 ? (thr.title ?? t.mainThread)
@@ -165,9 +194,6 @@ export default function ThreadNav({
           </span>
         ))}
       </div>
-
-      {/* 主题切换 */}
-      <ThemeToggle />
 
       {/* 语言切换 / Language selector */}
       <LangSelector />
@@ -179,7 +205,10 @@ export default function ThreadNav({
       {isAnon ? (
         <button
           onClick={onSignIn}
-          className="flex-shrink-0 text-[11px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg transition-colors"
+          className="flex-shrink-0 h-[30px] px-3 rounded-md text-[12px] font-medium transition-colors"
+          style={{ background: "var(--ink)", color: "var(--paper)" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--accent)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--ink)")}
         >
           {t.signIn}
         </button>
@@ -188,24 +217,32 @@ export default function ThreadNav({
           <button
             onClick={() => setUserMenuOpen((v) => !v)}
             disabled={deleting}
-            className="w-7 h-7 flex items-center justify-center rounded-lg border border-subtle hover:border-base hover:bg-glass transition-all disabled:opacity-50"
-            title="账号设置"
+            className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-all disabled:opacity-50"
+            title={t.languageLabel}
+            style={{ border: "1px solid var(--rule)", color: "var(--ink-4)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--rule)"; (e.currentTarget as HTMLElement).style.color = "var(--ink-4)"; }}
           >
-            <svg className="w-3.5 h-3.5 text-faint" viewBox="0 0 24 24" fill="currentColor">
+            <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
             </svg>
           </button>
 
           {userMenuOpen && (
             <>
-              {/* 点击外部关闭 */}
               <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[140px] bg-surface border border-base rounded-xl shadow-lg overflow-hidden">
+              <div
+                className="absolute right-0 top-full mt-2 z-50 min-w-[160px] overflow-hidden rounded-lg"
+                style={{ background: "var(--card)", border: "1px solid var(--rule)", boxShadow: "0 10px 32px rgba(27,26,23,0.14), 0 2px 6px rgba(27,26,23,0.06)" }}
+              >
                 <button
                   onClick={handleDeleteAccount}
-                  className="w-full text-left px-3.5 py-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                  className="w-full text-left px-3 py-2 text-[12.5px] transition-colors"
+                  style={{ color: "#b84a5b" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--paper-2)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
                 >
-                  删除账号
+                  {t.deleteAccount}
                 </button>
               </div>
             </>
