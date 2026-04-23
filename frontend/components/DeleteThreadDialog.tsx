@@ -146,8 +146,11 @@ function wrapLabel(text: string, maxPx: number): string[] {
 }
 
 interface Props {
-  open: boolean;
-  targetThreadId: string | null;
+  /** 非 null 才会渲染 —— 调用方条件挂载，这样 hook 每次都在 body 进 DOM 后才测量
+   *  Non-null → render. Caller must conditionally mount so the zoom/pan hook's
+   *  initial measurement happens after the body is in the DOM (otherwise the
+   *  container ref would be null at mount and viewport would stay {0,0}). */
+  targetThreadId: string;
   threads: Thread[];
   messagesByThread: Record<string, Message[] | undefined>;
   busy: boolean;
@@ -156,7 +159,6 @@ interface Props {
 }
 
 export default function DeleteThreadDialog({
-  open,
   targetThreadId,
   threads,
   messagesByThread,
@@ -166,13 +168,13 @@ export default function DeleteThreadDialog({
 }: Props) {
   const t = useT();
 
-  const target = targetThreadId ? threads.find((th) => th.id === targetThreadId) : null;
+  const target = threads.find((th) => th.id === targetThreadId) ?? null;
   const isMainTarget = target?.parent_thread_id === null;
 
-  const doomed = useMemo(() => {
-    if (!targetThreadId) return new Set<string>();
-    return collectSubtree(threads, targetThreadId);
-  }, [threads, targetThreadId]);
+  const doomed = useMemo(
+    () => collectSubtree(threads, targetThreadId),
+    [threads, targetThreadId],
+  );
 
   const CANVAS_W = 520;
   const { nodes, height: canvasH } = useMemo(
@@ -206,20 +208,19 @@ export default function DeleteThreadDialog({
   const zp = useGraphZoomPan({
     contentWidth: CANVAS_W,
     contentHeight: canvasH,
-    refitOn: `${open ? 1 : 0}:${targetThreadId ?? ""}`,
+    refitOn: targetThreadId,
   });
 
   // ── ESC 关闭 ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, busy, onCancel]);
+  }, [busy, onCancel]);
 
-  if (!open || !target) return null;
+  if (!target) return null;
 
   const dialogTitle = isMainTarget ? t.deleteSessionTitle : t.deleteThreadTitle;
   const countText = t.deleteCount.replace("{n}", String(doomed.size));

@@ -1048,16 +1048,20 @@ export default function ChatPage() {
       />
 
       {/* 删除线程确认弹窗（带 graph 预览；主线命中 = 删 session）
-          Delete-thread confirm (graph preview; main-thread target wipes session) */}
-      <DeleteThreadDialog
-        open={deleteTargetId !== null}
-        targetThreadId={deleteTargetId}
-        threads={threads}
-        messagesByThread={messagesByThread}
-        busy={deleting}
-        onCancel={closeDeleteDialog}
-        onConfirm={confirmDeleteThread}
-      />
+          Delete-thread confirm (graph preview; main-thread target wipes session)
+          条件挂载：保证 zoom/pan hook 每次都在 body 进 DOM 后才测量
+          Conditional mount — the zoom/pan hook's initial measurement runs on
+          the container ref's attach, so the dialog body must not pre-mount. */}
+      {deleteTargetId !== null && (
+        <DeleteThreadDialog
+          targetThreadId={deleteTargetId}
+          threads={threads}
+          messagesByThread={messagesByThread}
+          busy={deleting}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDeleteThread}
+        />
+      )}
 
       {showMerge && (
         <MergeOutput
