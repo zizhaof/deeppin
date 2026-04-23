@@ -223,17 +223,19 @@ export default function HomePage() {
           )}
           <Link
             href="/articles"
-            className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
+            className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors whitespace-nowrap"
           >
             {t.articles}
           </Link>
           <LangSelector />
           {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
-           *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat" */}
+           *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat".
+           *  Mobile (< md): smaller font + tighter padding so the button stays
+           *  on one line in the cramped topbar; desktop keeps the original look. */}
           {isAnon ? (
             <button
               onClick={handleSignIn}
-              className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+              className="flex items-center gap-1.5 text-[11px] md:text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg transition-colors font-medium whitespace-nowrap"
             >
               {t.signIn}
             </button>
@@ -241,9 +243,9 @@ export default function HomePage() {
             <button
               onClick={() => handleNewChat()}
               disabled={creating}
-              className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+              className="flex items-center gap-1.5 text-[11px] md:text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg transition-colors font-medium whitespace-nowrap"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
               {creating ? t.creating : t.newChat}

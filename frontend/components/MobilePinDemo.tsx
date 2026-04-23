@@ -13,7 +13,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
 
-// ── Phase 沿用桌面 ──────────────────────────────────────────────────────
+// ── Phase 沿用桌面 + 加入 drawer 演示环 ────────────────────────────────
+// "back" 之后引导用户看 graph：右上角按钮呼吸 → 抽屉滑入展示 graph + merge/flatten → 滑出 → idle
+// After "back": breathe the topbar right-button as a "tap here" hint, slide
+// the right drawer in (graph + merge/flatten), then slide out and loop.
 type Phase =
   | "idle"
   | "sweep"
@@ -26,7 +29,10 @@ type Phase =
   | "popover"
   | "enter"
   | "sub-thread"
-  | "back";
+  | "back"
+  | "tap-overview"
+  | "drawer-shown"
+  | "drawer-hidden";
 
 const NEXT: Record<Phase, Phase> = {
   idle: "sweep",
@@ -40,11 +46,14 @@ const NEXT: Record<Phase, Phase> = {
   popover: "enter",
   enter: "sub-thread",
   "sub-thread": "back",
-  back: "idle",
+  back: "tap-overview",
+  "tap-overview": "drawer-shown",
+  "drawer-shown": "drawer-hidden",
+  "drawer-hidden": "idle",
 };
 
 const DELAYS: Record<Phase, number> = {
-  idle: 1800,
+  idle: 1600,
   sweep: 1600,
   selpop: 2000,
   dialog: 2400,
@@ -56,6 +65,9 @@ const DELAYS: Record<Phase, number> = {
   enter: 700,
   "sub-thread": 2600,
   back: 1800,
+  "tap-overview": 1800,
+  "drawer-shown": 3600,
+  "drawer-hidden": 700,
 };
 
 // ── 桌面同款 9 语种 copy（手机文案略简）─────────────────────────────────
@@ -103,6 +115,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "Tap Enter to open the sub-thread.",
       "sub-thread": "Full sub-thread view.",
       back: "Back to main. Pulse stops — read.",
+      "tap-overview": "Tap the overview button to see the thread graph.",
+      "drawer-shown": "Graph view + Merge / Flatten — overview drawer.",
+      "drawer-hidden": "Drawer closes.",
     },
   },
   zh: {
@@ -130,6 +145,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "点「进入」跳进子线程。",
       "sub-thread": "完整子线程视图。",
       back: "回主线，粗线变细，已读。",
+      "tap-overview": "点击右上角按钮看线程图。",
+      "drawer-shown": "Graph 视图 + Merge / Flatten —— 概览抽屉。",
+      "drawer-hidden": "抽屉关闭。",
     },
   },
   ja: {
@@ -157,6 +175,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "「開く」でサブスレッドへ。",
       "sub-thread": "サブスレッドの全表示。",
       back: "メインに戻ると太線が細くなり既読。",
+      "tap-overview": "右上のボタンをタップしてスレッドグラフを表示。",
+      "drawer-shown": "グラフ表示 + Merge / Flatten — 概要ドロワー。",
+      "drawer-hidden": "ドロワーを閉じる。",
     },
   },
   ko: {
@@ -184,6 +205,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "열기로 서브 스레드 진입.",
       "sub-thread": "서브 스레드 전체 뷰.",
       back: "메인 복귀, 굵은 줄이 가는 줄로 — 읽음.",
+      "tap-overview": "오른쪽 상단 버튼을 탭해 스레드 그래프 보기.",
+      "drawer-shown": "그래프 뷰 + Merge / Flatten — 개요 서랍.",
+      "drawer-hidden": "서랍 닫힘.",
     },
   },
   es: {
@@ -211,6 +235,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "Abrir lleva al sub-hilo.",
       "sub-thread": "Vista completa del sub-hilo.",
       back: "De vuelta al principal, fino — leído.",
+      "tap-overview": "Toca el botón de overview para ver el grafo.",
+      "drawer-shown": "Vista de grafo + Merge / Flatten en el drawer.",
+      "drawer-hidden": "El drawer se cierra.",
     },
   },
   fr: {
@@ -238,6 +265,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "Ouvrir pour entrer dans le sous-fil.",
       "sub-thread": "Vue complète du sous-fil.",
       back: "Retour au principal — fin, lu.",
+      "tap-overview": "Touche le bouton overview pour voir le graphe.",
+      "drawer-shown": "Vue graphe + Merge / Flatten dans le drawer.",
+      "drawer-hidden": "Le drawer se ferme.",
     },
   },
   de: {
@@ -265,6 +295,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "Öffnen führt in den Sub-Thread.",
       "sub-thread": "Vollständige Sub-Thread-Ansicht.",
       back: "Zurück zum Haupt — dünn, gelesen.",
+      "tap-overview": "Tippe auf Overview, um den Thread-Graphen zu sehen.",
+      "drawer-shown": "Graph-Ansicht + Merge / Flatten im Drawer.",
+      "drawer-hidden": "Drawer schließt.",
     },
   },
   pt: {
@@ -292,6 +325,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "Abrir leva ao sub-tópico.",
       "sub-thread": "Vista completa do sub-tópico.",
       back: "De volta ao principal — fino, lido.",
+      "tap-overview": "Toque no botão overview para ver o grafo.",
+      "drawer-shown": "Vista de grafo + Merge / Flatten no drawer.",
+      "drawer-hidden": "Drawer fecha.",
     },
   },
   ru: {
@@ -319,6 +355,9 @@ const CONTENT: Record<Lang, Copy> = {
       enter: "Открыть — войти в подветку.",
       "sub-thread": "Полный вид подветки.",
       back: "Назад в главную — тонко, прочитано.",
+      "tap-overview": "Коснитесь кнопки обзора, чтобы увидеть граф.",
+      "drawer-shown": "Граф + Merge / Flatten в выдвижной панели.",
+      "drawer-hidden": "Панель закрывается.",
     },
   },
 };
@@ -380,12 +419,17 @@ export default function MobilePinDemo() {
   const inSub = phase === "ai-replying" || phase === "sub-thread" || phase === "enter";
   const showNewReplyTag = phase === "popover" || phase === "enter";
 
-  // Mac chrome (38) + chat body (320) + mini graph strip (60) + caption (36)
+  // Mac chrome (38) + 移动 topbar (40) + body (320) + caption (36) = 434
+  // Drops the static mini-graph strip; instead the body now has a real
+  // mobile topbar at the top whose right-button breathes during
+  // `tap-overview` and the right drawer slides in for `drawer-shown`.
+  const TOPBAR_H = 40;
   const BODY_H = 320;
-  const GRAPH_H = 60;
-  const TOTAL_H = 38 + BODY_H + GRAPH_H + 36;
+  const TOTAL_H = 38 + TOPBAR_H + BODY_H + 36;
   const showCapNode = anchorVisible;
   const activeNode: "main" | "cap" = inSub ? "cap" : "main";
+  const breatheRightBtn = phase === "tap-overview";
+  const drawerOpen = phase === "drawer-shown";
 
   return (
     <div className="w-full select-none" style={{ maxWidth: 380 }}>
@@ -414,6 +458,57 @@ export default function MobilePinDemo() {
           </span>
         </div>
 
+        {/* 移动端 topbar — 跟真实 MobileChatLayout 一致：hamburger | brand | overview button
+            Mobile topbar mirroring the real MobileChatLayout's chrome. The
+            right "overview" button breathes during the tap-overview phase. */}
+        <div
+          className="flex items-center px-2 gap-1"
+          style={{ height: TOPBAR_H, borderBottom: "1px solid var(--rule)", background: "var(--paper)" }}
+        >
+          {/* hamburger */}
+          <span className="w-7 h-7 flex items-center justify-center rounded-md" style={{ color: "var(--ink-4)" }}>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </span>
+          <div className="flex-1 flex items-center justify-center gap-1.5">
+            <span className="w-4 h-4 rounded-[3px] flex items-center justify-center" style={{ background: "var(--card)", border: "1px solid var(--rule)" }}>
+              <svg className="w-2 h-2" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--accent)" }}>
+                <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+              </svg>
+            </span>
+            <span className="font-serif text-[12px]" style={{ color: "var(--ink)" }}>
+              Deeppin
+            </span>
+          </div>
+          {/* overview button — breathing 「tap here」hint at tap-overview phase */}
+          <span
+            className={`relative w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+              breatheRightBtn ? "demo-tap-here" : ""
+            }`}
+            style={{
+              color: breatheRightBtn ? "var(--accent)" : "var(--ink-4)",
+              background: breatheRightBtn || drawerOpen ? "var(--accent-soft)" : "transparent",
+            }}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="5" r="2"/>
+              <circle cx="5" cy="19" r="2"/>
+              <circle cx="19" cy="19" r="2"/>
+              <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
+            </svg>
+            {showCapNode && !drawerOpen && (
+              <span
+                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+                style={{ background: "var(--accent)" }}
+                aria-hidden
+              />
+            )}
+          </span>
+        </div>
+
         {/* Body — main view + sub view stacked, opacity crossfade */}
         <div className="relative" style={{ height: BODY_H, background: "var(--paper)" }}>
           <div className={`absolute inset-0 transition-opacity duration-200 ${inSub ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
@@ -433,32 +528,78 @@ export default function MobilePinDemo() {
           </div>
 
           {showDialog && <Dialog c={c} picked={phase === "pick"} />}
-        </div>
 
-        {/* Mini graph strip — 横向 2 个 pigment 圆节点 + bezier 连线
-            Mini graph strip — 2 pigment circles + bezier edge, horizontally
-            laid out so it fits in 60px height. Mirrors the desktop's
-            right-rail graph in spirit. */}
-        <div
-          className="relative px-3 flex items-center"
-          style={{
-            height: GRAPH_H,
-            background: "var(--paper-2)",
-            borderTop: "1px solid var(--rule)",
-          }}
-        >
-          <span className="font-mono text-[9px] uppercase tracking-[0.18em] mr-3 flex-shrink-0" style={{ color: "var(--ink-4)" }}>
-            graph
-          </span>
-          <div className="flex-1 relative h-full">
-            <MiniGraph
-              showCapNode={showCapNode}
-              activeNode={activeNode}
-              breathing={breathing}
-              capLabel={c.subTitle}
-              mainLabel={c.mainCrumb}
-              phase={phase}
-            />
+          {/* 右抽屉 —— drawer-shown 时滑入；带 graph + Merge/Flatten
+              Right drawer that slides in during drawer-shown — mirrors the
+              real MobileChatLayout right drawer (graph view + bottom-pinned
+              Merge / Flatten). */}
+          <div
+            className="absolute top-0 right-0 bottom-0 transition-transform duration-300 ease-out flex flex-col"
+            style={{
+              width: "82%",
+              background: "var(--card)",
+              borderLeft: "1px solid var(--rule)",
+              transform: drawerOpen ? "translateX(0)" : "translateX(105%)",
+              boxShadow: drawerOpen ? "-12px 0 32px rgba(27,26,23,0.18)" : "none",
+            }}
+          >
+            {/* drawer head */}
+            <div
+              className="flex items-center justify-between px-3 h-9 flex-shrink-0"
+              style={{ borderBottom: "1px solid var(--rule)" }}
+            >
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em]" style={{ color: "var(--ink-3)" }}>
+                overview
+              </span>
+              <span className="w-5 h-5 flex items-center justify-center text-[10px]" style={{ color: "var(--ink-4)" }}>×</span>
+            </div>
+            {/* tabs (graph active) */}
+            <div className="flex flex-shrink-0" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+              <span
+                className="flex-1 text-center py-1.5 font-mono text-[9px] uppercase tracking-[0.14em]"
+                style={{ color: "var(--ink-4)", borderBottom: "2px solid transparent" }}
+              >
+                list
+              </span>
+              <span
+                className="flex-1 text-center py-1.5 font-mono text-[9px] uppercase tracking-[0.14em]"
+                style={{ color: "var(--ink)", borderBottom: "2px solid var(--ink)" }}
+              >
+                graph
+              </span>
+            </div>
+            {/* graph body */}
+            <div className="flex-1 min-h-0 flex items-center justify-center p-2">
+              <MiniGraph
+                showCapNode={showCapNode}
+                activeNode={activeNode}
+                breathing={false}
+                capLabel={c.subTitle}
+                mainLabel={c.mainCrumb}
+                phase={phase}
+              />
+            </div>
+            {/* bottom Merge / Flatten */}
+            <div className="px-2 py-2 flex items-center gap-1.5 flex-shrink-0" style={{ borderTop: "1px solid var(--rule)" }}>
+              <span
+                className="flex-1 inline-flex items-center justify-center gap-1 h-7 rounded-md text-[10px] font-medium"
+                style={{ background: "var(--ink)", color: "var(--paper)" }}
+              >
+                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+                  <path d="M4 4l8 9M20 4l-8 9m0 0v7" />
+                </svg>
+                Merge
+              </span>
+              <span
+                className="flex-1 inline-flex items-center justify-center gap-1 h-7 rounded-md text-[10px]"
+                style={{ background: "var(--paper-2)", color: "var(--ink-2)", border: "1px solid var(--rule)" }}
+              >
+                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+                  <path d="M3 6h18M3 12h18M3 18h18" />
+                </svg>
+                Flatten
+              </span>
+            </div>
           </div>
         </div>
 
@@ -470,6 +611,19 @@ export default function MobilePinDemo() {
           <span className="truncate">{c.caption[phase]}</span>
         </div>
       </div>
+
+      <style jsx>{`
+        /* "tap here" 呼吸：accent 阴影由小到大循环，像系统 hint
+           Tap-here breathe: accent box-shadow ring expands then fades, pulling
+           the user's eye to the right-overview button in tap-overview phase. */
+        :global(.demo-tap-here) {
+          animation: demo-tap-here 1.2s ease-in-out infinite;
+        }
+        @keyframes demo-tap-here {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(42, 42, 114, 0.50); }
+          50%      { box-shadow: 0 0 0 8px rgba(42, 42, 114, 0); }
+        }
+      `}</style>
     </div>
   );
 }
