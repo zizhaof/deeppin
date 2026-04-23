@@ -45,7 +45,7 @@ const DELAYS: Record<DemoPhase, number> = {
   "l2-stream": 4200,
   "graph-hint": 3000,
   "graph-nav-root": 4000,
-  "graph-navigated": 3800,
+  "graph-navigated": 5500,
   "merge-hint": 3500,
   "merge-modal": 3200,
   "merge-stream": 4800,
@@ -69,7 +69,13 @@ const inMainView = (p: DemoPhase) =>
   p.startsWith("p2-") ||
   p === "l1-hover" ||
   p === "l1-enter" ||
-  p === "graph-navigated";
+  p === "graph-navigated" ||
+  // merge-hint 保留 MainView 做背景，避免 Merge 按钮脉冲时
+  // 下方聊天区空白；modal 在 merge-modal phase 才盖上来。
+  // Keep MainView as the backdrop during merge-hint so the chat area
+  // doesn't blank out while the Merge button pulses. The modal covers
+  // it starting from merge-modal.
+  p === "merge-hint";
 const inSub1View = (p: DemoPhase) =>
   p === "l1-stream" ||
   p.startsWith("p3-") ||
@@ -207,17 +213,11 @@ export default function MobilePinDemo() {
     };
   };
 
+  // 主线 AI 回复：blank 时清空，其它 phase 直接满长显示（不流式）。
+  // Main reply: empty on `blank`, full length everywhere else — no typewriter.
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    if (phase === "blank") {
-      setMainLen(0);
-      return;
-    }
-    if (phase !== "main-stream") {
-      setMainLen(mainFullLen);
-      return;
-    }
-    return runStream(mainFullLen, DELAYS["main-stream"] * 0.8, setMainLen);
+    setMainLen(phase === "blank" ? 0 : mainFullLen);
   }, [phase, mainFullLen]);
 
   useEffect(() => {
@@ -290,10 +290,15 @@ export default function MobilePinDemo() {
   const anchor1Visible = atOrAfter(phase, "p1-underline");
   const anchor2Visible = atOrAfter(phase, "p2-underline");
   const sub1AnchorVisible = atOrAfter(phase, "p3-underline");
-  const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-enter"];
+  // 跟 desktop 对齐：breathing 在 hover phase 开始就停掉，给 popover
+  // 一个稳定不透明的父容器；anchor-breathing 会在 50% 把整个 span 的
+  // opacity 压到 0.78，popover 作为子元素会跟着闪烁。
+  // Match desktop: stop breathing once hover starts so the popover child
+  // doesn't inherit the 0.78 opacity dip from anchor-breathing and blink.
+  const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-hover"];
   const anchor2Breathing = anchor2Visible;
   const sub1AnchorBreathing =
-    sub1AnchorVisible && PHASE_IDX[phase] < PHASE_IDX["l2-enter"];
+    sub1AnchorVisible && PHASE_IDX[phase] < PHASE_IDX["l2-hover"];
 
   const nodePulse: "sub1" | "sub2" | "deep" | null =
     phase === "p1-underline" ? "sub1" :
@@ -436,11 +441,16 @@ export default function MobilePinDemo() {
             >
               Deeppin
             </span>
-            {/* Merge button —— demo-merge-hint 脉冲放大 */}
+            {/* Merge button —— 只用 demo-merge-hint（外扩 halo）做提示；
+                tap-press 和 tap-print/ring 在按钮内部会盖住 "Merge" 文字，
+                移到父行上方或者直接跳过。
+                Use only the outward halo (demo-merge-hint) for the Merge
+                button hint. The inner tap-press / tap-print disc would
+                cover the "Merge" label and make the button look blank. */}
             <span
               className={`relative ml-2 inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium ${
                 mergeBtnPulse ? "demo-merge-hint" : ""
-              } ${tapOnMerge ? "demo-tap-press" : ""}`}
+              }`}
               style={{
                 background: mergeBtnPulse ? "var(--accent)" : "var(--ink)",
                 color: "var(--paper)",
@@ -458,12 +468,6 @@ export default function MobilePinDemo() {
                 <path d="M4 4l8 9M20 4l-8 9m0 0v7" />
               </svg>
               {c.mergeLabel}
-              {tapOnMerge && (
-                <>
-                  <span className="demo-tap-print demo-tap-print-sm" aria-hidden />
-                  <span className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
-                </>
-              )}
             </span>
           </div>
           <span
@@ -864,14 +868,24 @@ function MobileMainView({
                   sweepPct={sweepPct}
                   visible={anchor1Visible}
                   breathing={anchor1Breathing}
-                  tapHint={tapHintAnchor1}
-                  tapFiring={enterTap}
+                  tapHint={phase === "l1-hover"}
+                  tapFiring={false}
                 >
                   {selpopOn === 1 && (
                     <MobileSelPop
                       label={c.followupLabel}
                       copy={c.copyLabel}
                       pulse={selpopTap}
+                    />
+                  )}
+                  {tapHintAnchor1 && (
+                    <MobileAnchorPopover
+                      c={c}
+                      title={c.subTitle1}
+                      pigment="var(--pig-1)"
+                      question={c.suggestions1[0]}
+                      answer={c.sub1Before + c.sub1Anchor + c.sub1After}
+                      enterPulse={enterTap}
                     />
                   )}
                 </MobileAnchor>
@@ -1044,14 +1058,24 @@ function MobileSub1View({
               sweepPct={sweepPct}
               visible={sub1AnchorVisible}
               breathing={sub1AnchorBreathing}
-              tapHint={tapHintSub1Anchor}
-              tapFiring={enterTap}
+              tapHint={phase === "l2-hover"}
+              tapFiring={false}
             >
               {selpopOn === 3 && (
                 <MobileSelPop
                   label={c.followupLabel}
                   copy={c.copyLabel}
                   pulse={selpopTap}
+                />
+              )}
+              {tapHintSub1Anchor && (
+                <MobileAnchorPopover
+                  c={c}
+                  title={c.deepTitle}
+                  pigment="var(--pig-3)"
+                  question={c.suggestions3[0]}
+                  answer={c.sub2Reply}
+                  enterPulse={enterTap}
                 />
               )}
             </MobileAnchor>
@@ -1268,6 +1292,143 @@ function MobileSelPop({
         className="absolute left-3 -bottom-1 w-1.5 h-1.5 rotate-45"
         style={{ background: "var(--ink)" }}
       />
+    </span>
+  );
+}
+
+// MobileAnchorPopover —— 跟 desktop 的 AnchorPopover 同结构，更紧凑
+// (220px 宽) 以适配手机列宽。在锚点上方浮出，显示 YOU 问题 + AI 回答
+// + 大的 Enter 按钮。l*-enter phase 时 enterPulse=true，Enter 上跑
+// tap-press + tap-print/ring 提示点击进入。
+// Mirror of desktop AnchorPopover but narrower (220px) to fit the mobile
+// column. Floats above the anchor with YOU / AI preview + an Enter row
+// that lights up during l*-enter so the demo reads as tap-to-enter.
+function MobileAnchorPopover({
+  c, title, pigment, question, answer, enterPulse,
+}: {
+  c: DemoContent;
+  title: string;
+  pigment: string;
+  question: string;
+  answer: string;
+  enterPulse: boolean;
+}) {
+  const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+  return (
+    // 手机端空间紧 —— popover 朝下显示（锚点通常在 AI 气泡上半部，
+    // 下方还有 ~200px 可用）；desktop 因为 overflow-hidden 切底才朝上。
+    // Mobile has enough room below the anchor (bubble sits in the upper
+    // half of the ~340px body), so render the popover downward; desktop
+    // flipped upward because the bottom overflow-hidden clips it.
+    <span
+      className="absolute left-0 top-[calc(100%+6px)] z-20 inline-block rounded-lg overflow-hidden shadow-[0_8px_24px_rgba(27,26,23,0.14)] animate-in fade-in-0 duration-150"
+      style={{
+        background: "var(--card)",
+        border: "1px solid var(--rule)",
+        width: 220,
+      }}
+    >
+      <div className="flex items-center gap-1.5 px-2 py-1">
+        <span
+          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+          style={{ background: pigment }}
+        />
+        <span
+          className="flex-1 font-serif text-[11px] font-medium truncate"
+          style={{ color: "var(--ink)" }}
+        >
+          {trunc(title, 20)}
+        </span>
+        <span
+          className="font-mono text-[8px] uppercase tracking-[0.08em] px-1 py-[1px] rounded-sm"
+          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+        >
+          {c.newReplyLabel}
+        </span>
+      </div>
+      <div
+        className="px-2 py-1"
+        style={{ borderTop: "1px solid var(--rule-soft)" }}
+      >
+        <div className="flex items-start gap-1">
+          <span
+            className="font-mono text-[8px] uppercase flex-shrink-0 mt-[1px]"
+            style={{ color: "var(--ink-4)" }}
+          >
+            {c.youLabel}
+          </span>
+          <p
+            className="text-[10px] leading-tight flex-1"
+            style={{
+              color: "var(--ink-2)",
+              display: "-webkit-box",
+              WebkitLineClamp: 1,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {question}
+          </p>
+        </div>
+      </div>
+      <div
+        className="px-2 py-1"
+        style={{ borderTop: "1px solid var(--rule-soft)" }}
+      >
+        <div className="flex items-start gap-1">
+          <span
+            className="font-mono text-[8px] uppercase flex-shrink-0 mt-[1px]"
+            style={{ color: "var(--ink-4)" }}
+          >
+            {c.aiLabel}
+          </span>
+          <p
+            className="text-[10px] leading-tight flex-1"
+            style={{
+              color: "var(--ink-2)",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {answer}
+          </p>
+        </div>
+      </div>
+      <div
+        className={`relative flex items-center justify-end px-2 py-1 ${
+          enterPulse ? "demo-tap-press" : ""
+        }`}
+        style={{
+          borderTop: "1px solid var(--rule-soft)",
+          background: enterPulse ? "var(--accent-soft)" : "var(--paper-2)",
+        }}
+      >
+        <span
+          className="inline-flex items-center gap-0.5 font-medium text-[10px]"
+          style={{ color: "var(--accent)" }}
+        >
+          {c.enterLabel}
+          <svg
+            className="w-2.5 h-2.5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </span>
+        {enterPulse && (
+          <>
+            <span className="demo-tap-print demo-tap-print-sm" aria-hidden />
+            <span className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+          </>
+        )}
+      </div>
     </span>
   );
 }

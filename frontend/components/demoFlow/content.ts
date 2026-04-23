@@ -154,8 +154,8 @@ export const DEMO_CONTENT: Record<Lang, DemoContent> = {
 **Pinning captures intent**
 You pick the exact phrase worth expanding, pop a focused sub-thread, and the main stays untouched — no new tab, no reboot.
 
-**Depth stays cheap**
-Sub-threads inherit anchor + rolling main summary. Per-level budgets shrink (800 → 500 → 300); RAG retrieves anything older the summary dropped. A four-deep pin still beats a full retry.
+**Every layer works the same**
+In any sub-thread, your question stays focused. Want to go deeper? Pin another phrase and open another layer. Depth 2 behaves exactly like depth 1, and so does depth 4.
 
 **Merge rebuilds the story**
 Pick the branches that matter → one structured report, pigment-coded by depth. Pins become headings; replies become the body.
@@ -164,7 +164,7 @@ Pick the branches that matter → one structured report, pigment-coded by depth.
 Three levels of digging, one coherent artifact, zero drift in the main thread.`,
     caption: {
       blank: "Fresh conversation — you're about to ask the main question.",
-      "main-stream": "Deeppin streams its reply into the main thread.",
+      "main-stream": "Deeppin's reply on the main thread — give it a quick read.",
       "p1-sweep": "Drag across the phrase you want to dig into — it stays highlighted.",
       "p1-selpop": "Selection stays lit; a toolbar rises above it. Hit Question.",
       "p1-dialog": "Three follow-ups auto-generate — or type your own in the box.",
@@ -177,7 +177,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p2-underline": "Two anchors, two parallel sub-threads. Come back when ready.",
       "l1-hover": "Hover the first anchor — a preview shows your question and the reply.",
       "l1-enter": "Click Enter — you're inside sub-thread 1.",
-      "l1-stream": "Reply was ready while you stayed on main. Here it is, fully written.",
+      "l1-stream": "You're on layer 2 now — the tree marks your spot. The reply was ready while you stayed on main.",
       "p3-sweep": "You can pin inside a sub-thread too — drag across.",
       "p3-selpop": "Same toolbar, same flow — highlight holds, hit Question.",
       "p3-dialog": "Follow-ups tuned to the sub-thread — or type your own.",
@@ -185,7 +185,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p3-underline": "Depth 2 — watch the new underline here and the third layer on the tree.",
       "l2-hover": "Hover the deeper anchor — preview shows question + answer.",
       "l2-enter": "Click Enter — now you're at depth 2.",
-      "l2-stream": "Answer was already waiting. Three layers of digging, zero topic drift.",
+      "l2-stream": "Layer 3 — the tree keeps track of your depth. The deepest answer was already waiting.",
       "graph-hint": "Right rail has tracked every branch all along.",
       "graph-nav-root": "Tap any node to jump there — notice the pulse on Main.",
       "graph-navigated": "Back at the Main node. All three branches stay live on the tree.",
@@ -199,7 +199,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
   zh: {
     mainQuestion: "Deeppin 有什么不一样？",
     aiBefore1:
-      "你在读 AI 回复，想深挖某一段 —— 两个烂选择：开新对话（上下文全丢），或者在原对话里问（主线被打断、话题漂移）。Deeppin 让你直接",
+      "你在读 AI 回复，想深挖某一段 —— 两个不太好的选择：开新对话（上下文全丢），或者在原对话里问（主线被打断、话题漂移）。Deeppin 让你直接",
     anchor1: "钉住那个细节",
     aiBetween: "，然后",
     anchor2: "一直挖下去",
@@ -263,8 +263,8 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 **插针抓住意图**
 选中你想深挖的原话，打开一个焦点子线程，主线纹丝不动 —— 不用开新窗口、不用重起对话。
 
-**深度保持便宜**
-子线程继承锚点 + 滚动主线摘要；compact 预算逐层收缩（800 → 500 → 300），摘要丢掉的更早内容 RAG 兜底。四层深也比全历史重发一遍便宜。
+**每一层都一样工作**
+在任何子线程里，问题保持聚焦。想继续挖深？再钉一段话，再开一层。深度 2 和深度 1 感受一模一样，深度 4 也一样。
 
 **合并把故事拼回来**
 选出想保留的分支 → 一份结构化报告，按深度配色。针变成小标题，回复变成正文。
@@ -273,7 +273,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 三层深挖，一份完整成品，主线零漂移。`,
     caption: {
       blank: "新对话 —— 你即将提出主问题。",
-      "main-stream": "Deeppin 在主线流式打出回复。",
+      "main-stream": "Deeppin 在主线的回复 —— 先读一下。",
       "p1-sweep": "拖选你想深挖的那段文字 —— 会一直高亮。",
       "p1-selpop": "选中保持高亮，选区上方弹出工具栏。点「追问」。",
       "p1-dialog": "自动生成三条追问 —— 也可以在下方输入框写自己的。",
@@ -286,7 +286,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p2-underline": "两根针、两个并行子线程。想看再回来。",
       "l1-hover": "悬停第一根针 —— 预览里能看见你的提问和回答。",
       "l1-enter": "点「进入」—— 跳进子线程 1。",
-      "l1-stream": "你还在主线的时候回答就写完了。这里是完整的那份。",
+      "l1-stream": "你现在在第 2 层 —— 树上高亮了当前位置。你还在主线的时候回答就写完了。",
       "p3-sweep": "子线程里也能再插针 —— 继续拖选。",
       "p3-selpop": "一样的工具栏、一样的流程 —— 高亮保持，点「追问」。",
       "p3-dialog": "针对子线程的推荐 —— 也可以自己输入。",
@@ -294,7 +294,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p3-underline": "深度 2 —— 注意这里的新下划线和树上的第三层。",
       "l2-hover": "悬停更深的锚点 —— 预览里就有问答。",
       "l2-enter": "点「进入」—— 你现在在深度 2。",
-      "l2-stream": "答案也早就写好了。三层深挖，零话题漂移。",
+      "l2-stream": "第 3 层 —— 树上实时标出你当前的深度。最深这层的回答也早就备好了。",
       "graph-hint": "右栏一直在跟着记录每条分支。",
       "graph-nav-root": "点任意节点就能跳过去 —— 看「主线」节点的脉冲提示。",
       "graph-navigated": "回到「主线」节点，三条分支全在树上。",
@@ -372,8 +372,8 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 **ピン留めが意図を捕まえる**
 掘りたい原文を選び、焦点サブスレッドを開く。メインはそのまま —— 新タブ不要、再起動不要。
 
-**深さは安いまま**
-サブはアンカー + ローリング要約を受け継ぎ、予算は層ごとに縮む（800 → 500 → 300）。要約で落ちた古い内容は RAG が補う。四層深掘りでも全履歴再送より安い。
+**どの層も同じように動く**
+どのサブスレッドでも、質問は絞られたまま。さらに深掘りしたい？別のフレーズをピン留めして、また一層開く。深さ 2 は深さ 1 と同じ体験、深さ 4 も同じ。
 
 **マージで物語を組み直す**
 残したい枝を選ぶ → 一本の構造化レポート、深さで色分け。ピンが見出しに、返答が本文に。
@@ -382,7 +382,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 三層の深掘り、一つの成果物、メインでの話題漂流ゼロ。`,
     caption: {
       blank: "新規会話 —— メインの質問を投げる直前。",
-      "main-stream": "Deeppin がメインにストリーム返答。",
+      "main-stream": "Deeppin のメイン返答 —— さっと読んで。",
       "p1-sweep": "掘りたいフレーズをドラッグ選択 —— ハイライトは残る。",
       "p1-selpop": "選択はハイライトしたまま、上にツールバー。質問を押す。",
       "p1-dialog": "フォローアップが 3 つ自動生成 —— 下の欄で自分で書くことも。",
@@ -395,7 +395,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p2-underline": "二本のピン、並行する二つのサブ。読みたい時に戻ればいい。",
       "l1-hover": "一本目のアンカーにホバー —— プレビューに質問と返答。",
       "l1-enter": "開くを押す —— サブスレッド 1 に入る。",
-      "l1-stream": "あなたがメインにいる間に返答は完成。ここにそのまま表示。",
+      "l1-stream": "今いるのは第 2 層 —— ツリーが現在地を示している。メインにいる間に返答は完成していた。",
       "p3-sweep": "サブ内でもピン可能 —— ドラッグして選択。",
       "p3-selpop": "同じツールバー、同じ流れ —— ハイライト保持、質問を押す。",
       "p3-dialog": "サブに特化した提案 —— 自分で書いてもよい。",
@@ -403,7 +403,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p3-underline": "深さ 2 —— ここの新しい下線と、ツリーの第三層を見て。",
       "l2-hover": "深いアンカーにホバー —— プレビューに質問と答え。",
       "l2-enter": "開くを押す —— 深さ 2 にいる。",
-      "l2-stream": "答えは既に完成していた。三層の深掘り、話題漂流ゼロ。",
+      "l2-stream": "第 3 層 —— ツリーが深さをリアルタイム表示。最深層の答えも既に待機済み。",
       "graph-hint": "右側はずっと全ての枝を追跡していた。",
       "graph-nav-root": "どのノードをタップしても飛べる —— メインノードの脈動に注目。",
       "graph-navigated": "メインノードに戻った。三本の枝はすべてツリー上に健在。",
@@ -481,8 +481,8 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 **핀은 의도를 붙잡는다**
 파고들 원문을 고르고 집중 서브 스레드를 연다. 메인은 그대로 —— 새 탭 없음, 재시작 없음.
 
-**깊이는 저렴하게 유지**
-서브는 앵커 + 롤링 메인 요약을 상속. 예산이 층마다 줄어(800 → 500 → 300), 요약이 버린 옛 내용은 RAG가 보충. 4층도 전체 이력 재전송보다 싸다.
+**어느 층이든 똑같이 동작**
+어느 서브 스레드든 질문은 집중된 상태로 유지. 더 깊이 가고 싶어? 다른 구절을 고정하고 한 층 더 연다. 깊이 2는 깊이 1과 똑같이 동작하고, 깊이 4도 마찬가지.
 
 **병합이 이야기를 재구성**
 원하는 분기를 고르면 → 깊이별 색상의 구조화 리포트 한 편. 핀은 제목, 답변은 본문.
@@ -491,7 +491,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 세 층의 파고들기, 하나의 일관된 산출물, 메인에서의 주제 표류 없음.`,
     caption: {
       blank: "새 대화 —— 메인 질문을 던질 참.",
-      "main-stream": "Deeppin이 메인에 답변을 스트리밍.",
+      "main-stream": "Deeppin의 메인 답변 —— 빠르게 훑어봐.",
       "p1-sweep": "파고들 구절을 드래그해 선택 —— 하이라이트 유지.",
       "p1-selpop": "선택은 하이라이트 유지, 위에 툴바. 질문을 누른다.",
       "p1-dialog": "후속 질문 세 개 자동 생성 —— 아래 상자에 직접 입력도 가능.",
@@ -504,7 +504,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p2-underline": "두 개의 핀, 두 개의 병렬 서브. 준비되면 돌아온다.",
       "l1-hover": "첫 앵커에 호버 —— 미리보기에 질문과 답변.",
       "l1-enter": "열기 누름 —— 서브 스레드 1에 진입.",
-      "l1-stream": "당신이 메인에 있는 동안 답변은 완성. 여기 완성본.",
+      "l1-stream": "지금 2층에 있음 —— 트리가 현재 위치를 표시. 메인에 있는 동안 답변은 이미 완성.",
       "p3-sweep": "서브 안에서도 핀 가능 —— 드래그로 선택.",
       "p3-selpop": "같은 툴바, 같은 흐름 —— 하이라이트 유지, 질문.",
       "p3-dialog": "서브에 맞춘 후속 —— 직접 입력도 가능.",
@@ -512,7 +512,7 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
       "p3-underline": "깊이 2 —— 여기 새 밑줄과 트리의 세 번째 층을 보라.",
       "l2-hover": "더 깊은 앵커에 호버 —— 미리보기에 질문과 답.",
       "l2-enter": "열기 누름 —— 지금 깊이 2.",
-      "l2-stream": "답변은 이미 완성되어 있었다. 세 층 파고들기, 주제 표류 없음.",
+      "l2-stream": "3층 —— 트리가 네 깊이를 실시간으로 따라간다. 가장 깊은 답변도 이미 대기 중이었다.",
       "graph-hint": "오른쪽 레일이 줄곧 모든 분기를 추적했다.",
       "graph-nav-root": "어느 노드든 탭하면 이동 —— 메인 노드의 맥동 주목.",
       "graph-navigated": "메인 노드에 복귀. 세 분기 모두 트리에 살아있다.",
@@ -590,8 +590,8 @@ Three levels of digging, one coherent artifact, zero drift in the main thread.`,
 **Anclar captura la intención**
 Eliges la frase exacta que quieres expandir, abres un sub-hilo enfocado, y el principal queda intacto — sin pestaña nueva, sin reinicio.
 
-**La profundidad sigue siendo barata**
-Los sub-hilos heredan ancla + resumen continuo del principal. Presupuesto por nivel decrece (800 → 500 → 300); RAG recupera lo que el resumen soltó. Un pin a cuatro niveles sigue ganándole a un reintento completo.
+**Cada capa funciona igual**
+En cualquier sub-hilo, tu pregunta se mantiene enfocada. ¿Quieres ir más profundo? Ancla otra frase y abre otra capa. Profundidad 2 se comporta igual que profundidad 1, y profundidad 4 también.
 
 **Fusionar reconstruye la historia**
 Elige las ramas que importan → un informe estructurado, coloreado por profundidad. Los pines se vuelven títulos; las respuestas, el cuerpo.
@@ -600,7 +600,7 @@ Elige las ramas que importan → un informe estructurado, coloreado por profundi
 Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo principal.`,
     caption: {
       blank: "Conversación nueva — estás a punto de hacer la pregunta principal.",
-      "main-stream": "Deeppin transmite su respuesta en el principal.",
+      "main-stream": "Respuesta de Deeppin en el principal — échale un vistazo.",
       "p1-sweep": "Arrastra sobre la frase a profundizar — queda resaltada.",
       "p1-selpop": "El resalte se queda, una barra aparece arriba. Pulsa Pregunta.",
       "p1-dialog": "Tres seguimientos se generan — o escribe el tuyo abajo.",
@@ -613,7 +613,7 @@ Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo pri
       "p2-underline": "Dos anclas, dos sub-hilos paralelos. Vuelve cuando estés listo.",
       "l1-hover": "Pasa el ratón por la primera ancla — la vista muestra tu pregunta y la respuesta.",
       "l1-enter": "Pulsa Abrir — estás dentro del sub-hilo 1.",
-      "l1-stream": "La respuesta ya estaba lista mientras seguías en el principal. Aquí completa.",
+      "l1-stream": "Ahora estás en la capa 2 — el árbol marca tu lugar. La respuesta ya estaba lista mientras seguías en el principal.",
       "p3-sweep": "También puedes anclar dentro de un sub-hilo — arrastra.",
       "p3-selpop": "Misma barra, mismo flujo — resalte se mantiene, pulsa Pregunta.",
       "p3-dialog": "Seguimientos centrados en el sub-hilo — o escribe el tuyo.",
@@ -621,7 +621,7 @@ Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo pri
       "p3-underline": "Profundidad 2 — mira el nuevo subrayado y la tercera capa del árbol.",
       "l2-hover": "Pasa el ratón por el ancla más profunda — vista con pregunta y respuesta.",
       "l2-enter": "Pulsa Abrir — ahora estás a profundidad 2.",
-      "l2-stream": "La respuesta ya estaba esperando. Tres niveles, cero deriva de tema.",
+      "l2-stream": "Capa 3 — el árbol sigue tu profundidad en vivo. La respuesta más profunda ya estaba esperando.",
       "graph-hint": "La barra derecha siguió cada rama todo el tiempo.",
       "graph-nav-root": "Toca cualquier nodo para saltar — fíjate en el pulso sobre Principal.",
       "graph-navigated": "De vuelta al nodo Principal. Las tres ramas siguen vivas en el árbol.",
@@ -699,8 +699,8 @@ Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo pri
 **L'épinglage capte l'intention**
 Tu choisis la phrase exacte à creuser, tu ouvres un sous-fil ciblé, et le principal reste intact — pas de nouvel onglet, pas de redémarrage.
 
-**La profondeur reste bon marché**
-Les sous-fils héritent de l'ancre + résumé continu du principal. Budget par niveau (800 → 500 → 300) ; RAG récupère ce que le résumé a perdu. Une épingle à quatre niveaux coûte toujours moins qu'un renvoi complet.
+**Chaque couche marche pareil**
+Dans n'importe quel sous-fil, ta question reste concentrée. Tu veux aller plus loin ? Épingle une autre phrase et ouvre une autre couche. Profondeur 2 se comporte comme profondeur 1, et profondeur 4 aussi.
 
 **Fusionner reconstruit l'histoire**
 Choisis les branches qui comptent → un rapport structuré, coloré par profondeur. Les épingles deviennent titres ; les réponses, le corps.
@@ -709,7 +709,7 @@ Choisis les branches qui comptent → un rapport structuré, coloré par profond
 Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil principal.`,
     caption: {
       blank: "Nouvelle conversation — tu vas poser la question principale.",
-      "main-stream": "Deeppin diffuse sa réponse dans le fil principal.",
+      "main-stream": "Réponse de Deeppin sur le principal — jette un œil.",
       "p1-sweep": "Glisse sur la phrase à creuser — la surbrillance reste.",
       "p1-selpop": "La sélection reste en surbrillance, une barre apparaît au-dessus. Clique Question.",
       "p1-dialog": "Trois suivis se génèrent — ou tape le tien dans la boîte.",
@@ -722,7 +722,7 @@ Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil pri
       "p2-underline": "Deux ancres, deux sous-fils parallèles. Reviens quand prêt.",
       "l1-hover": "Survole la première ancre — un aperçu montre question et réponse.",
       "l1-enter": "Clique Ouvrir — tu es dans le sous-fil 1.",
-      "l1-stream": "La réponse était prête pendant que tu restais sur le principal. La voici, complète.",
+      "l1-stream": "Tu es sur la couche 2 — l'arbre marque ta position. La réponse était prête pendant que tu restais sur le principal.",
       "p3-sweep": "Tu peux aussi épingler dans un sous-fil — glisse.",
       "p3-selpop": "Même barre, même flux — surbrillance maintenue, clique Question.",
       "p3-dialog": "Suivis centrés sur le sous-fil — ou écris le tien.",
@@ -730,7 +730,7 @@ Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil pri
       "p3-underline": "Profondeur 2 — regarde le nouveau soulignement et la troisième couche de l'arbre.",
       "l2-hover": "Survole l'ancre plus profonde — aperçu avec question et réponse.",
       "l2-enter": "Clique Ouvrir — tu es maintenant à profondeur 2.",
-      "l2-stream": "La réponse attendait déjà. Trois niveaux, zéro dérive.",
+      "l2-stream": "Couche 3 — l'arbre suit ta profondeur en direct. La réponse la plus profonde attendait déjà.",
       "graph-hint": "La barre de droite a suivi chaque branche depuis le début.",
       "graph-nav-root": "Clique n'importe quel nœud pour sauter — note le pulse sur Principal.",
       "graph-navigated": "Retour au nœud Principal. Les trois branches restent vivantes dans l'arbre.",
@@ -808,8 +808,8 @@ Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil pri
 **Anheften erfasst die Absicht**
 Du wählst die exakte Phrase, die du vertiefen willst, öffnest einen fokussierten Sub-Thread, und der Haupt-Thread bleibt unberührt — kein neuer Tab, kein Neustart.
 
-**Tiefe bleibt günstig**
-Sub-Threads erben Anker + laufende Haupt-Zusammenfassung. Budget pro Ebene schrumpft (800 → 500 → 300); RAG holt, was die Zusammenfassung verworfen hat. Ein Pin vier Ebenen tief kostet immer noch weniger als ein kompletter Wiederholungslauf.
+**Jede Ebene funktioniert gleich**
+In jedem Sub-Thread bleibt deine Frage fokussiert. Willst du tiefer? Hefte eine weitere Phrase an und öffne die nächste Ebene. Tiefe 2 verhält sich genau wie Tiefe 1, Tiefe 4 ebenso.
 
 **Zusammenführen baut die Geschichte zurück**
 Wähle die Zweige, die zählen → ein strukturierter Bericht, nach Tiefe eingefärbt. Pins werden zu Überschriften; Antworten zum Körper.
@@ -818,7 +818,7 @@ Wähle die Zweige, die zählen → ein strukturierter Bericht, nach Tiefe eingef
 Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
     caption: {
       blank: "Neue Unterhaltung — du stellst gleich die Hauptfrage.",
-      "main-stream": "Deeppin streamt die Antwort in den Haupt-Thread.",
+      "main-stream": "Deeppins Antwort im Haupt-Thread — lies kurz mit.",
       "p1-sweep": "Ziehe über die Phrase, die du vertiefen willst — Markierung bleibt.",
       "p1-selpop": "Auswahl bleibt markiert, Toolbar erscheint oben. Klicke Frage.",
       "p1-dialog": "Drei Folgefragen werden generiert — oder tippe unten deine eigene.",
@@ -831,7 +831,7 @@ Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
       "p2-underline": "Zwei Anker, zwei parallele Sub-Threads. Komm zurück, wenn bereit.",
       "l1-hover": "Fahre über den ersten Anker — Vorschau zeigt Frage und Antwort.",
       "l1-enter": "Öffnen klicken — du bist im Sub-Thread 1.",
-      "l1-stream": "Die Antwort war fertig, während du im Haupt bliebst. Hier komplett.",
+      "l1-stream": "Du bist jetzt auf Ebene 2 — der Baum markiert deinen Platz. Die Antwort war fertig, während du im Haupt bliebst.",
       "p3-sweep": "Auch im Sub-Thread kannst du anheften — ziehen.",
       "p3-selpop": "Gleiche Toolbar, gleicher Ablauf — Markierung bleibt, klicke Frage.",
       "p3-dialog": "Folgefragen auf den Sub-Thread fokussiert — oder tippe deine eigene.",
@@ -839,7 +839,7 @@ Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
       "p3-underline": "Tiefe 2 — schau die neue Unterstreichung und die dritte Ebene im Baum.",
       "l2-hover": "Fahre über den tieferen Anker — Vorschau mit Frage und Antwort.",
       "l2-enter": "Öffnen klicken — jetzt bist du auf Tiefe 2.",
-      "l2-stream": "Die Antwort wartete schon. Drei Ebenen, null Thema-Drift.",
+      "l2-stream": "Ebene 3 — der Baum verfolgt deine Tiefe live. Die tiefste Antwort wartete schon.",
       "graph-hint": "Die rechte Leiste hat die ganze Zeit jeden Zweig verfolgt.",
       "graph-nav-root": "Klicke einen beliebigen Knoten zum Springen — beachte den Puls auf Haupt.",
       "graph-navigated": "Zurück am Haupt-Knoten. Alle drei Zweige bleiben im Baum aktiv.",
@@ -917,8 +917,8 @@ Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
 **Fixar captura a intenção**
 Você escolhe a frase exata para aprofundar, abre um sub-tópico focado, e o principal fica intacto — sem nova aba, sem reiniciar.
 
-**Profundidade continua barata**
-Sub-tópicos herdam âncora + resumo contínuo do principal. Orçamento por nível encolhe (800 → 500 → 300); o RAG traz o que o resumo descartou. Mesmo um pin de 4 níveis custa menos que uma repetição completa.
+**Cada camada funciona igual**
+Em qualquer sub-tópico, sua pergunta fica focada. Quer ir mais fundo? Fixe outra frase e abra outra camada. Profundidade 2 se comporta igual à profundidade 1, e profundidade 4 também.
 
 **Mesclar reconstrói a história**
 Selecione as ramificações que importam → um relatório estruturado, codificado por profundidade. Pins viram títulos; respostas, corpo.
@@ -927,7 +927,7 @@ Selecione as ramificações que importam → um relatório estruturado, codifica
 Três níveis de exploração, um artefato coerente, zero desvio no tópico principal.`,
     caption: {
       blank: "Conversa nova — você vai fazer a pergunta principal.",
-      "main-stream": "O Deeppin transmite a resposta no tópico principal.",
+      "main-stream": "Resposta do Deeppin no principal — dá uma lida rápida.",
       "p1-sweep": "Arraste sobre a frase a aprofundar — fica destacada.",
       "p1-selpop": "A seleção fica destacada, uma barra surge acima. Toque Pergunta.",
       "p1-dialog": "Três acompanhamentos são gerados — ou escreva o seu na caixa.",
@@ -940,7 +940,7 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
       "p2-underline": "Duas âncoras, dois sub-tópicos paralelos. Volte quando pronto.",
       "l1-hover": "Passe o mouse na primeira âncora — a prévia mostra pergunta e resposta.",
       "l1-enter": "Toque Abrir — você está dentro do sub-tópico 1.",
-      "l1-stream": "A resposta já estava pronta enquanto você ficava no principal. Aqui completa.",
+      "l1-stream": "Você está na camada 2 — a árvore marca sua posição. A resposta já estava pronta enquanto você ficava no principal.",
       "p3-sweep": "Também dá para fixar dentro de um sub-tópico — arraste.",
       "p3-selpop": "Mesma barra, mesmo fluxo — destaque permanece, toque Pergunta.",
       "p3-dialog": "Acompanhamentos focados no sub-tópico — ou escreva o seu.",
@@ -948,7 +948,7 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
       "p3-underline": "Profundidade 2 — veja o novo sublinhado e a terceira camada na árvore.",
       "l2-hover": "Passe o mouse na âncora mais funda — prévia com pergunta e resposta.",
       "l2-enter": "Toque Abrir — agora você está na profundidade 2.",
-      "l2-stream": "A resposta já esperava. Três níveis, zero desvio de tópico.",
+      "l2-stream": "Camada 3 — a árvore segue sua profundidade ao vivo. A resposta mais funda já esperava.",
       "graph-hint": "A barra direita vem rastreando cada ramo o tempo todo.",
       "graph-nav-root": "Toque em qualquer nó para saltar — repare no pulso sobre o Principal.",
       "graph-navigated": "De volta ao nó Principal. Os três ramos continuam vivos na árvore.",
@@ -1026,8 +1026,8 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
 **Закрепление ловит намерение**
 Вы выбираете точную фразу для углубления, открываете сфокусированную подветку, и основная остаётся нетронутой — ни новой вкладки, ни перезапуска.
 
-**Глубина остаётся дешёвой**
-Подветки наследуют якорь + скользящую сводку основной. Бюджет на уровне сокращается (800 → 500 → 300); RAG достаёт то, что сводка отбросила. Закладка на глубине 4 всё равно стоит меньше полного повтора.
+**Каждый слой работает одинаково**
+В любой подветке ваш вопрос остаётся сфокусированным. Хотите глубже? Закрепите другую фразу и откройте следующий уровень. Глубина 2 работает так же, как глубина 1, и глубина 4 тоже.
 
 **Объединение собирает историю**
 Выберите нужные ветви → один структурированный отчёт с кодировкой по глубине. Закладки становятся заголовками; ответы — телом.
@@ -1036,7 +1036,7 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
 Три уровня исследования, один связный артефакт, ноль дрейфа в основной ветке.`,
     caption: {
       blank: "Новый разговор — вы вот-вот зададите основной вопрос.",
-      "main-stream": "Deeppin печатает ответ в основной ветке.",
+      "main-stream": "Ответ Deeppin в основной ветке — быстро пробегись глазами.",
       "p1-sweep": "Проведите по фразе для углубления — подсветка остаётся.",
       "p1-selpop": "Выделение подсвечено, сверху появляется панель. Нажмите Вопрос.",
       "p1-dialog": "Три уточнения генерируются — или впишите свой в поле ниже.",
@@ -1049,7 +1049,7 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
       "p2-underline": "Две закладки, две параллельные подветки. Возвращайтесь, когда будете готовы.",
       "l1-hover": "Наведите на первый якорь — в предпросмотре вопрос и ответ.",
       "l1-enter": "Нажмите Открыть — вы в подветке 1.",
-      "l1-stream": "Ответ был готов, пока вы оставались на главной. Вот он целиком.",
+      "l1-stream": "Вы сейчас на 2-м уровне — дерево отмечает ваше место. Ответ был готов, пока вы оставались на главной.",
       "p3-sweep": "Закреплять можно и внутри подветки — проведите.",
       "p3-selpop": "Та же панель, тот же поток — подсветка сохраняется, нажмите Вопрос.",
       "p3-dialog": "Уточнения, заточенные под подветку — или впишите свой.",
@@ -1057,7 +1057,7 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
       "p3-underline": "Глубина 2 — посмотрите на новое подчёркивание и третий уровень дерева.",
       "l2-hover": "Наведите на более глубокий якорь — предпросмотр с вопросом и ответом.",
       "l2-enter": "Нажмите Открыть — вы теперь на глубине 2.",
-      "l2-stream": "Ответ уже ждал. Три уровня, ноль дрейфа темы.",
+      "l2-stream": "3-й уровень — дерево следит за вашей глубиной в реальном времени. Самый глубокий ответ уже ждал.",
       "graph-hint": "Правая панель всё это время отслеживала каждую ветвь.",
       "graph-nav-root": "Щёлкните любой узел, чтобы прыгнуть — обратите внимание на пульс на Главной.",
       "graph-navigated": "Снова на узле «Главная». Все три ветви живы в дереве.",

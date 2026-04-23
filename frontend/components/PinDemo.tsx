@@ -47,7 +47,7 @@ const DELAYS: Record<DemoPhase, number> = {
   "l2-stream": 4200,
   "graph-hint": 2800,
   "graph-nav-root": 4000,
-  "graph-navigated": 3800,
+  "graph-navigated": 5500,
   "merge-hint": 3500,
   "merge-modal": 3200,
   "merge-stream": 4800,
@@ -73,7 +73,14 @@ const inMainView = (p: DemoPhase) =>
   p.startsWith("p2-") ||
   p === "l1-hover" ||
   p === "l1-enter" ||
-  p === "graph-navigated";
+  p === "graph-navigated" ||
+  // merge-hint 不单独显示视图 —— 保留刚才的 MainView 做背景，
+  // 合并 modal 在下一个 phase 才淡入覆盖。否则 Merge 按钮脉冲时
+  // 左边对话区会空白一段。
+  // merge-hint keeps MainView as backdrop so the left side doesn't go
+  // blank while the top-right Merge button is pulsing. The modal fades
+  // in on the next phase (merge-modal) and covers MainView then.
+  p === "merge-hint";
 const inSub1View = (p: DemoPhase) =>
   p === "l1-stream" ||
   p.startsWith("p3-") ||
@@ -187,18 +194,14 @@ export default function PinDemo() {
     };
   };
 
-  // 主线 AI 回复：只在 main-stream 跑打字机。
+  // 主线 AI 回复：blank 时清空，其它所有 phase 直接满长显示。
+  // 用户反馈打字机让他们等 —— 主线回复第一眼就直接给整段。
+  // Main reply: empty on `blank`, full length everywhere else.
+  // Per user feedback the typewriter on the first reply felt like waiting —
+  // render the full paragraph immediately so the viewer can start reading.
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    if (phase === "blank") {
-      setMainLen(0);
-      return;
-    }
-    if (phase !== "main-stream") {
-      setMainLen(mainFullLen);
-      return;
-    }
-    return runStream(mainFullLen, DELAYS["main-stream"] * 0.8, setMainLen);
+    setMainLen(phase === "blank" ? 0 : mainFullLen);
   }, [phase, mainFullLen]);
 
   // 子线程 1 —— 直接满长，不流式
@@ -278,10 +281,17 @@ export default function PinDemo() {
   const anchor1Visible = atOrAfter(phase, "p1-underline");
   const anchor2Visible = atOrAfter(phase, "p2-underline");
   const sub1AnchorVisible = atOrAfter(phase, "p3-underline");
-  const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-enter"];
+  // Breathing 在 hover phase 之前停止 —— popover 是 anchor span 的子元素，
+  // 会继承 .anchor-breathing 的 opacity 动画（50% 时降到 0.78），导致后面
+  // 的对话文字时隐时现。hover 时关掉呼吸，popover 就能稳定不透明地覆盖。
+  // Stop breathing at hover: the popover is nested inside the anchor span
+  // and inherits .anchor-breathing's 0.78 opacity dip, which makes the
+  // conversation behind the popover blink through. Disabling breathing on
+  // hover lets the popover sit opaque and fully cover what's underneath.
+  const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-hover"];
   const anchor2Breathing = anchor2Visible; // 从不进入 —— 保持未读
   const sub1AnchorBreathing =
-    sub1AnchorVisible && PHASE_IDX[phase] < PHASE_IDX["l2-enter"];
+    sub1AnchorVisible && PHASE_IDX[phase] < PHASE_IDX["l2-hover"];
 
   // *-underline phase：对应图节点上加"刚落针"脉冲
   // On *-underline phases, pulse the graph node that just appeared.
@@ -314,7 +324,17 @@ export default function PinDemo() {
   const mergeDone = phase === "merge-done";
 
   const rootTapHint = phase === "graph-nav-root";
-  const atRootLabel = phase === "graph-navigated";
+  // hereNode —— 当前停留层的"你在这里"指示：l1-stream 在 sub1，l2-stream
+  // 在 deep，graph-navigated 回到 root。这几帧会画一圈脉冲环 + 节点上方
+  // 的"◉ you are here"文字，帮用户在 graph 上确认自己当前的深度。
+  // hereNode anchors the "you are here" cue to the node that matches where
+  // the user currently sits: sub1 during l1-stream, deep during l2-stream,
+  // main after graph-navigated. Rendered as a gentle ring + label so the
+  // viewer can confirm their depth against the tree without reading text.
+  const hereNode: "main" | "sub1" | "deep" | null =
+    phase === "graph-navigated" ? "main" :
+    phase === "l1-stream" ? "sub1" :
+    phase === "l2-stream" ? "deep" : null;
 
   // 固定盒子尺寸（保持原版）
   const GRID_H = 420;
@@ -362,6 +382,14 @@ export default function PinDemo() {
             <span className="flex-1" />
             {/* Merge 提示：更粗的 halo + 比 tap-press 更大更慢的脉冲
                 Merge hint: thicker halo + slower, bigger pulse. */}
+            {/* demo-merge-hint 本身就是外扩 halo + 轻微 scale（不遮文字），
+                所以内部不挂 demo-tap-print/ring —— 那两个是 40px 实心圆，
+                会把 "Merge" 完全盖住，造成按钮看起来空白。
+                demo-merge-hint is already an outward halo + gentle scale and
+                does not obscure the label. We intentionally skip the nested
+                tap-print / tap-ring here because those are a 40px filled
+                disc that covers the button center and makes the "Merge"
+                label read as blank. */}
             <span
               className={`relative inline-flex items-center gap-1 h-6 px-2.5 rounded-md font-medium text-[10.5px] transition-all ${
                 mergeBtnPulse ? "demo-merge-hint" : ""
@@ -383,12 +411,6 @@ export default function PinDemo() {
                 <path d="M4 4l8 9M20 4l-8 9m0 0v7" />
               </svg>
               {c.mergeLabel}
-              {mergeBtnPulse && (
-                <>
-                  <span className="demo-tap-print" aria-hidden />
-                  <span className="demo-tap-ring" aria-hidden />
-                </>
-              )}
             </span>
           </div>
 
@@ -472,7 +494,7 @@ export default function PinDemo() {
               sub1AnchorBreathing={sub1AnchorBreathing}
               nodePulse={nodePulse}
               rootTapHint={rootTapHint}
-              atRootLabel={atRootLabel}
+              hereNode={hereNode}
             />
           </div>
 
@@ -1366,7 +1388,7 @@ function RightRail({
   c, phase, activeNode,
   anchor1Visible, anchor2Visible, sub1AnchorVisible,
   anchor1Breathing, anchor2Breathing, sub1AnchorBreathing,
-  nodePulse, rootTapHint, atRootLabel,
+  nodePulse, rootTapHint, hereNode,
 }: {
   c: DemoContent;
   phase: DemoPhase;
@@ -1379,7 +1401,7 @@ function RightRail({
   sub1AnchorBreathing: boolean;
   nodePulse: "sub1" | "sub2" | "deep" | null;
   rootTapHint: boolean;
-  atRootLabel: boolean;
+  hereNode: "main" | "sub1" | "deep" | null;
 }) {
   const W = 300;
   const mainX = W / 2;
@@ -1539,7 +1561,7 @@ function RightRail({
                 </text>
               </g>
             )}
-            {atRootLabel && (
+            {hereNode === "main" && (
               <text
                 x={mainX}
                 y={mainY - 18}
@@ -1556,7 +1578,7 @@ function RightRail({
           {/* sub1 */}
           {anchor1Visible && (
             <g>
-              {nodePulse === "sub1" && (
+              {(nodePulse === "sub1" || hereNode === "sub1") && (
                 <circle
                   cx={sub1X}
                   cy={sub1Y}
@@ -1615,6 +1637,18 @@ function RightRail({
               >
                 {trunc(c.subTitle1, 14)}
               </text>
+              {hereNode === "sub1" && (
+                <text
+                  x={sub1X}
+                  y={sub1Y - 14}
+                  fontSize={9}
+                  fill="var(--accent)"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                  textAnchor="middle"
+                >
+                  ◉ {c.youAreHereLabel}
+                </text>
+              )}
             </g>
           )}
 
@@ -1686,7 +1720,7 @@ function RightRail({
           {/* deep */}
           {sub1AnchorVisible && (
             <g style={{ animation: "pin-demo-fade-in 320ms ease-out both" }}>
-              {nodePulse === "deep" && (
+              {(nodePulse === "deep" || hereNode === "deep") && (
                 <circle
                   cx={deepX}
                   cy={deepY}
@@ -1745,32 +1779,19 @@ function RightRail({
               >
                 {trunc(c.deepTitle, 14)}
               </text>
+              {hereNode === "deep" && (
+                <text
+                  x={deepX}
+                  y={deepY - 14}
+                  fontSize={9}
+                  fill="var(--accent)"
+                  style={{ fontFamily: "var(--font-mono)" }}
+                  textAnchor="middle"
+                >
+                  ◉ {c.youAreHereLabel}
+                </text>
+              )}
             </g>
-          )}
-
-          {phase === "l1-stream" && (
-            <text
-              x={sub1X}
-              y={sub1Y + 38}
-              fontSize={9}
-              fill="var(--accent)"
-              style={{ fontFamily: "var(--font-mono)" }}
-              textAnchor="middle"
-            >
-              {c.readyLabel}
-            </text>
-          )}
-          {phase === "l2-stream" && (
-            <text
-              x={deepX}
-              y={deepY + 38}
-              fontSize={9}
-              fill="var(--accent)"
-              style={{ fontFamily: "var(--font-mono)" }}
-              textAnchor="middle"
-            >
-              {c.readyLabel}
-            </text>
           )}
         </svg>
       </div>
