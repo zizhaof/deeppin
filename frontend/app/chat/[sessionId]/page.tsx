@@ -1032,16 +1032,13 @@ export default function ChatPage() {
       <PinStartDialog
         info={pinDialog}
         onSend={(threadId, question) => {
-          // 手机端只显示 activeThread,新建子线程后必须切过去,否则 AI
-          // 回复流进用户看不到的线程。桌面端有右栏 card 同屏显示,保持
-          // 在主线不跳转。
-          // Mobile shows only the active thread — navigate into the new
-          // sub-thread so the streaming answer is actually visible.
-          // Desktop keeps the main thread in view (sub-thread shows up
-          // as a rail card).
-          if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
-            handleNavigateTo(threadId);
-          }
+          // 插针后不切线程 —— 用户留在原阅读位置，子线程 AI 回复在后台流
+          // 式完成；锚点下划线的未读脉动 + 概览 drawer 的未读点会提示有新
+          // 回复，想看时手动进入。桌面/手机同一逻辑。
+          // Stay on the current thread after pinning. The sub-thread streams
+          // in the background; the anchor's unread pulse + overview drawer's
+          // unread dot signal the new reply, and the user jumps in when
+          // they're ready. Same logic on desktop and mobile.
           handleSendSuggestion(threadId, question);
         }}
         onClose={() => setPinDialog(null)}
