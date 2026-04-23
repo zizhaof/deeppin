@@ -197,6 +197,7 @@ Deeppin LLC（Washington State）/ 创始人 Zizhao Fang。
 - 注释：**中英双语**（中文在前）。docstring / 日志消息同样。
 - Markdown 文档中文为主；`README.md` 双语（对外）。
 - Commit message：**全英文**，`<type>: <简述>` 前缀（feat / fix / refactor / test / docs）。
+- Pull request 标题 + 正文（含 Summary / Test plan）：**全英文**。PR 是对外记录，统一英文方便历史回溯和跨工具引用。
 - 前端 TypeScript 严格模式；后端 Python 全 async + 类型注解。
 - 组件函数式；Zustand 管状态；API 调用统一封装 + retry。
 
