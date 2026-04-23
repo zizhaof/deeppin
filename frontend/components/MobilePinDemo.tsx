@@ -17,73 +17,104 @@ import { useLangStore } from "@/stores/useLangStore";
 // "back" 之后引导用户看 graph：右上角按钮呼吸 → 抽屉滑入展示 graph + merge/flatten → 滑出 → idle
 // After "back": breathe the topbar right-button as a "tap here" hint, slide
 // the right drawer in (graph + merge/flatten), then slide out and loop.
+// 整个 demo 循环：从新对话开始 → 插 2 次针 → 打开 overview 看 3 节点
+// Full loop: new conversation → pin twice → open overview to reveal a
+// 3-node graph (main + 2 subs).
 type Phase =
-  | "idle"
-  | "tap-select"   // 点击底部「Select」FAB 开启选区模式 / Tap the Select FAB to arm selection mode
-  | "sweep"
-  | "selpop"
-  | "dialog"
-  | "pick"
-  | "underline-appear"
-  | "ai-replying"
-  | "unread-breathing"
-  | "popover"
-  | "enter"
-  | "sub-thread"
-  | "back"
+  // —— 开场：新对话 ———————————————————————————————————————————————
+  | "blank"            // 空对话（只有 breadcrumb）
+  | "ai-stream"        // 用户气泡 + AI 流式主线回复
+  // —— 第一次插针 ———————————————————————————————————————————————
+  | "tap-select-1"
+  | "sweep-1"
+  | "selpop-1"
+  | "dialog-1"
+  | "pick-1"
+  | "underline-1"
+  | "ai-replying-1"    // 切到子线程视图，AI 回复
+  | "back-1"           // 回主线，anchor 1 breathing
+  // —— 第二次插针 ———————————————————————————————————————————————
+  | "tap-select-2"
+  | "sweep-2"
+  | "selpop-2"
+  | "dialog-2"
+  | "pick-2"
+  | "underline-2"
+  | "ai-replying-2"
+  | "back-both"        // 回主线，anchor 1 + 2 都 breathing
+  // —— 打开概览：3 节点 graph ———————————————————————————————————
   | "tap-overview"
   | "drawer-shown"
   | "drawer-hidden";
 
 const NEXT: Record<Phase, Phase> = {
-  idle: "tap-select",
-  "tap-select": "sweep",
-  sweep: "selpop",
-  selpop: "dialog",
-  dialog: "pick",
-  pick: "underline-appear",
-  "underline-appear": "ai-replying",
-  "ai-replying": "unread-breathing",
-  "unread-breathing": "popover",
-  popover: "enter",
-  enter: "sub-thread",
-  "sub-thread": "back",
-  back: "tap-overview",
+  blank: "ai-stream",
+  "ai-stream": "tap-select-1",
+  "tap-select-1": "sweep-1",
+  "sweep-1": "selpop-1",
+  "selpop-1": "dialog-1",
+  "dialog-1": "pick-1",
+  "pick-1": "underline-1",
+  "underline-1": "ai-replying-1",
+  "ai-replying-1": "back-1",
+  "back-1": "tap-select-2",
+  "tap-select-2": "sweep-2",
+  "sweep-2": "selpop-2",
+  "selpop-2": "dialog-2",
+  "dialog-2": "pick-2",
+  "pick-2": "underline-2",
+  "underline-2": "ai-replying-2",
+  "ai-replying-2": "back-both",
+  "back-both": "tap-overview",
   "tap-overview": "drawer-shown",
   "drawer-shown": "drawer-hidden",
-  "drawer-hidden": "idle",
+  "drawer-hidden": "blank",
 };
 
+// 节奏原则：任何带新解释文字（caption）的阶段至少停留 5s，让用户看得完读得懂；
+// 纯过渡（selpop / pick / underline-appear 这种 half-second transient）短一点。
+// Pacing: any phase whose caption introduces new guidance text holds for ≥5s;
+// pure transitions (selpop appear, suggestion pick, underline drop) stay short.
 const DELAYS: Record<Phase, number> = {
-  // 整体放慢 —— 第一次看 demo 的人要有时间读每一步 caption + 看清 tap 反馈
-  // Paced so first-time viewers have time to read each step + see the tap ring.
-  idle: 1800,
-  "tap-select": 2100,
-  sweep: 2100,
-  selpop: 2400,
-  dialog: 2800,
-  pick: 1400,
-  "underline-appear": 1900,
-  "ai-replying": 3000,
-  "unread-breathing": 2800,
-  popover: 3000,
-  enter: 1400,
-  "sub-thread": 2800,
-  back: 2400,
-  "tap-overview": 2200,
-  "drawer-shown": 3800,
-  "drawer-hidden": 900,
+  blank: 2500,
+  "ai-stream": 5000,
+  "tap-select-1": 5000,
+  "sweep-1": 5000,
+  "selpop-1": 2600,
+  "dialog-1": 5000,
+  "pick-1": 1500,
+  "underline-1": 2400,
+  "ai-replying-1": 5000,
+  "back-1": 5000,
+  "tap-select-2": 5000,
+  "sweep-2": 5000,
+  "selpop-2": 2600,
+  "dialog-2": 5000,
+  "pick-2": 1500,
+  "underline-2": 2400,
+  "ai-replying-2": 5000,
+  "back-both": 5000,
+  "tap-overview": 5000,
+  "drawer-shown": 6500,
+  "drawer-hidden": 1200,
 };
 
 // ── 桌面同款 9 语种 copy（手机文案略简）─────────────────────────────────
 // Same 9-locale content as desktop PinDemo; trimmed where helpful.
 interface Copy {
   mainQuestion: string;
-  anchor: string;
-  aiPre: string;
-  aiPost: string;
-  threadReply: string;
-  subTitle: string;
+  // AI 回复被拆成三段 + 两个锚点：{aiBefore1}{anchor1}{aiBetween}{anchor2}{aiAfter2}
+  // AI reply split into three segments + two anchors for the two-pin demo.
+  aiBefore1: string;
+  anchor1: string;
+  aiBetween: string;
+  anchor2: string;
+  aiAfter2: string;
+  // 两条子线程各自的 AI 回复 + 标题
+  threadReply1: string;
+  threadReply2: string;
+  subTitle1: string;
+  subTitle2: string;
   mainCrumb: string;
   pinLabel: string;
   copyLabel: string;
@@ -95,14 +126,22 @@ interface Copy {
 
 type Lang = "en" | "zh" | "ja" | "ko" | "es" | "fr" | "de" | "pt" | "ru";
 
+// 每个 locale 的 caption 共享一个 helper，抽出共用 key 减少重复
+// Captions share a shape across locales; collecting the per-locale strings
+// inline here (as opposed to a factory) keeps the translation obvious.
+
 const CONTENT: Record<Lang, Copy> = {
   en: {
     mainQuestion: "What makes Deeppin different?",
-    anchor: "pin that detail",
-    aiPre: "Two bad options when you want to dig deeper — new chat (lose context) or ask in chat (drift). Deeppin lets you ",
-    aiPost: " and keep digging. Main thread? Untouched.",
-    threadReply: "Highlight any text → tap Pin. A focused sub-thread opens. Main stays put. Pin again inside. No depth limit.",
-    subTitle: "pin that detail",
+    aiBefore1: "Two bad options when you want to dig deeper — new chat (lose context) or ask in chat (drift). Deeppin lets you ",
+    anchor1: "pin that detail",
+    aiBetween: " and ",
+    anchor2: "keep digging",
+    aiAfter2: ". Main thread? Untouched.",
+    threadReply1: "Pick any text → tap Pin. A focused sub-thread opens. Main stays put.",
+    threadReply2: "No depth limit — pin again inside sub-threads, as deep as you need.",
+    subTitle1: "pin that detail",
+    subTitle2: "keep digging",
     mainCrumb: "Main",
     pinLabel: "Pin",
     copyLabel: "Copy",
@@ -110,31 +149,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "Select",
     newReplyLabel: "New",
     caption: {
-      idle: "Main thread reply.",
-      "tap-select": "Tap Select to arm text selection.",
-      sweep: "Drag across a phrase to select.",
-      selpop: "Toolbar appears above the selection.",
-      dialog: "Pin opens follow-ups.",
-      pick: "Pick one.",
-      "underline-appear": "Anchor underline lands.",
-      "ai-replying": "Deeppin replies in the sub-thread — main untouched.",
-      "unread-breathing": "Back in main, anchor pulses thick until seen.",
-      popover: "Tap the underline → Q + A preview.",
-      enter: "Tap Enter to open the sub-thread.",
-      "sub-thread": "Full sub-thread view.",
-      back: "Back to main. Pulse stops — read.",
-      "tap-overview": "Tap the overview button to see the thread graph.",
-      "drawer-shown": "Graph view + Merge / Flatten — overview drawer.",
+      blank: "New conversation.",
+      "ai-stream": "You ask a question. Deeppin replies in the main thread.",
+      "tap-select-1": "Tap Select to arm text selection.",
+      "sweep-1": "Drag across a phrase to select it.",
+      "selpop-1": "Toolbar appears above the selection.",
+      "dialog-1": "Pin opens follow-up questions for that phrase.",
+      "pick-1": "Pick one.",
+      "underline-1": "Anchor underline lands in the main reply.",
+      "ai-replying-1": "Deeppin answers in a focused sub-thread — main untouched.",
+      "back-1": "Back on main. Anchor pulses thick until you've seen the reply.",
+      "tap-select-2": "Pin a second phrase — tap Select again.",
+      "sweep-2": "Drag across another phrase.",
+      "selpop-2": "Toolbar above the second selection.",
+      "dialog-2": "Pick a follow-up for the second pin.",
+      "pick-2": "Pick.",
+      "underline-2": "Second anchor lands next to the first.",
+      "ai-replying-2": "Second sub-thread replies in parallel.",
+      "back-both": "Two live sub-threads, main thread still intact.",
+      "tap-overview": "Tap overview to see the whole thread graph.",
+      "drawer-shown": "Three nodes — main + two sub-threads. Pin again inside any of them.",
       "drawer-hidden": "Drawer closes.",
     },
   },
   zh: {
     mainQuestion: "Deeppin 有什么不一样？",
-    anchor: "钉住那个细节",
-    aiPre: "想深挖一段 —— 两个烂选择：开新对话（丢上下文）或在原对话里问（话题漂移）。Deeppin 让你直接",
-    aiPost: "，追问多深都可以。主线？一个字都不会被打扰。",
-    threadReply: "选中任意文字 → 点「插针」。焦点子线程立刻打开，主线不动。子线程里还能再插针，深度不限。",
-    subTitle: "钉住那个细节",
+    aiBefore1: "想深挖一段 —— 两个烂选择：开新对话（丢上下文）或在原对话里问（话题漂移）。Deeppin 让你直接",
+    anchor1: "钉住那个细节",
+    aiBetween: "，然后",
+    anchor2: "想挖多深挖多深",
+    aiAfter2: "。主线？一个字都不会被打扰。",
+    threadReply1: "选中文字 → 点「插针」。焦点子线程立刻打开，主线不动。",
+    threadReply2: "无限嵌套 —— 子线程里还能再插针，想挖多深挖多深。",
+    subTitle1: "钉住那个细节",
+    subTitle2: "想挖多深挖多深",
     mainCrumb: "主线",
     pinLabel: "插针",
     copyLabel: "复制",
@@ -142,31 +190,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "选取",
     newReplyLabel: "新",
     caption: {
-      idle: "主线 AI 回复。",
-      "tap-select": "先点「选取」开启文字选择。",
-      sweep: "拖选一段文字。",
-      selpop: "选区上方弹出小工具栏。",
-      dialog: "「插针」打开追问选项。",
-      pick: "选一个。",
-      "underline-appear": "锚点下划线落地。",
-      "ai-replying": "Deeppin 在子线程里回答，主线不动。",
-      "unread-breathing": "回主线，锚点粗线，直到读过。",
-      popover: "点下划线 → 弹出 Q + A 预览。",
-      enter: "点「进入」跳进子线程。",
-      "sub-thread": "完整子线程视图。",
-      back: "回主线，粗线变细，已读。",
-      "tap-overview": "点击右上角按钮看线程图。",
-      "drawer-shown": "Graph 视图 + Merge / Flatten —— 概览抽屉。",
+      blank: "新对话。",
+      "ai-stream": "你提问，Deeppin 在主线回答。",
+      "tap-select-1": "先点「选取」开启文字选择。",
+      "sweep-1": "拖选一段文字。",
+      "selpop-1": "选区上方弹出小工具栏。",
+      "dialog-1": "「插针」打开这段文字的追问选项。",
+      "pick-1": "选一个。",
+      "underline-1": "锚点下划线落在主线回复里。",
+      "ai-replying-1": "Deeppin 在子线程里回答，主线不动。",
+      "back-1": "回主线，锚点粗线，直到读过为止。",
+      "tap-select-2": "再插一根针 —— 再点一次「选取」。",
+      "sweep-2": "拖选第二段文字。",
+      "selpop-2": "选区上方的工具栏。",
+      "dialog-2": "为第二根针选一个追问。",
+      "pick-2": "选。",
+      "underline-2": "第二条下划线落在第一条旁边。",
+      "ai-replying-2": "第二个子线程并行回答。",
+      "back-both": "两个子线程同时活着，主线依然完整。",
+      "tap-overview": "点右上角概览，看整棵线程图。",
+      "drawer-shown": "三个节点 —— 主线 + 两个子线程。每个里面都能再插针。",
       "drawer-hidden": "抽屉关闭。",
     },
   },
   ja: {
     mainQuestion: "Deeppin は何が違う？",
-    anchor: "そこをピン留め",
-    aiPre: "深掘りしたい時、二つの嫌な選択肢 —— 新しいチャット（文脈喪失）か、同じチャット（脱線）。Deeppin なら",
-    aiPost: "して、好きなだけ掘れる。メインは一言も乱されない。",
-    threadReply: "テキストを選び「ピン」をタップ。サブスレッドが開く。メインはそのまま。中でさらにピン可能、深さ制限なし。",
-    subTitle: "そこをピン留め",
+    aiBefore1: "深掘りしたい時、二つの嫌な選択肢 —— 新しいチャット（文脈喪失）か、同じチャット（脱線）。Deeppin なら",
+    anchor1: "そこをピン留め",
+    aiBetween: "して、",
+    anchor2: "好きなだけ掘れる",
+    aiAfter2: "。メインは一言も乱されない。",
+    threadReply1: "テキストを選び「ピン」をタップ。サブスレッドが開く。メインはそのまま。",
+    threadReply2: "深さ制限なし —— サブスレッド内でさらにピン可能。",
+    subTitle1: "そこをピン留め",
+    subTitle2: "好きなだけ掘れる",
     mainCrumb: "メイン",
     pinLabel: "ピン",
     copyLabel: "コピー",
@@ -174,31 +231,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "選択",
     newReplyLabel: "新着",
     caption: {
-      idle: "メインの返答。",
-      "tap-select": "まず「選択」をタップ。",
-      sweep: "フレーズをドラッグして選択。",
-      selpop: "選択範囲上にツールバー。",
-      dialog: "ピンでフォローアップを表示。",
-      pick: "一つ選ぶ。",
-      "underline-appear": "アンカー下線が表示。",
-      "ai-replying": "Deeppin がサブスレッドで応答。",
-      "unread-breathing": "メインに戻ると、既読まで太線で点滅。",
-      popover: "下線をタップで Q+A プレビュー。",
-      enter: "「開く」でサブスレッドへ。",
-      "sub-thread": "サブスレッドの全表示。",
-      back: "メインに戻ると太線が細くなり既読。",
-      "tap-overview": "右上のボタンをタップしてスレッドグラフを表示。",
-      "drawer-shown": "グラフ表示 + Merge / Flatten — 概要ドロワー。",
+      blank: "新規会話。",
+      "ai-stream": "質問するとDeeppinがメインで返答。",
+      "tap-select-1": "まず「選択」をタップしてテキスト選択を有効化。",
+      "sweep-1": "フレーズをドラッグして選択。",
+      "selpop-1": "選択範囲の上にツールバー。",
+      "dialog-1": "ピンでそのフレーズのフォローアップ表示。",
+      "pick-1": "一つ選ぶ。",
+      "underline-1": "アンカー下線がメインに表示。",
+      "ai-replying-1": "Deeppin がサブスレッドで返答、メインはそのまま。",
+      "back-1": "メインに戻ると、既読まで太線で点滅。",
+      "tap-select-2": "二本目のピン —— もう一度「選択」をタップ。",
+      "sweep-2": "別のフレーズをドラッグ。",
+      "selpop-2": "二つ目の選択にツールバー。",
+      "dialog-2": "二本目のフォローアップを選ぶ。",
+      "pick-2": "選ぶ。",
+      "underline-2": "二つ目の下線が一つ目の隣に。",
+      "ai-replying-2": "二つ目のサブスレッドが並行して返答。",
+      "back-both": "二本のサブスレッドが同時進行、メインは無傷。",
+      "tap-overview": "右上の概要をタップしてスレッドグラフを表示。",
+      "drawer-shown": "三つのノード —— メイン + 二つのサブ。各内部でさらにピン可能。",
       "drawer-hidden": "ドロワーを閉じる。",
     },
   },
   ko: {
     mainQuestion: "Deeppin이 무엇이 다른가?",
-    anchor: "그 부분을 고정",
-    aiPre: "깊게 파고들 때 두 가지 나쁜 선택 —— 새 대화(맥락 잃음) 또는 같은 대화(주제 흐트러짐). Deeppin은",
-    aiPost: " 깊이 제한 없이 파고들 수 있다. 메인은 그대로.",
-    threadReply: "텍스트 선택 → 핀 탭. 집중 서브 스레드가 열림. 메인은 그대로. 안에서 다시 핀 가능, 깊이 제한 없음.",
-    subTitle: "그 부분을 고정",
+    aiBefore1: "깊게 파고들 때 두 가지 나쁜 선택 —— 새 대화(맥락 잃음) 또는 같은 대화(주제 흐트러짐). Deeppin은",
+    anchor1: "그 부분을 고정",
+    aiBetween: " 하고, ",
+    anchor2: "깊이 제한 없이 파고들기",
+    aiAfter2: "을 허용. 메인은 그대로.",
+    threadReply1: "텍스트 선택 → 핀 탭. 집중 서브 스레드가 열림. 메인은 그대로.",
+    threadReply2: "깊이 제한 없음 —— 서브 스레드 안에서 다시 핀 가능.",
+    subTitle1: "그 부분을 고정",
+    subTitle2: "깊이 제한 없이",
     mainCrumb: "메인",
     pinLabel: "핀",
     copyLabel: "복사",
@@ -206,31 +272,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "선택",
     newReplyLabel: "새글",
     caption: {
-      idle: "메인 답변.",
-      "tap-select": "먼저 「선택」을 탭해 선택 모드 켜기.",
-      sweep: "구절을 드래그해 선택.",
-      selpop: "선택 영역 위에 툴바.",
-      dialog: "핀으로 후속 질문 표시.",
-      pick: "하나 선택.",
-      "underline-appear": "앵커 밑줄 표시.",
-      "ai-replying": "Deeppin이 서브 스레드에서 답변.",
-      "unread-breathing": "메인에서 읽기 전까지 굵은 줄로 깜박임.",
-      popover: "밑줄 탭 → Q+A 미리보기.",
-      enter: "열기로 서브 스레드 진입.",
-      "sub-thread": "서브 스레드 전체 뷰.",
-      back: "메인 복귀, 굵은 줄이 가는 줄로 — 읽음.",
-      "tap-overview": "오른쪽 상단 버튼을 탭해 스레드 그래프 보기.",
-      "drawer-shown": "그래프 뷰 + Merge / Flatten — 개요 서랍.",
+      blank: "새 대화.",
+      "ai-stream": "질문하면 Deeppin이 메인에서 답변.",
+      "tap-select-1": "「선택」을 탭해 텍스트 선택 모드 켜기.",
+      "sweep-1": "구절을 드래그해 선택.",
+      "selpop-1": "선택 위에 툴바.",
+      "dialog-1": "핀이 그 구절의 후속 질문 표시.",
+      "pick-1": "하나 선택.",
+      "underline-1": "앵커 밑줄이 메인에 표시.",
+      "ai-replying-1": "Deeppin이 서브 스레드에서 답변, 메인은 그대로.",
+      "back-1": "메인 복귀, 읽기 전까지 굵은 줄로 깜박임.",
+      "tap-select-2": "두 번째 핀 —— 「선택」을 다시 탭.",
+      "sweep-2": "다른 구절 드래그.",
+      "selpop-2": "두 번째 선택 위 툴바.",
+      "dialog-2": "두 번째 핀의 후속 질문 선택.",
+      "pick-2": "선택.",
+      "underline-2": "두 번째 밑줄이 첫 번째 옆에.",
+      "ai-replying-2": "두 번째 서브 스레드가 병렬로 답변.",
+      "back-both": "두 개의 서브 스레드 동시 진행, 메인은 유지.",
+      "tap-overview": "오른쪽 상단 개요를 탭해 스레드 그래프 보기.",
+      "drawer-shown": "세 노드 —— 메인 + 두 서브. 각 안에서 다시 핀 가능.",
       "drawer-hidden": "서랍 닫힘.",
     },
   },
   es: {
     mainQuestion: "¿Qué hace diferente a Deeppin?",
-    anchor: "ancla ese detalle",
-    aiPre: "Dos malas opciones para profundizar — chat nuevo (pierdes contexto) o mismo chat (deriva). Deeppin te deja",
-    aiPost: " y seguir cavando, sin límite de profundidad. ¿El hilo principal? Intacto.",
-    threadReply: "Selecciona texto → toca Anclar. Sub-hilo enfocado. Principal intacto. Anclar dentro de sub-preguntas, sin límite.",
-    subTitle: "ancla ese detalle",
+    aiBefore1: "Dos malas opciones para profundizar — chat nuevo (pierdes contexto) o mismo chat (deriva). Deeppin te deja ",
+    anchor1: "anclar ese detalle",
+    aiBetween: " y ",
+    anchor2: "seguir cavando",
+    aiAfter2: ", sin límite de profundidad. ¿El hilo principal? Intacto.",
+    threadReply1: "Selecciona texto → toca Anclar. Sub-hilo enfocado. Principal intacto.",
+    threadReply2: "Sin límite — puedes anclar dentro de sub-hilos también.",
+    subTitle1: "anclar ese detalle",
+    subTitle2: "seguir cavando",
     mainCrumb: "Principal",
     pinLabel: "Anclar",
     copyLabel: "Copiar",
@@ -238,31 +313,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "Seleccionar",
     newReplyLabel: "Nuevo",
     caption: {
-      idle: "Respuesta principal.",
-      "tap-select": "Toca Seleccionar para activar.",
-      sweep: "Arrastra para seleccionar.",
-      selpop: "Barra sobre la selección.",
-      dialog: "Anclar abre seguimientos.",
-      pick: "Elige una.",
-      "underline-appear": "Subrayado del ancla.",
-      "ai-replying": "Deeppin responde en el sub-hilo.",
-      "unread-breathing": "El ancla pulsa en grueso hasta verlo.",
-      popover: "Toca el subrayado → vista Q+A.",
-      enter: "Abrir lleva al sub-hilo.",
-      "sub-thread": "Vista completa del sub-hilo.",
-      back: "De vuelta al principal, fino — leído.",
-      "tap-overview": "Toca el botón de overview para ver el grafo.",
-      "drawer-shown": "Vista de grafo + Merge / Flatten en el drawer.",
+      blank: "Nueva conversación.",
+      "ai-stream": "Preguntas algo y Deeppin responde en el principal.",
+      "tap-select-1": "Toca Seleccionar para activar la selección.",
+      "sweep-1": "Arrastra para seleccionar una frase.",
+      "selpop-1": "Barra sobre la selección.",
+      "dialog-1": "Anclar abre preguntas de seguimiento.",
+      "pick-1": "Elige una.",
+      "underline-1": "Subrayado del ancla en el principal.",
+      "ai-replying-1": "Deeppin responde en sub-hilo, principal intacto.",
+      "back-1": "De vuelta al principal. Ancla pulsa hasta leerla.",
+      "tap-select-2": "Ancla otra frase — toca Seleccionar otra vez.",
+      "sweep-2": "Arrastra otra frase.",
+      "selpop-2": "Barra sobre la segunda selección.",
+      "dialog-2": "Elige un seguimiento para la segunda ancla.",
+      "pick-2": "Elige.",
+      "underline-2": "Segunda ancla junto a la primera.",
+      "ai-replying-2": "Segundo sub-hilo responde en paralelo.",
+      "back-both": "Dos sub-hilos activos, el principal intacto.",
+      "tap-overview": "Toca overview para ver el grafo completo.",
+      "drawer-shown": "Tres nodos —— principal + dos sub-hilos. Anclar dentro de cualquiera.",
       "drawer-hidden": "El drawer se cierra.",
     },
   },
   fr: {
     mainQuestion: "Qu'est-ce qui rend Deeppin différent ?",
-    anchor: "épingle ce détail",
-    aiPre: "Deux mauvais choix pour creuser — nouveau chat (perte de contexte) ou même chat (dérive). Deeppin te laisse",
-    aiPost: " et continuer à creuser sans limite. Le fil principal ? Intact.",
-    threadReply: "Sélectionne du texte → touche Épingler. Un sous-fil ciblé s'ouvre. Le principal reste. Épingler dedans, sans limite.",
-    subTitle: "épingle ce détail",
+    aiBefore1: "Deux mauvais choix pour creuser — nouveau chat (perte de contexte) ou même chat (dérive). Deeppin te laisse ",
+    anchor1: "épingler ce détail",
+    aiBetween: " et ",
+    anchor2: "continuer à creuser",
+    aiAfter2: " sans limite. Le fil principal ? Intact.",
+    threadReply1: "Sélectionne du texte → touche Épingler. Sous-fil ciblé s'ouvre. Principal reste.",
+    threadReply2: "Pas de limite — épingle encore à l'intérieur des sous-fils.",
+    subTitle1: "épingler ce détail",
+    subTitle2: "continuer à creuser",
     mainCrumb: "Principal",
     pinLabel: "Épingler",
     copyLabel: "Copier",
@@ -270,31 +354,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "Sélectionner",
     newReplyLabel: "Nouveau",
     caption: {
-      idle: "Réponse du fil principal.",
-      "tap-select": "Touche Sélectionner pour activer.",
-      sweep: "Glisse pour sélectionner.",
-      selpop: "Barre au-dessus de la sélection.",
-      dialog: "Épingler ouvre les suivis.",
-      pick: "Choisis-en un.",
-      "underline-appear": "Soulignement de l'ancre.",
-      "ai-replying": "Deeppin répond dans le sous-fil.",
-      "unread-breathing": "L'ancre pulse en gras jusqu'à lecture.",
-      popover: "Touche le soulignement → aperçu Q+A.",
-      enter: "Ouvrir pour entrer dans le sous-fil.",
-      "sub-thread": "Vue complète du sous-fil.",
-      back: "Retour au principal — fin, lu.",
-      "tap-overview": "Touche le bouton overview pour voir le graphe.",
-      "drawer-shown": "Vue graphe + Merge / Flatten dans le drawer.",
+      blank: "Nouvelle conversation.",
+      "ai-stream": "Tu poses une question, Deeppin répond dans le principal.",
+      "tap-select-1": "Touche Sélectionner pour activer la sélection.",
+      "sweep-1": "Glisse pour sélectionner une phrase.",
+      "selpop-1": "Barre au-dessus de la sélection.",
+      "dialog-1": "Épingler ouvre les suivis.",
+      "pick-1": "Choisis-en un.",
+      "underline-1": "Soulignement de l'ancre dans le principal.",
+      "ai-replying-1": "Deeppin répond dans un sous-fil, principal intact.",
+      "back-1": "Retour au principal. L'ancre pulse jusqu'à lecture.",
+      "tap-select-2": "Une seconde épingle — retouche Sélectionner.",
+      "sweep-2": "Glisse une autre phrase.",
+      "selpop-2": "Barre au-dessus de la seconde sélection.",
+      "dialog-2": "Choisis un suivi pour la seconde épingle.",
+      "pick-2": "Choisis.",
+      "underline-2": "Seconde ancre à côté de la première.",
+      "ai-replying-2": "Le second sous-fil répond en parallèle.",
+      "back-both": "Deux sous-fils actifs, le principal intact.",
+      "tap-overview": "Touche overview pour voir le graphe complet.",
+      "drawer-shown": "Trois nœuds —— principal + deux sous-fils. Épingler dans chacun.",
       "drawer-hidden": "Le drawer se ferme.",
     },
   },
   de: {
     mainQuestion: "Was macht Deeppin anders?",
-    anchor: "Pin dieses Detail",
-    aiPre: "Zwei schlechte Optionen — neuer Chat (Kontext weg) oder gleicher Chat (Abdriften). Deeppin lässt dich",
-    aiPost: " und beliebig tief weitergraben. Der Haupt-Thread? Unberührt.",
-    threadReply: "Text markieren → Anheften tippen. Fokussierter Sub-Thread öffnet. Haupt bleibt. Innerhalb wieder anheften, ohne Tiefenlimit.",
-    subTitle: "Pin dieses Detail",
+    aiBefore1: "Zwei schlechte Optionen — neuer Chat (Kontext weg) oder gleicher Chat (Abdriften). Deeppin lässt dich ",
+    anchor1: "dieses Detail anheften",
+    aiBetween: " und ",
+    anchor2: "beliebig tief weitergraben",
+    aiAfter2: ". Der Haupt-Thread? Unberührt.",
+    threadReply1: "Text markieren → Anheften tippen. Fokussierter Sub-Thread. Haupt bleibt.",
+    threadReply2: "Keine Tiefenbegrenzung — anheften innerhalb von Sub-Threads möglich.",
+    subTitle1: "dieses Detail anheften",
+    subTitle2: "tief weitergraben",
     mainCrumb: "Haupt",
     pinLabel: "Anheften",
     copyLabel: "Kopieren",
@@ -302,31 +395,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "Auswählen",
     newReplyLabel: "Neu",
     caption: {
-      idle: "Haupt-Thread-Antwort.",
-      "tap-select": "Auf Auswählen tippen, dann markieren.",
-      sweep: "Ziehe zum Markieren.",
-      selpop: "Toolbar über der Auswahl.",
-      dialog: "Anheften öffnet Folgefragen.",
-      pick: "Eine wählen.",
-      "underline-appear": "Anker-Unterstreichung erscheint.",
-      "ai-replying": "Deeppin antwortet im Sub-Thread.",
-      "unread-breathing": "Anker pulsiert dick bis gelesen.",
-      popover: "Auf Unterstreichung tippen → Q+A.",
-      enter: "Öffnen führt in den Sub-Thread.",
-      "sub-thread": "Vollständige Sub-Thread-Ansicht.",
-      back: "Zurück zum Haupt — dünn, gelesen.",
-      "tap-overview": "Tippe auf Overview, um den Thread-Graphen zu sehen.",
-      "drawer-shown": "Graph-Ansicht + Merge / Flatten im Drawer.",
+      blank: "Neue Unterhaltung.",
+      "ai-stream": "Du stellst eine Frage. Deeppin antwortet im Haupt-Thread.",
+      "tap-select-1": "Auf Auswählen tippen, um Text-Auswahl zu aktivieren.",
+      "sweep-1": "Ziehe zum Markieren einer Phrase.",
+      "selpop-1": "Toolbar über der Auswahl.",
+      "dialog-1": "Anheften öffnet Folgefragen.",
+      "pick-1": "Eine wählen.",
+      "underline-1": "Anker-Unterstreichung erscheint im Haupt.",
+      "ai-replying-1": "Deeppin antwortet im Sub-Thread, Haupt bleibt.",
+      "back-1": "Zurück zum Haupt. Anker pulsiert dick bis gelesen.",
+      "tap-select-2": "Zweites Anheften — Auswählen erneut tippen.",
+      "sweep-2": "Eine weitere Phrase markieren.",
+      "selpop-2": "Toolbar über der zweiten Auswahl.",
+      "dialog-2": "Folgefrage für das zweite Anheften wählen.",
+      "pick-2": "Wählen.",
+      "underline-2": "Zweiter Anker neben dem ersten.",
+      "ai-replying-2": "Zweiter Sub-Thread antwortet parallel.",
+      "back-both": "Zwei aktive Sub-Threads, Haupt unberührt.",
+      "tap-overview": "Auf Overview tippen, um den Thread-Graphen zu sehen.",
+      "drawer-shown": "Drei Knoten —— Haupt + zwei Sub-Threads. Innerhalb jedes kann wieder angeheftet werden.",
       "drawer-hidden": "Drawer schließt.",
     },
   },
   pt: {
     mainQuestion: "O que faz o Deeppin diferente?",
-    anchor: "fixe esse detalhe",
-    aiPre: "Duas opções ruins — novo chat (perde contexto) ou mesmo chat (desvio). Deeppin permite",
-    aiPost: " e continuar cavando, sem limite. O tópico principal? Intacto.",
-    threadReply: "Selecione texto → toque Fixar. Sub-tópico focado abre. Principal fica. Fixar dentro, sem limite.",
-    subTitle: "fixe esse detalhe",
+    aiBefore1: "Duas opções ruins — novo chat (perde contexto) ou mesmo chat (desvio). Deeppin permite ",
+    anchor1: "fixar esse detalhe",
+    aiBetween: " e ",
+    anchor2: "continuar cavando",
+    aiAfter2: ", sem limite. O tópico principal? Intacto.",
+    threadReply1: "Selecione texto → toque Fixar. Sub-tópico focado. Principal fica.",
+    threadReply2: "Sem limite — fixe dentro de sub-tópicos também.",
+    subTitle1: "fixar esse detalhe",
+    subTitle2: "continuar cavando",
     mainCrumb: "Principal",
     pinLabel: "Fixar",
     copyLabel: "Copiar",
@@ -334,31 +436,40 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "Selecionar",
     newReplyLabel: "Novo",
     caption: {
-      idle: "Resposta do principal.",
-      "tap-select": "Toque Selecionar para ativar.",
-      sweep: "Arraste para selecionar.",
-      selpop: "Barra acima da seleção.",
-      dialog: "Fixar abre acompanhamentos.",
-      pick: "Escolha um.",
-      "underline-appear": "Sublinhado da âncora.",
-      "ai-replying": "Deeppin responde no sub-tópico.",
-      "unread-breathing": "A âncora pulsa em grosso até leitura.",
-      popover: "Toque no sublinhado → prévia Q+A.",
-      enter: "Abrir leva ao sub-tópico.",
-      "sub-thread": "Vista completa do sub-tópico.",
-      back: "De volta ao principal — fino, lido.",
-      "tap-overview": "Toque no botão overview para ver o grafo.",
-      "drawer-shown": "Vista de grafo + Merge / Flatten no drawer.",
+      blank: "Nova conversa.",
+      "ai-stream": "Você pergunta, o Deeppin responde no principal.",
+      "tap-select-1": "Toque em Selecionar para ativar a seleção.",
+      "sweep-1": "Arraste para selecionar uma frase.",
+      "selpop-1": "Barra acima da seleção.",
+      "dialog-1": "Fixar abre acompanhamentos.",
+      "pick-1": "Escolha um.",
+      "underline-1": "Sublinhado da âncora no principal.",
+      "ai-replying-1": "Deeppin responde no sub-tópico, principal intacto.",
+      "back-1": "De volta ao principal. Âncora pulsa até ler.",
+      "tap-select-2": "Segundo pin — toque Selecionar novamente.",
+      "sweep-2": "Arraste outra frase.",
+      "selpop-2": "Barra sobre a segunda seleção.",
+      "dialog-2": "Escolha um acompanhamento para o segundo pin.",
+      "pick-2": "Escolha.",
+      "underline-2": "Segunda âncora ao lado da primeira.",
+      "ai-replying-2": "Segundo sub-tópico responde em paralelo.",
+      "back-both": "Dois sub-tópicos ativos, principal intacto.",
+      "tap-overview": "Toque em overview para ver o grafo completo.",
+      "drawer-shown": "Três nós —— principal + dois sub-tópicos. Fixar dentro de qualquer um.",
       "drawer-hidden": "Drawer fecha.",
     },
   },
   ru: {
     mainQuestion: "Чем Deeppin отличается?",
-    anchor: "закрепите эту деталь",
-    aiPre: "Два плохих варианта — новый чат (теряете контекст) или тот же (тема уходит). Deeppin позволяет",
-    aiPost: " и копать сколько угодно глубоко. Основная ветка? Не тронута.",
-    threadReply: "Выделите текст → коснитесь Закрепить. Сфокусированная подветка. Основная остаётся. Можно закреплять внутри, без ограничений.",
-    subTitle: "закрепите эту деталь",
+    aiBefore1: "Два плохих варианта — новый чат (теряете контекст) или тот же (тема уходит). Deeppin позволяет ",
+    anchor1: "закрепить эту деталь",
+    aiBetween: " и ",
+    anchor2: "копать сколько угодно глубоко",
+    aiAfter2: ". Основная ветка? Не тронута.",
+    threadReply1: "Выделите текст → коснитесь Закрепить. Сфокусированная подветка. Основная остаётся.",
+    threadReply2: "Без ограничений — закрепляйте внутри подветок тоже.",
+    subTitle1: "закрепить эту деталь",
+    subTitle2: "копать глубоко",
     mainCrumb: "Главная",
     pinLabel: "Закрепить",
     copyLabel: "Копировать",
@@ -366,21 +477,26 @@ const CONTENT: Record<Lang, Copy> = {
     selectLabel: "Выбрать",
     newReplyLabel: "Новое",
     caption: {
-      idle: "Ответ в главной ветке.",
-      "tap-select": "Коснитесь «Выбрать», чтобы включить выделение.",
-      sweep: "Проведите для выделения.",
-      selpop: "Панель над выделением.",
-      dialog: "Закрепить открывает подсказки.",
-      pick: "Выберите одну.",
-      "underline-appear": "Подчёркивание якоря.",
-      "ai-replying": "Deeppin отвечает в подветке.",
-      "unread-breathing": "Якорь пульсирует жирно до прочтения.",
-      popover: "Коснитесь подчёркивания → Q+A.",
-      enter: "Открыть — войти в подветку.",
-      "sub-thread": "Полный вид подветки.",
-      back: "Назад в главную — тонко, прочитано.",
-      "tap-overview": "Коснитесь кнопки обзора, чтобы увидеть граф.",
-      "drawer-shown": "Граф + Merge / Flatten в выдвижной панели.",
+      blank: "Новый разговор.",
+      "ai-stream": "Вы задаёте вопрос, Deeppin отвечает в главной ветке.",
+      "tap-select-1": "Коснитесь «Выбрать», чтобы включить выделение.",
+      "sweep-1": "Проведите по фразе для выделения.",
+      "selpop-1": "Панель над выделением.",
+      "dialog-1": "Закрепить открывает уточняющие вопросы.",
+      "pick-1": "Выберите один.",
+      "underline-1": "Подчёркивание якоря в главной.",
+      "ai-replying-1": "Deeppin отвечает в подветке, главная остаётся.",
+      "back-1": "Назад в главную. Якорь пульсирует до прочтения.",
+      "tap-select-2": "Вторая закладка — коснитесь «Выбрать» снова.",
+      "sweep-2": "Проведите по другой фразе.",
+      "selpop-2": "Панель над вторым выделением.",
+      "dialog-2": "Выберите уточнение для второй закладки.",
+      "pick-2": "Выбрать.",
+      "underline-2": "Второй якорь рядом с первым.",
+      "ai-replying-2": "Вторая подветка отвечает параллельно.",
+      "back-both": "Две активные подветки, главная не тронута.",
+      "tap-overview": "Коснитесь обзора, чтобы увидеть весь граф.",
+      "drawer-shown": "Три узла —— главная + две подветки. Закрепляйте внутри любой.",
       "drawer-hidden": "Панель закрывается.",
     },
   },
@@ -390,9 +506,11 @@ export default function MobilePinDemo() {
   const lang = useLangStore((s) => s.lang) as Lang;
   const c = CONTENT[lang] ?? CONTENT.en;
 
-  const [phase, setPhase] = useState<Phase>("idle");
+  const [phase, setPhase] = useState<Phase>("blank");
   const [sweepPct, setSweepPct] = useState(0);
+  /** 当前在画字的气泡：'main' = 主线 AI 回复；'sub1' / 'sub2' = 子线程回复 */
   const [streamLen, setStreamLen] = useState(0);
+  const [mainStreamLen, setMainStreamLen] = useState(0);
   /** 每个 tap-式 phase 临转换前短暂 true —— 驱动目标按钮上的点击 ripple
    *  Flips true briefly before each tap-phase transitions out; drives the
    *  ripple animation on the button that's "being tapped". */
@@ -420,13 +538,15 @@ export default function MobilePinDemo() {
     // Value = ms-before-phase-end when the tap press lights up. Press animation
     // lasts ~1100ms, so the viewer has a clear look at "where the finger
     // landed" before the next phase takes over.
+    // 值 = 距离 phase 结束前多少 ms 点亮 tap press
     const tapPhases: Partial<Record<Phase, number>> = {
-      "tap-select": 1000,  // 点击底部 Select FAB / tap on the Select FAB
-      selpop: 1200,        // 点击 Pin 按钮 / tap on Pin chip
-      pick: 500,           // 点击 suggestion / tap on suggestion（pick 只 700ms）
-      "unread-breathing": 1100, // 点击锚点下划线 / tap on anchor underline → popover
-      popover: 1200,       // 点击 Enter / tap on Enter button
-      "tap-overview": 1100, // 点击 overview / tap on overview button
+      "tap-select-1": 1800,  // 第一次点 Select FAB
+      "selpop-1":     1500,  // 第一次点 Pin chip
+      "pick-1":       800,   // 第一次选 suggestion
+      "tap-select-2": 1800,  // 第二次点 Select FAB
+      "selpop-2":     1500,  // 第二次点 Pin chip
+      "pick-2":       800,   // 第二次选 suggestion
+      "tap-overview": 1800,  // 点右上概览
     };
     const offset = tapPhases[phase];
     if (offset == null) return;
@@ -435,9 +555,11 @@ export default function MobilePinDemo() {
     return () => { if (tapTimerRef.current) clearTimeout(tapTimerRef.current); };
   }, [phase]);
 
+  // Sweep 动画：两次 sweep phase 都跑
   useEffect(() => {
-    if (phase !== "sweep") {
-      setSweepPct(phase === "idle" ? 0 : 1);
+    const isSweep = phase === "sweep-1" || phase === "sweep-2";
+    if (!isSweep) {
+      setSweepPct(phase === "blank" || phase === "ai-stream" ? 0 : 1);
       return;
     }
     let start = 0;
@@ -451,13 +573,34 @@ export default function MobilePinDemo() {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [phase]);
 
+  // 主线 AI 回复的流式打字 —— 只在 "ai-stream" 跑；blank 之前清零
+  // Main-thread AI reply streams during "ai-stream"; stays fully rendered after.
   useEffect(() => {
-    if (phase !== "sub-thread") {
-      setStreamLen(phase === "idle" ? 0 : c.threadReply.length);
+    if (phase === "blank") { setMainStreamLen(0); return; }
+    const fullLen = c.aiBefore1.length + c.anchor1.length + c.aiBetween.length + c.anchor2.length + c.aiAfter2.length;
+    if (phase !== "ai-stream") { setMainStreamLen(fullLen); return; }
+    setMainStreamLen(0);
+    let i = 0;
+    const tick = () => {
+      i = Math.min(fullLen, i + 5);
+      setMainStreamLen(i);
+      if (i < fullLen) timerRef.current = setTimeout(tick, 40);
+    };
+    tick();
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [phase, c.aiBefore1, c.anchor1, c.aiBetween, c.anchor2, c.aiAfter2]);
+
+  // 子线程 AI 回复的流式打字 —— ai-replying-1 / -2 各自播放
+  useEffect(() => {
+    const sub1 = phase === "ai-replying-1";
+    const sub2 = phase === "ai-replying-2";
+    if (!sub1 && !sub2) {
+      setStreamLen(phase === "blank" ? 0 : 9999);
       return;
     }
+    const reply = sub1 ? c.threadReply1 : c.threadReply2;
     setStreamLen(0);
-    const total = c.threadReply.length;
+    const total = reply.length;
     let i = 0;
     const tick = () => {
       i = Math.min(total, i + 3);
@@ -466,15 +609,39 @@ export default function MobilePinDemo() {
     };
     tick();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [phase, c.threadReply]);
+  }, [phase, c.threadReply1, c.threadReply2]);
 
-  const showSelpop = phase === "selpop";
-  const showDialog = phase === "dialog" || phase === "pick";
-  const anchorVisible = ["underline-appear", "ai-replying", "unread-breathing", "popover", "enter", "sub-thread", "back"].includes(phase);
-  const breathing = phase === "unread-breathing" || phase === "popover";
-  const showPopover = phase === "popover" || phase === "enter";
-  const inSub = phase === "ai-replying" || phase === "sub-thread" || phase === "enter";
-  const showNewReplyTag = phase === "popover" || phase === "enter";
+  // 当前 pin 轮次（1 或 2）—— driving 锚点指示、Dialog 标题、SubView 内容
+  // Current pin round (1 or 2) — used by Dialog title, SubView content, etc.
+  const currentPin: 1 | 2 = (phase === "sweep-2" || phase === "selpop-2" || phase === "dialog-2" ||
+                             phase === "pick-2" || phase === "underline-2" || phase === "ai-replying-2")
+    ? 2 : 1;
+
+  // 哪些 phase 选区工具栏（Pin/Copy）露出
+  // Selection toolbar visible during selpop-1 / selpop-2
+  const showSelpop = phase === "selpop-1" || phase === "selpop-2";
+  // Pin 追问弹窗 visible during dialog-1/pick-1 and dialog-2/pick-2
+  const showDialog = phase === "dialog-1" || phase === "pick-1" ||
+                     phase === "dialog-2" || phase === "pick-2";
+
+  // anchor1 显示：任何 "underline-1 之后" 都显示（除了 blank/ai-stream 之前的帧）
+  // anchor2 显示：任何 "underline-2 之后" 都显示
+  const anchor1Shown = ![
+    "blank", "ai-stream", "tap-select-1", "sweep-1", "selpop-1",
+    "dialog-1", "pick-1"
+  ].includes(phase);
+  const anchor2Shown = ![
+    "blank", "ai-stream", "tap-select-1", "sweep-1", "selpop-1", "dialog-1", "pick-1",
+    "underline-1", "ai-replying-1", "back-1", "tap-select-2", "sweep-2",
+    "selpop-2", "dialog-2", "pick-2"
+  ].includes(phase);
+
+  // 哪个锚点正在 breathing（未读）—— back-1 时 anchor1 呼吸；back-both 时两个都呼吸
+  const anchor1Breathing = phase === "back-1" || phase === "back-both";
+  const anchor2Breathing = phase === "back-both";
+
+  // 是否在子线程视图
+  const inSub = phase === "ai-replying-1" || phase === "ai-replying-2";
 
   // Mac chrome (38) + 移动 topbar (40) + body (320) + caption (36) = 434
   // Drops the static mini-graph strip; instead the body now has a real
@@ -483,19 +650,23 @@ export default function MobilePinDemo() {
   const TOPBAR_H = 40;
   const BODY_H = 320;
   const TOTAL_H = 38 + TOPBAR_H + BODY_H + 36;
-  const showCapNode = anchorVisible;
-  const activeNode: "main" | "cap" = inSub ? "cap" : "main";
+  // 激活节点 —— MainView / SubView 切换；inSub 时 sub 节点 active
+  const activeNode: "main" | "sub1" | "sub2" = phase === "ai-replying-1"
+    ? "sub1"
+    : phase === "ai-replying-2"
+      ? "sub2"
+      : "main";
   const breatheRightBtn = phase === "tap-overview";
   const drawerOpen = phase === "drawer-shown";
-  // Select FAB：tap-select..pick 之间进入 "active"（accent 底色）状态，
-  // 提示用户「选区模式已开启」；其余时候灰底 idle
-  // Select FAB — armed state (accent fill) during tap-select..pick so the
-  // viewer sees "selection mode is ON"; idle ink fill otherwise.
-  const selectArmed = ["tap-select", "sweep", "selpop", "dialog", "pick"].includes(phase);
-  // 进入 sub-thread / drawer-open 时把 FAB 藏起来（不是 chat view 场景）
-  // Hide the FAB in sub-thread or overview-drawer phases.
+  // Select FAB 在任何 tap-select/sweep/selpop/dialog/pick 阶段都是 armed
+  // Select FAB is armed during any pin flow phase.
+  const selectArmed = [
+    "tap-select-1", "sweep-1", "selpop-1", "dialog-1", "pick-1",
+    "tap-select-2", "sweep-2", "selpop-2", "dialog-2", "pick-2",
+  ].includes(phase);
+  // 在 chat view 才显示 FAB（子线程/drawer 打开时隐藏）
   const showSelectFab = !inSub && !drawerOpen;
-  const tapOnSelect = phase === "tap-select" && tapRing;
+  const tapOnSelect = (phase === "tap-select-1" || phase === "tap-select-2") && tapRing;
 
   return (
     <div className="w-full select-none" style={{ maxWidth: 380 }}>
@@ -565,7 +736,7 @@ export default function MobilePinDemo() {
               <circle cx="19" cy="19" r="2"/>
               <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
             </svg>
-            {showCapNode && !drawerOpen && (
+            {(anchor1Shown || anchor2Shown) && !drawerOpen && (
               <span
                 className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
                 style={{ background: "var(--accent)" }}
@@ -587,20 +758,29 @@ export default function MobilePinDemo() {
             <MainView
               c={c}
               sweepPct={sweepPct}
-              anchorVisible={anchorVisible}
-              breathing={breathing}
+              mainStreamLen={mainStreamLen}
+              anchor1Shown={anchor1Shown}
+              anchor2Shown={anchor2Shown}
+              anchor1Breathing={anchor1Breathing}
+              anchor2Breathing={anchor2Breathing}
+              currentPin={currentPin}
               showSelpop={showSelpop}
-              showPopover={showPopover}
-              showNewReplyTag={showNewReplyTag}
               phase={phase}
               tapRing={tapRing}
             />
           </div>
           <div className={`absolute inset-0 transition-opacity duration-200 ${inSub ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-            <SubView c={c} streamLen={streamLen} phase={phase} />
+            <SubView c={c} streamLen={streamLen} phase={phase} currentPin={currentPin} />
           </div>
 
-          {showDialog && <Dialog c={c} picked={phase === "pick"} tapRing={tapRing && phase === "pick"} />}
+          {showDialog && (
+            <Dialog
+              c={c}
+              currentPin={currentPin}
+              picked={phase === "pick-1" || phase === "pick-2"}
+              tapRing={tapRing && (phase === "pick-1" || phase === "pick-2")}
+            />
+          )}
 
           {/* 底部「Select」FAB —— 跟真实 MobileChatLayout 一致
               定位（absolute bottom-3 right-3）；tap-select phase 播放点击动画。
@@ -679,10 +859,13 @@ export default function MobilePinDemo() {
             {/* graph body */}
             <div className="flex-1 min-h-0 flex items-center justify-center p-2">
               <MiniGraph
-                showCapNode={showCapNode}
+                showSub1={anchor1Shown}
+                showSub2={anchor2Shown}
                 activeNode={activeNode}
-                breathing={false}
-                capLabel={c.subTitle}
+                sub1Breathing={anchor1Breathing && !inSub}
+                sub2Breathing={anchor2Breathing && !inSub}
+                sub1Label={c.subTitle1}
+                sub2Label={c.subTitle2}
                 mainLabel={c.mainCrumb}
                 phase={phase}
               />
@@ -816,27 +999,103 @@ export default function MobilePinDemo() {
 }
 
 // ── Main view ───────────────────────────────────────────────────────────
+// 渲染主线 AI 回复，含两个锚点 inline。AI 流式打字时按 mainStreamLen 截取；
+// sweep / selpop 高亮跟随 currentPin；已生成的锚点显示 border-bottom（加
+// breathing 呼吸类）。
+// Main chat view — AI reply with both anchors inline. During ai-stream it
+// types out up to mainStreamLen. The sweep / selpop visual tracks whichever
+// anchor is being pinned right now; landed anchors get a pigment underline
+// (plus the breathing class when unread).
 function MainView({
-  c, sweepPct, anchorVisible, breathing, showSelpop, showPopover, showNewReplyTag, phase, tapRing,
+  c, sweepPct, mainStreamLen,
+  anchor1Shown, anchor2Shown,
+  anchor1Breathing, anchor2Breathing,
+  currentPin,
+  showSelpop,
+  phase, tapRing,
 }: {
   c: Copy;
   sweepPct: number;
-  anchorVisible: boolean;
-  breathing: boolean;
+  mainStreamLen: number;
+  anchor1Shown: boolean;
+  anchor2Shown: boolean;
+  anchor1Breathing: boolean;
+  anchor2Breathing: boolean;
+  currentPin: 1 | 2;
   showSelpop: boolean;
-  showPopover: boolean;
-  showNewReplyTag: boolean;
   phase: Phase;
   tapRing: boolean;
 }) {
-  const sweeping = phase === "sweep";
-  // Sweep fill 加强到 36%（原 22% 太浅），让"选中范围"在手机上也一眼可见
-  // Boost sweep fill to 36% (was 22%) so the selection wash reads clearly.
-  const bg = sweeping ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 36)}%, transparent)` : undefined;
-  const bb = anchorVisible ? `${breathing ? 3 : 1}px solid var(--pig-1)` : sweeping ? "1px solid transparent" : "none";
-  // 锚点下划线被按下（unread-breathing 末尾 → 过渡到 popover）
-  // Anchor underline being tapped (near end of unread-breathing → popover)
-  const tapOnAnchor = phase === "unread-breathing" && tapRing;
+  // 把 AI 文字拆成 5 段按 mainStreamLen 截取
+  const totalLen = c.aiBefore1.length + c.anchor1.length + c.aiBetween.length + c.anchor2.length + c.aiAfter2.length;
+  const streaming = phase === "ai-stream" && mainStreamLen < totalLen;
+  const visible = phase === "ai-stream" ? mainStreamLen : totalLen;
+  let rem = visible;
+  const takeSlice = (s: string) => { const t = s.slice(0, rem); rem -= t.length; return t; };
+  const seg0 = takeSlice(c.aiBefore1);
+  const seg1 = takeSlice(c.anchor1);
+  const seg2 = takeSlice(c.aiBetween);
+  const seg3 = takeSlice(c.anchor2);
+  const seg4 = takeSlice(c.aiAfter2);
+
+  const sweeping1 = phase === "sweep-1";
+  const sweeping2 = phase === "sweep-2";
+  const sweepBg1 = sweeping1 ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 36)}%, transparent)` : undefined;
+  const sweepBg2 = sweeping2 ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 36)}%, transparent)` : undefined;
+
+  const renderAnchor = (
+    which: 1 | 2,
+    text: string,
+    shown: boolean,
+    breathing: boolean,
+    sweepBg: string | undefined,
+    sweeping: boolean,
+  ) => {
+    if (!text) return null;
+    const color = which === 1 ? "var(--pig-1)" : "var(--pig-2)";
+    const thickness = breathing ? 3 : 1;
+    const bb = shown ? `${thickness}px solid ${color}` : sweeping ? "1px solid transparent" : "none";
+    const thisPinActive = currentPin === which;
+    // 未读时 border-bottom 让给 .anchor-breathing 的 box-shadow（来自 globals.css）
+    // When breathing, the border is handled by the shared .anchor-breathing
+    // rule (box-shadow + opacity loop) — skip the inline border to avoid
+    // double underlines.
+    const innerStyle: React.CSSProperties = breathing
+      ? ({ background: sweepBg, paddingBottom: 1, color: "var(--ink)", "--anchor-color": color } as React.CSSProperties)
+      : { background: sweepBg, borderBottom: bb, paddingBottom: 1, color: "var(--ink)", transition: "background 120ms ease-out, border-bottom 220ms ease-out" };
+    return (
+      <span
+        className={`relative inline-block ${breathing ? "anchor-breathing" : ""}`}
+        style={innerStyle}
+      >
+        {text}
+        {showSelpop && thisPinActive && (
+          <span
+            className="absolute left-0 -top-9 z-20 inline-flex items-center gap-[2px] rounded-md shadow-[0_4px_14px_rgba(27,26,23,0.18)]"
+            style={{ background: "var(--ink)", color: "var(--paper)", padding: 2 }}
+          >
+            <span className="px-2 py-1 text-[10px]">{c.copyLabel}</span>
+            <span
+              className={`relative px-2 py-1 rounded text-[10px] font-medium ${
+                (phase === "selpop-1" || phase === "selpop-2") && tapRing ? "demo-tap-press" : ""
+              }`}
+              style={{ background: "var(--accent)" }}
+            >
+              {c.pinLabel}
+              {(phase === "selpop-1" || phase === "selpop-2") && tapRing && (
+                <>
+                  <span key={`tap-pin-print-${which}`} className="demo-tap-print demo-tap-print-sm" aria-hidden />
+                  <span key={`tap-pin-ring-${which}`} className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+                </>
+              )}
+            </span>
+            <span aria-hidden className="absolute left-3 -bottom-1 w-1.5 h-1.5 rotate-45" style={{ background: "var(--ink)" }} />
+          </span>
+        )}
+      </span>
+    );
+  };
+
   return (
     <div className="h-full p-3 overflow-hidden">
       {/* breadcrumb */}
@@ -850,124 +1109,80 @@ function MainView({
         </span>
       </div>
 
-      {/* user */}
-      <div className="flex flex-col items-end mb-2">
-        <div className="flex items-center gap-1.5 mb-0.5 font-mono text-[8.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
-          <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--ink-3)" }} />YOU
+      {/* user —— blank phase 时也显示，作为"你刚发的那条"；只在 blank 前完全没了 */}
+      {/* User bubble — shown from "blank" onward (the question's already sent). */}
+      {phase !== "blank" && (
+        <div className="flex flex-col items-end mb-2">
+          <div className="flex items-center gap-1.5 mb-0.5 font-mono text-[8.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
+            <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--ink-3)" }} />YOU
+          </div>
+          <div
+            className="max-w-[88%] px-3 py-2 text-[12px] leading-[1.5]"
+            style={{ background: "var(--accent)", color: "var(--paper)", borderRadius: 12, borderBottomRightRadius: 3 }}
+          >
+            {c.mainQuestion}
+          </div>
         </div>
-        <div
-          className="max-w-[88%] px-3 py-2 text-[12px] leading-[1.5]"
-          style={{ background: "var(--accent)", color: "var(--paper)", borderRadius: 12, borderBottomRightRadius: 3 }}
-        >
-          {c.mainQuestion}
-        </div>
-      </div>
+      )}
 
       {/* AI */}
-      <div className="flex flex-col items-start">
-        <div className="flex items-center gap-1.5 mb-0.5 font-mono text-[8.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
-          <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--accent)" }} />
-          <span style={{ fontFamily: "var(--font-serif)", textTransform: "none", letterSpacing: 0, fontSize: 10, color: "var(--ink-3)" }}>Deeppin</span>
-        </div>
-        <div
-          className="relative max-w-[92%] px-3 py-2 text-[12px] leading-[1.55]"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--rule-soft)",
-            color: "var(--ink)",
-            borderRadius: 12,
-            borderBottomLeftRadius: 3,
-          }}
-        >
-          {c.aiPre}
-          <span
-            className={`relative inline-block ${tapOnAnchor ? "demo-tap-press" : ""}`}
+      {phase !== "blank" && (
+        <div className="flex flex-col items-start">
+          <div className="flex items-center gap-1.5 mb-0.5 font-mono text-[8.5px] uppercase tracking-[0.12em]" style={{ color: "var(--ink-4)" }}>
+            <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--accent)" }} />
+            <span style={{ fontFamily: "var(--font-serif)", textTransform: "none", letterSpacing: 0, fontSize: 10, color: "var(--ink-3)" }}>Deeppin</span>
+          </div>
+          <div
+            className="relative max-w-[92%] px-3 py-2 text-[12px] leading-[1.55]"
             style={{
-              background: bg,
-              borderBottom: bb,
-              paddingBottom: 1,
+              background: "var(--card)",
+              border: "1px solid var(--rule-soft)",
               color: "var(--ink)",
-              transition: "background 120ms ease-out, border-bottom 220ms ease-out",
+              borderRadius: 12,
+              borderBottomLeftRadius: 3,
             }}
           >
-            {c.anchor}
-            {tapOnAnchor && (
-              <>
-                <span key="tap-anchor-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
-                <span key="tap-anchor-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
-              </>
-            )}
-            {showSelpop && (
+            {seg0}
+            {renderAnchor(1, seg1, anchor1Shown || sweeping1, anchor1Breathing, sweepBg1, sweeping1)}
+            {seg2}
+            {renderAnchor(2, seg3, anchor2Shown || sweeping2, anchor2Breathing, sweepBg2, sweeping2)}
+            {seg4}
+            {streaming && (
               <span
-                className="absolute left-0 -top-9 z-20 inline-flex items-center gap-[2px] rounded-md shadow-[0_4px_14px_rgba(27,26,23,0.18)]"
-                style={{ background: "var(--ink)", color: "var(--paper)", padding: 2 }}
-              >
-                <span className="px-2 py-1 text-[10px]">{c.copyLabel}</span>
-                <span
-                  className={`relative px-2 py-1 rounded text-[10px] font-medium ${
-                    phase === "selpop" && tapRing ? "demo-tap-press" : ""
-                  }`}
-                  style={{ background: "var(--accent)" }}
-                >
-                  {c.pinLabel}
-                  {phase === "selpop" && tapRing && (
-                    <>
-                      <span key="tap-pin-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
-                      <span key="tap-pin-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
-                    </>
-                  )}
-                </span>
-                <span aria-hidden className="absolute left-3 -bottom-1 w-1.5 h-1.5 rotate-45" style={{ background: "var(--ink)" }} />
-              </span>
+                className="inline-block w-[2px] h-3 align-middle ml-[1px]"
+                style={{ background: "var(--accent)", animation: "mp-caret 1s steps(2) infinite" }}
+              />
             )}
-            {showPopover && (
-              <span
-                className="absolute left-0 top-[calc(100%+4px)] z-20 inline-block rounded-lg overflow-hidden shadow-[0_8px_24px_rgba(27,26,23,0.14)]"
-                style={{ background: "var(--card)", border: "1px solid var(--rule)", width: 220 }}
-              >
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "var(--pig-1)" }} />
-                  <span className="flex-1 font-serif text-[12px] truncate" style={{ color: "var(--ink)" }}>
-                    {c.subTitle}
-                  </span>
-                  {showNewReplyTag && (
-                    <span className="font-mono text-[8px] uppercase tracking-wider px-1 rounded-sm" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-                      {c.newReplyLabel}
-                    </span>
-                  )}
-                </div>
-                <div className="px-2.5 py-1.5 text-[10.5px] leading-snug" style={{ borderTop: "1px solid var(--rule-soft)", color: "var(--ink-2)" }}>
-                  {c.threadReply.slice(0, 70)}…
-                </div>
-                <div className="flex items-center justify-end px-2.5 py-1" style={{ borderTop: "1px solid var(--rule-soft)", background: "var(--paper-2)" }}>
-                  <span
-                    className={`relative font-medium text-[10px] inline-flex items-center px-1 rounded ${
-                      phase === "popover" && tapRing ? "demo-tap-press" : ""
-                    }`}
-                    style={{ color: "var(--accent)" }}
-                  >
-                    {c.enterLabel} →
-                    {phase === "popover" && tapRing && (
-                      <>
-                        <span key="tap-enter-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
-                        <span key="tap-enter-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
-                      </>
-                    )}
-                  </span>
-                </div>
-              </span>
-            )}
-          </span>
-          {c.aiPost}
+          </div>
         </div>
-      </div>
+      )}
+
+      <style jsx>{`
+        @keyframes mp-caret {
+          0%, 50% { opacity: 1; }
+          51%, 100% { opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }
 
 // ── Sub-thread view ─────────────────────────────────────────────────────
-function SubView({ c, streamLen, phase }: { c: Copy; streamLen: number; phase: Phase }) {
-  const streaming = phase === "sub-thread" && streamLen < c.threadReply.length;
+// 两个子线程共用一个 view —— 用 currentPin 切换标题 + 回复文本 + pigment 色
+// One view powers both sub-threads; currentPin selects title + reply text
+// + pigment pill color for the breadcrumb.
+function SubView({
+  c, streamLen, phase, currentPin,
+}: {
+  c: Copy;
+  streamLen: number;
+  phase: Phase;
+  currentPin: 1 | 2;
+}) {
+  const title = currentPin === 1 ? c.subTitle1 : c.subTitle2;
+  const reply = currentPin === 1 ? c.threadReply1 : c.threadReply2;
+  const pigColor = currentPin === 1 ? "var(--pig-1)" : "var(--pig-2)";
+  const streaming = (phase === "ai-replying-1" || phase === "ai-replying-2") && streamLen < reply.length;
   return (
     <div className="h-full p-3 overflow-hidden">
       <div className="flex items-center gap-1 mb-2.5 font-mono text-[10px]" style={{ color: "var(--ink-3)" }}>
@@ -980,8 +1195,8 @@ function SubView({ c, streamLen, phase }: { c: Copy; streamLen: number; phase: P
           className="inline-flex items-center gap-1.5 px-2 py-[2px] rounded"
           style={{ background: "var(--ink)", color: "var(--paper)" }}
         >
-          <span className="w-[4px] h-[4px] rounded-full" style={{ background: "var(--pig-1)" }} />
-          {c.subTitle.length > 12 ? c.subTitle.slice(0, 12) + "…" : c.subTitle}
+          <span className="w-[4px] h-[4px] rounded-full" style={{ background: pigColor }} />
+          {title.length > 12 ? title.slice(0, 12) + "…" : title}
         </span>
       </div>
 
@@ -1012,18 +1227,18 @@ function SubView({ c, streamLen, phase }: { c: Copy; streamLen: number; phase: P
             borderBottomLeftRadius: 3,
           }}
         >
-          {c.threadReply.slice(0, streamLen)}
+          {reply.slice(0, streamLen)}
           {streaming && (
             <span
               className="inline-block w-[2px] h-3 align-middle ml-[1px]"
-              style={{ background: "var(--accent)", animation: "mp-caret 1s steps(2) infinite" }}
+              style={{ background: "var(--accent)", animation: "mp-sub-caret 1s steps(2) infinite" }}
             />
           )}
         </div>
       </div>
 
       <style jsx>{`
-        @keyframes mp-caret {
+        @keyframes mp-sub-caret {
           0%, 50% { opacity: 1; }
           51%, 100% { opacity: 0; }
         }
@@ -1033,7 +1248,19 @@ function SubView({ c, streamLen, phase }: { c: Copy; streamLen: number; phase: P
 }
 
 // ── Pin dialog ──────────────────────────────────────────────────────────
-function Dialog({ c, picked, tapRing }: { c: Copy; picked: boolean; tapRing: boolean }) {
+// 根据 currentPin 切换标题颜色 + 引用的锚点文字 + 追问预览
+// Dialog header pill + anchor quote + follow-up preview all keyed off currentPin.
+function Dialog({
+  c, picked, tapRing, currentPin,
+}: {
+  c: Copy;
+  picked: boolean;
+  tapRing: boolean;
+  currentPin: 1 | 2;
+}) {
+  const anchorText = currentPin === 1 ? c.anchor1 : c.anchor2;
+  const reply = currentPin === 1 ? c.threadReply1 : c.threadReply2;
+  const pigColor = currentPin === 1 ? "var(--pig-1)" : "var(--pig-2)";
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center animate-in fade-in-0 duration-150">
       <div className="absolute inset-0" style={{ background: "rgba(27,26,23,0.35)" }} />
@@ -1042,13 +1269,13 @@ function Dialog({ c, picked, tapRing }: { c: Copy; picked: boolean; tapRing: boo
         style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
       >
         <div className="px-3 pt-3 pb-2 flex items-start gap-2" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
-          <span className="w-[3px] h-5 rounded-[1px] flex-shrink-0" style={{ background: "var(--pig-1)" }} />
+          <span className="w-[3px] h-5 rounded-[1px] flex-shrink-0" style={{ background: pigColor }} />
           <div className="flex-1">
             <div className="font-mono text-[8.5px] uppercase tracking-[0.15em] mb-0.5" style={{ color: "var(--accent)" }}>
               {c.pinLabel}
             </div>
             <div className="font-serif text-[12px] italic leading-tight" style={{ color: "var(--ink-2)" }}>
-              “{c.anchor}”
+              “{anchorText}”
             </div>
           </div>
         </div>
@@ -1063,11 +1290,11 @@ function Dialog({ c, picked, tapRing }: { c: Copy; picked: boolean; tapRing: boo
               color: picked ? "var(--accent)" : "var(--ink-2)",
             }}
           >
-            {c.threadReply.slice(0, 38)}…
+            {reply.slice(0, 38)}…
             {tapRing && (
               <>
-                <span key="tap-pick-print" className="demo-tap-print" aria-hidden />
-                <span key="tap-pick-ring" className="demo-tap-ring" aria-hidden />
+                <span key={`tap-pick-print-${currentPin}`} className="demo-tap-print" aria-hidden />
+                <span key={`tap-pick-ring-${currentPin}`} className="demo-tap-ring" aria-hidden />
               </>
             )}
           </div>
@@ -1077,40 +1304,103 @@ function Dialog({ c, picked, tapRing }: { c: Copy; picked: boolean; tapRing: boo
   );
 }
 
-// ── 横向 mini graph：main 节点 + 可选 sub 节点 + bezier 边 ──────────────
-// Horizontal mini graph for the bottom strip of MobilePinDemo: main node
-// at left, optional sub node at right (when sub-thread spawns), connected
-// with a smooth curve. Active node fills with pigment + breathing pulse.
+// ── 三节点 mini graph：main + 可选 sub1 + 可选 sub2 ─────────────────────
+// 布局：main 在左，两条 sub 呈 V 形向下右分叉；每个 sub 可独立 show/breathe。
+// Layout: main on the left, two sub-nodes fanning down-right (classic V tree).
+// Each sub toggles independently; breathing sub gets an accent unread halo.
 function MiniGraph({
-  showCapNode,
+  showSub1,
+  showSub2,
   activeNode,
-  breathing,
-  capLabel,
+  sub1Breathing,
+  sub2Breathing,
+  sub1Label,
+  sub2Label,
   mainLabel,
   phase,
 }: {
-  showCapNode: boolean;
-  activeNode: "main" | "cap";
-  breathing: boolean;
-  capLabel: string;
+  showSub1: boolean;
+  showSub2: boolean;
+  activeNode: "main" | "sub1" | "sub2";
+  sub1Breathing: boolean;
+  sub2Breathing: boolean;
+  sub1Label: string;
+  sub2Label: string;
   mainLabel: string;
-  phase: string;
+  phase: Phase;
 }) {
-  // 视口 240×60 —— 在 30% 和 70% 处放两个圆
-  const W = 240, H = 60;
+  // 视口 240×80 —— main 在左中，sub1 右上，sub2 右下
+  const W = 240, H = 80;
   const mainX = W * 0.18, mainY = H / 2;
-  const capX = W * 0.78, capY = H / 2;
+  const sub1X = W * 0.72, sub1Y = H * 0.32;
+  const sub2X = W * 0.72, sub2Y = H * 0.68;
+
+  const renderSub = (
+    cx: number,
+    cy: number,
+    id: "sub1" | "sub2",
+    pigColor: string,
+    label: string,
+    show: boolean,
+    breathing: boolean,
+    appearPhase: Phase,
+  ) => {
+    if (!show) return null;
+    const active = activeNode === id;
+    // 节点从"刚 drop"时从主节点淡入（transition）
+    const isDropping = phase === appearPhase;
+    return (
+      <g style={{
+        opacity: isDropping ? 0 : 1,
+        transform: isDropping ? "translateX(-4px)" : "translateX(0)",
+        transition: "opacity 380ms ease, transform 380ms cubic-bezier(0.16, 1, 0.3, 1)",
+      }}>
+        <circle
+          cx={cx}
+          cy={cy}
+          r={active ? 5.5 : 4}
+          fill={active ? pigColor : "var(--paper-2)"}
+          stroke={pigColor}
+          strokeWidth={active ? 0 : 1.25}
+        />
+        {breathing && (
+          <circle cx={cx + 6} cy={cy - 4} r={3} fill="var(--accent)" stroke="var(--paper)" strokeWidth={1}>
+            <animate attributeName="r" values="3;4;3" dur="1.6s" repeatCount="indefinite" />
+          </circle>
+        )}
+        <text
+          x={cx + 9}
+          y={cy + 3.5}
+          fontSize={9.5}
+          style={{ fontFamily: "var(--font-serif)" }}
+          fill={active ? "var(--ink)" : "var(--ink-3)"}
+          fontWeight={active ? 500 : 400}
+        >
+          {label.length > 14 ? label.slice(0, 14) + "…" : label}
+        </text>
+      </g>
+    );
+  };
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", display: "block" }}>
-      {/* edge */}
-      {showCapNode && (
+      {/* edges —— main → sub1 / sub2 */}
+      {showSub1 && (
         <path
-          d={`M ${mainX} ${mainY} C ${mainX + 30} ${mainY}, ${capX - 30} ${capY}, ${capX} ${capY}`}
+          d={`M ${mainX} ${mainY} C ${mainX + 30} ${mainY}, ${sub1X - 30} ${sub1Y}, ${sub1X} ${sub1Y}`}
           fill="none"
           stroke="var(--rule-strong)"
           strokeWidth={1}
-          style={{ opacity: phase === "underline-appear" ? 0 : 1, transition: "opacity 320ms ease" }}
+          style={{ opacity: phase === "underline-1" ? 0 : 1, transition: "opacity 320ms ease" }}
+        />
+      )}
+      {showSub2 && (
+        <path
+          d={`M ${mainX} ${mainY} C ${mainX + 30} ${mainY}, ${sub2X - 30} ${sub2Y}, ${sub2X} ${sub2Y}`}
+          fill="none"
+          stroke="var(--rule-strong)"
+          strokeWidth={1}
+          style={{ opacity: phase === "underline-2" ? 0 : 1, transition: "opacity 320ms ease" }}
         />
       )}
 
@@ -1136,39 +1426,8 @@ function MiniGraph({
         </text>
       </g>
 
-      {/* cap (sub-thread) */}
-      {showCapNode && (
-        <g style={{
-          opacity: phase === "underline-appear" ? 0 : 1,
-          transform: phase === "underline-appear" ? "translateX(-4px)" : "translateX(0)",
-          transition: "opacity 380ms ease, transform 380ms cubic-bezier(0.16, 1, 0.3, 1)",
-          transformOrigin: `${capX}px ${capY}px`,
-        }}>
-          <circle
-            cx={capX}
-            cy={capY}
-            r={activeNode === "cap" ? 5.5 : 4}
-            fill={activeNode === "cap" ? "var(--pig-1)" : "var(--paper-2)"}
-            stroke="var(--pig-1)"
-            strokeWidth={activeNode === "cap" ? 0 : 1.25}
-          />
-          {breathing && (
-            <circle cx={capX + 6} cy={capY - 4} r={3} fill="var(--accent)" stroke="var(--paper)" strokeWidth={1}>
-              <animate attributeName="r" values="3;4;3" dur="1.6s" repeatCount="indefinite" />
-            </circle>
-          )}
-          <text
-            x={capX + 9}
-            y={capY + 3.5}
-            fontSize={9.5}
-            style={{ fontFamily: "var(--font-serif)" }}
-            fill={activeNode === "cap" ? "var(--ink)" : "var(--ink-3)"}
-            fontWeight={activeNode === "cap" ? 500 : 400}
-          >
-            {capLabel.length > 12 ? capLabel.slice(0, 12) + "…" : capLabel}
-          </text>
-        </g>
-      )}
+      {renderSub(sub1X, sub1Y, "sub1", "var(--pig-1)", sub1Label, showSub1, sub1Breathing, "underline-1")}
+      {renderSub(sub2X, sub2Y, "sub2", "var(--pig-2)", sub2Label, showSub2, sub2Breathing, "underline-2")}
     </svg>
   );
 }
