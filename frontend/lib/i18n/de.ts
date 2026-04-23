@@ -141,4 +141,6 @@ export const de: T = {
   // Zähler für kostenloses Kontingent
   quotaFree: "frei",
   quotaFull: "Testlimit erreicht",
+  you: "DU",
+  ai: "AI",
 };

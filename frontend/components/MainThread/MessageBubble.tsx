@@ -368,26 +368,55 @@ function MessageBubble({
         (divRef as { current: HTMLDivElement | null }).current = el;
         onMessageRef?.(messageId, el);
       }}
-      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-5 group/bubble`}
+      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4 group/bubble`}
     >
-      {/* AI 头像 */}
-      {!isUser && (
-        <div className="w-6 h-6 flex items-center justify-center mr-3 mt-0.5 flex-shrink-0 rounded-lg bg-surface border border-indigo-500/15 shadow-sm">
-          <svg className="w-3 h-3 text-indigo-400/80" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-          </svg>
+      <div className={`flex flex-col max-w-[78%] min-w-0 ${isUser ? "items-end" : "items-start"}`}>
+        {/* WHO 行 — mono uppercase + pigment dot + 可选 model 名
+            WHO row — mono uppercase label + pigment dot + optional model label (AI only). */}
+        <div
+          className="flex items-center gap-[7px] mb-[5px] font-mono text-[9.5px] uppercase"
+          style={{ color: "var(--ink-4)", letterSpacing: "0.12em" }}
+        >
+          <span
+            className="w-[5px] h-[5px] rounded-full flex-shrink-0"
+            style={{ background: isUser ? "var(--ink-3)" : "var(--accent)" }}
+            aria-hidden
+          />
+          {isUser && userAvatarUrl && (
+            <img
+              src={userAvatarUrl}
+              alt=""
+              className="w-3.5 h-3.5 rounded-full -ml-0.5 object-cover"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          <span>{isUser ? t.you : t.ai}</span>
+          {!isUser && model && (
+            <span
+              className="font-mono lowercase tracking-normal truncate max-w-[160px]"
+              style={{ color: "var(--ink-5)", fontSize: "9.5px" }}
+              title={model}
+            >
+              · {model}
+            </span>
+          )}
         </div>
-      )}
-
-      <div className="relative max-w-[72%]">
         <div
           ref={contentRef}
           onMouseUp={handleMouseUp}
-          className={`relative rounded-2xl px-4 py-3 text-sm leading-relaxed select-text ${
+          className={`relative px-[14px] py-[11px] text-[14.5px] leading-[1.6] select-text ${
             isUser
-              ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/30"
+              ? "bg-indigo-600 text-white whitespace-pre-wrap shadow-md shadow-indigo-950/20"
               : "bg-surface text-hi border border-subtle"
           }`}
+          style={{
+            borderRadius: 14,
+            // 非对称圆角：user 的右下收 4，AI 的左下收 4 —— 给气泡一个「尾巴」方向
+            // Asymmetric corner: user's bottom-right shrinks, AI's bottom-left shrinks — directional tail.
+            ...(isUser
+              ? { borderBottomRightRadius: 4 }
+              : { borderBottomLeftRadius: 4 }),
+          }}
         >
           {/* 选区持久化覆盖层：移动端指离后 OS 选区消失，此层仍保持高亮 */}
           {selRects.map((r, i) => (
@@ -441,14 +470,9 @@ function MessageBubble({
           )}
         </div>
 
-        {/* 模型标签 + Markdown 切换按钮 — AI 消息底部 */}
+        {/* Markdown/raw 切换 — AI 气泡底部 hover 显示（model 名已移到 WHO 行） */}
         {!isUser && !streaming && (
-          <div className="absolute -bottom-5 left-0 right-0 flex items-center justify-between opacity-0 group-hover/bubble:opacity-100 transition-opacity select-none">
-            {model ? (
-              <span className="text-[10px] text-faint truncate max-w-[60%]" title={model}>
-                {model}
-              </span>
-            ) : <span />}
+          <div className="mt-1 h-0 group-hover/bubble:h-4 overflow-hidden transition-[height] select-none">
             <button
               onClick={(e) => { e.stopPropagation(); setRawMode((r) => !r); }}
               className="text-[10px] text-ph hover:text-lo flex items-center gap-1"
@@ -466,21 +490,6 @@ function MessageBubble({
           </div>
         )}
       </div>
-
-      {/* 用户头像 */}
-      {isUser && (
-        <div className="w-8 h-8 ml-3 mt-0.5 flex-shrink-0 rounded-full overflow-hidden border border-base">
-          {userAvatarUrl ? (
-            <img src={userAvatarUrl} alt="avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="w-full h-full bg-indigo-600 flex items-center justify-center">
-              <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-              </svg>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

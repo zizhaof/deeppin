@@ -142,6 +142,9 @@ export const en = {
   // Composer 配额计数器 / Composer quota counter
   quotaFree: "free",
   quotaFull: "Trial limit reached",
+  // 消息气泡 WHO 标签 / Message bubble WHO labels
+  you: "YOU",
+  ai: "AI",
 } as const;
 
 // T 是 en 的 key 集合 + 全部 string 值类型。

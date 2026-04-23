@@ -142,4 +142,6 @@ export const zh: T = {
   // 输入框配额计数器
   quotaFree: "剩余",
   quotaFull: "试用已达上限",
+  you: "我",
+  ai: "AI",
 };

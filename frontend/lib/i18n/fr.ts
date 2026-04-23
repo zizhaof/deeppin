@@ -141,4 +141,6 @@ export const fr: T = {
   // Compteur de quota gratuit
   quotaFree: "restant",
   quotaFull: "Limite d'essai atteinte",
+  you: "TOI",
+  ai: "AI",
 };

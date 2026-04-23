@@ -141,4 +141,6 @@ export const es: T = {
   // Contador de cuota gratuita
   quotaFree: "libres",
   quotaFull: "Límite de prueba alcanzado",
+  you: "TÚ",
+  ai: "AI",
 };

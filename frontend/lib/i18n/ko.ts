@@ -141,4 +141,6 @@ export const ko: T = {
   // 무료 쿼터 카운터
   quotaFree: "남음",
   quotaFull: "체험 한도 도달",
+  you: "나",
+  ai: "AI",
 };

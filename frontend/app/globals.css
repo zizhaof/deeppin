@@ -374,3 +374,18 @@ body {
   0%, 100% { opacity: 0; }
   50%      { opacity: 0.22; }
 }
+
+/* ── Tree node 未读章脉动 / Tree-node unread badge pulse ───────────────
+   右栏 list 视图里未读子线程的小圆章，box-shadow 一圈圈外扩然后散开。
+   节奏比锚点呼吸慢一点（2.2s vs 0.95s）—— rail 是 ambient 通知，
+   不该跟阅读区的呼吸打架。
+   The pulsing unread badge in the rail's list view. Slower than the
+   anchor breathing (2.2s vs 0.95s) so it stays ambient and doesn't
+   compete with the reading-area pulse. */
+.tree-node-unread {
+  animation: tree-unread-pulse 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes tree-unread-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(42, 42, 114, 0.45); }
+  50%      { box-shadow: 0 0 0 5px rgba(42, 42, 114, 0); }
+}

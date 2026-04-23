@@ -141,4 +141,6 @@ export const pt: T = {
   // Contador de cota gratuita
   quotaFree: "livres",
   quotaFull: "Limite do teste atingido",
+  you: "VOCÊ",
+  ai: "AI",
 };

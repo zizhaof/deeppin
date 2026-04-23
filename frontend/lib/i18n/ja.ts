@@ -143,4 +143,6 @@ export const ja: T = {
   // 無料枠のカウンター
   quotaFree: "残り",
   quotaFull: "トライアルの上限に達しました",
+  you: "あなた",
+  ai: "AI",
 };
