@@ -513,9 +513,24 @@ export default function ChatPage() {
 
   // 手机端专用:用户在 inline action sheet 上点 Pin 时直接走 handlePin
   // (动作语义已经是「我要插针」,不再需要 PinMenu 中转)。
-  // Mobile-only bridge — tapping Pin in MessageBubble's inline action sheet
-  // skips PinMenu and creates the sub-thread directly. PinMenu's mobile
-  // branch was removed when the inline sheet replaced it.
+  //
+  // 需要保持函数引用稳定(MessageBubble 的 touch useEffect 依赖它),但
+  // handlePin 在每次 render 被重建,且闭包读 mainThread / activeThreadId
+  // 等在首渲染时都还 undefined。`useCallback([], [])` 会把首渲染那个
+  // "handlePin=会提前 return 的版本" 冻住,点 Pin 永远无反应。
+  // 用 ref 兜底:callback 引用稳定,但 handlePinRef.current 每次 render
+  // 刷成最新的那个 handlePin。
+  //
+  // Mobile-only bridge — taps on Pin skip PinMenu and go straight to
+  // handlePin. We must keep this callback referentially stable (the
+  // touch-handler useEffect in MessageBubble has it as a dep), but
+  // handlePin is recreated each render and closes over mainThread /
+  // activeThreadId, which are undefined on the very first render before
+  // the session API resolves. A `useCallback(fn, [])` would freeze the
+  // first-render handlePin forever, so the early-return `if (!mainThread)`
+  // fires on every tap and nothing happens. Use a ref to always reach
+  // the latest handlePin while keeping the outer callback stable.
+  const handlePinRef = useRef<((info: SelectionInfo) => void) | null>(null);
   const handleMobileSelectionPin = useCallback(
     (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
       const container = scrollContainerRef.current;
@@ -523,9 +538,8 @@ export default function ChatPage() {
       const anchorContentY = container
         ? centerY - container.getBoundingClientRect().top + container.scrollTop
         : centerY;
-      handlePin({ text, messageId, rect, anchorContentY, startOffset, endOffset });
+      handlePinRef.current?.({ text, messageId, rect, anchorContentY, startOffset, endOffset });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -585,6 +599,11 @@ export default function ChatPage() {
       setError(String(e));
     }
   };
+
+  // 每次 render 刷新 handlePinRef(稳定 callback 通过 ref 总能读到最新 handlePin)
+  // Refresh the handlePin ref every render so the stable mobile bridge
+  // always calls the latest closure, not a frozen first-render one.
+  handlePinRef.current = handlePin;
 
   // ── rollItems（当前激活线程的直接子针） ─────────────────────────
   const rollItems: ThreadCardItem[] = [];
