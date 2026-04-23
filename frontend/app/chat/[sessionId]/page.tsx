@@ -869,7 +869,13 @@ export default function ChatPage() {
           onBack={navigateBack}
           onForward={navigateForward}
           onNavigateTo={handleNavigateTo}
+          // Sessions
+          sessions={sessions}
+          sessionsLoading={sessionsLoading}
           onOpenSessions={handleOpenSessions}
+          onDeleteSession={handleDeleteSession}
+          onNewChat={handleNewChat}
+          // Active conversation
           activeMessages={activeMessages}
           streamingText={streamingText}
           activeStatus={activeStatus}
@@ -882,14 +888,22 @@ export default function ChatPage() {
           onAnchorClick={handleAnchorClick}
           onAnchorHover={handleAnchorHover}
           onSendSuggestion={(q) => { if (activeThreadId) handleSendSuggestion(activeThreadId, q); }}
+          // Right drawer
           rollItems={rollItems}
           unreadCounts={unreadCounts}
           messagesByThread={messagesByThread}
+          pinCount={pinCount}
+          onOpenMerge={() => setShowMerge(true)}
+          onOpenFlatten={() => setShowFlattenConfirm(true)}
+          // Composer
           sessionId={sessionId}
           onSend={handleSend}
           isStreaming={isStreaming}
           webSearch={webSearch}
           onWebSearchToggle={setWebSearch}
+          // Account
+          isAnon={isAnon}
+          onSignIn={handleSignIn}
         />
       </div>
 

@@ -1,91 +1,25 @@
 "use client";
 // components/Mobile/MobileChatLayout.tsx
-// 移动端三面板布局：左下角 / 右下角按钮切换面板，无滑动手势
+//
+// 移动端布局重构 —— claude.ai-style：单页面满屏对话 + 左 drawer（sessions）
+// + 右 drawer（list/graph + merge/flatten）；不再有左右滑动的三面板。
+//
+// Mobile layout — claude.ai-style: single full-screen chat + left drawer
+// (sessions + pinned bottom for lang / account) + right drawer (list/graph
+// view + pinned bottom for merge / flatten). No more horizontal panel swipe.
 
-import { useState, useCallback, useMemo } from "react";
-import type { Thread, Message } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Thread, Message, Session } from "@/lib/api";
 import type { ThreadCardItem } from "@/components/SubThread/types";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import ThreadGraph from "@/components/Layout/ThreadGraph";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
+import LangSelector from "@/components/LangSelector";
+import { formatSessionDate } from "@/components/SessionDrawer";
 import { useT } from "@/stores/useLangStore";
-
-const PANEL_PINS = 0;
-const PANEL_CHAT = 1;
-const PANEL_TREE = 2;
-
-// ── 子问题卡片（移动端简化版） ────────────────────────────────────────
-function MobilePinCard({
-  item,
-  isActive,
-  onClick,
-}: {
-  item: ThreadCardItem;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  const title = item.thread.title ?? item.thread.anchor_text?.slice(0, 40) ?? "Sub-thread";
-  const lastMsg = item.messages[item.messages.length - 1];
-  const isStreaming = item.streamingText !== undefined;
-  const preview = isStreaming
-    ? (item.streamingText || "…").slice(0, 120)
-    : item.statusText
-    ? item.statusText
-    : lastMsg?.content.slice(0, 120) ?? "";
-  const hasAutoReply = item.messages.some((m) => m.role === "assistant");
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left rounded-xl border px-4 py-3 transition-colors active:scale-[0.98] ${
-        isActive
-          ? "border-indigo-500/40 bg-indigo-950/20"
-          : "border-subtle bg-surface active:bg-glass"
-      }`}
-    >
-      <div className="flex items-center gap-2 mb-1.5">
-        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/60 flex-shrink-0" />
-        <p
-          className={`text-sm font-medium truncate flex-1 ${
-            isActive ? "text-indigo-300" : "text-hi"
-          }`}
-        >
-          {title}
-        </p>
-        {item.unreadCount > 0 && (
-          <span className="w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] flex items-center justify-center font-semibold flex-shrink-0">
-            {item.unreadCount > 9 ? "9+" : item.unreadCount}
-          </span>
-        )}
-      </div>
-      {preview ? (
-        <p
-          className={`text-xs leading-relaxed line-clamp-2 ${
-            isStreaming ? "text-indigo-400/70" : "text-faint"
-          }`}
-        >
-          {preview}
-          {isStreaming && (
-            <span className="inline-block w-0.5 h-3 bg-indigo-400/70 animate-pulse ml-0.5 align-middle" />
-          )}
-        </p>
-      ) : !hasAutoReply ? (
-        <p className="text-xs text-ph italic">点击开始追问…</p>
-      ) : null}
-      {!hasAutoReply && !isStreaming && item.suggestions.length > 0 && (
-        <div className="mt-2 flex flex-col gap-1">
-          {item.suggestions.slice(0, 1).map((q, i) => (
-            <p key={i} className="text-[10px] text-indigo-400/60 truncate">
-              {q}
-            </p>
-          ))}
-        </div>
-      )}
-    </button>
-  );
-}
 
 // ── Props ────────────────────────────────────────────────────────────────
 export interface MobileChatLayoutProps {
@@ -96,8 +30,15 @@ export interface MobileChatLayoutProps {
   onBack: () => void;
   onForward: () => void;
   onNavigateTo: (threadId: string) => void;
-  onOpenSessions: () => void;
 
+  // Sessions drawer
+  sessions: Session[];
+  sessionsLoading: boolean;
+  onOpenSessions: () => void;
+  onDeleteSession?: (sid: string) => void;
+  onNewChat: () => void;
+
+  // Active conversation
   activeMessages: Message[];
   streamingText?: string;
   activeStatus: string;
@@ -107,36 +48,143 @@ export interface MobileChatLayoutProps {
   userAvatarUrl: string | null;
 
   onMessageRef: (messageId: string, el: HTMLDivElement | null) => void;
-  onTextSelect: (
-    text: string,
-    messageId: string,
-    rect: DOMRect,
-    startOffset: number,
-    endOffset: number
-  ) => void;
+  onTextSelect: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick: (threadId: string) => void;
   onAnchorHover: (threadIds: string[], rect: DOMRect | null) => void;
   onSendSuggestion: (question: string) => void;
 
+  // Right drawer (overview)
   rollItems: ThreadCardItem[];
   unreadCounts: Record<string, number>;
   messagesByThread: Record<string, Message[]>;
+  pinCount: number;
+  onOpenMerge: () => void;
+  onOpenFlatten: () => void;
 
+  // Composer
   sessionId: string;
   onSend: (content: string, display?: string, ragFilename?: string) => void;
   isStreaming: boolean;
   webSearch: boolean;
   onWebSearchToggle: (v: boolean) => void;
+
+  // Account / auth
+  isAnon?: boolean;
+  onSignIn?: () => void;
+  onDeleteAccount?: () => void;
 }
 
-// ── 主组件 ───────────────────────────────────────────────────────────────
+// ── Brand mark — 跟桌面顶栏一套（paper 方块 + 深墨蓝星 + Fraunces）
+function BrandMark() {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="w-6 h-6 rounded-md flex items-center justify-center"
+        style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
+      >
+        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" style={{ color: "var(--accent)" }}>
+          <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+        </svg>
+      </span>
+      <span className="font-serif text-[16px]" style={{ color: "var(--ink)" }}>
+        Deeppin
+      </span>
+    </div>
+  );
+}
+
+// ── Icon button helper
+function IconButton({
+  onClick,
+  ariaLabel,
+  children,
+}: {
+  onClick: () => void;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="w-9 h-9 flex items-center justify-center rounded-md transition-colors active:scale-95"
+      style={{ color: "var(--ink-3)" }}
+      onTouchStart={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; }}
+      onTouchEnd={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ── Drawer wrapper（左/右抽屉公用）/ Reusable drawer panel ───────────────
+function Drawer({
+  open,
+  onClose,
+  side,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  side: "left" | "right";
+  children: React.ReactNode;
+}) {
+  // 锁住 body 滚动 & ESC 关闭 / Lock body scroll + ESC to close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  return (
+    <>
+      {/* 遮罩 */}
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-40 [background:rgba(27,26,23,0.45)] transition-opacity duration-200 ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        aria-hidden
+      />
+      {/* 抽屉本体 */}
+      <aside
+        className={`fixed top-0 bottom-0 z-50 w-[86vw] max-w-[340px] flex flex-col transition-transform duration-250 ease-out`}
+        style={{
+          background: "var(--card)",
+          [side]: 0,
+          borderLeft: side === "right" ? "1px solid var(--rule)" : undefined,
+          borderRight: side === "left" ? "1px solid var(--rule)" : undefined,
+          transform: open
+            ? "translateX(0)"
+            : side === "left"
+              ? "translateX(-100%)"
+              : "translateX(100%)",
+        }}
+      >
+        {children}
+      </aside>
+    </>
+  );
+}
+
+// ── Main component ──────────────────────────────────────────────────────
 export default function MobileChatLayout({
   threads,
   activeThreadId,
   canBack,
   onBack,
   onNavigateTo,
+  sessions,
+  sessionsLoading,
   onOpenSessions,
+  onDeleteSession,
+  onNewChat,
   activeMessages,
   streamingText,
   activeStatus,
@@ -152,20 +200,33 @@ export default function MobileChatLayout({
   rollItems,
   unreadCounts,
   messagesByThread,
+  pinCount,
+  onOpenMerge,
+  onOpenFlatten,
   sessionId,
   onSend,
   isStreaming,
   webSearch,
   onWebSearchToggle,
+  isAnon = false,
+  onSignIn,
+  onDeleteAccount,
 }: MobileChatLayoutProps) {
   const t = useT();
-  const [panelIdx, setPanelIdx] = useState(PANEL_CHAT);
-  /** 右面板视图：列表（dots）或节点图（canvas） */
-  const [treeView, setTreeView] = useState<"dots" | "canvas">("dots");
+  const router = useRouter();
 
+  void rollItems; // 旧三栏的 props，保留兼容；新布局没用到 / kept for compat
 
-  /** 有未读回复的 thread id 集合；传给 MessageList 驱动锚点呼吸动画
-   *  Thread IDs with unread replies — drives anchor breathing animation in MessageList. */
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+  const [overviewView, setOverviewView] = useState<"list" | "graph">("graph");
+
+  // 打开左抽屉 = 触发 sessions 懒加载 / Opening left drawer triggers session list lazy-load
+  const openLeftDrawer = useCallback(() => {
+    setLeftOpen(true);
+    onOpenSessions();
+  }, [onOpenSessions]);
+
   const unreadThreadIdSet = useMemo(() => {
     const s = new Set<string>();
     for (const [id, n] of Object.entries(unreadCounts)) {
@@ -174,304 +235,370 @@ export default function MobileChatLayout({
     return s;
   }, [unreadCounts]);
 
-  const navigateAndReturnToChat = useCallback(
-    (threadId: string) => {
-      onNavigateTo(threadId);
-      setPanelIdx(PANEL_CHAT);
-    },
-    [onNavigateTo]
-  );
-
-  // ── 面板标题 ─────────────────────────────────────────────────────────
+  // 当前线程标题（topbar 中央显示）
   const activeTitle =
     activeThread?.parent_thread_id === null
       ? activeThread?.title ?? t.mainThread
       : activeThread?.title ??
         (activeThread?.anchor_text
-          ? activeThread.anchor_text.slice(0, 28) +
-            (activeThread.anchor_text.length > 28 ? "…" : "")
+          ? activeThread.anchor_text.slice(0, 22) +
+            (activeThread.anchor_text.length > 22 ? "…" : "")
           : t.subThread);
 
-  const panelTitle =
-    panelIdx === PANEL_PINS
-      ? `${t.subQuestions} (${rollItems.length})`
-      : panelIdx === PANEL_TREE
-      ? `${t.overview} (${threads.length})`
-      : activeTitle;
-
-  // ── CSS transform：三面板横向排列 ────────────────────────────────────
-  const basePercent = -((panelIdx * 100) / 3);
-  const transformStyle: React.CSSProperties = {
-    transform: `translateX(${basePercent.toFixed(4)}%)`,
-    transition: "transform 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-  };
-
   return (
-    // fixed inset-0：钉死在可见视口，不随地址栏显隐或文档滚动移动
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-base">
-      {/* ── 顶部导航栏 ── */}
-      <header className="h-12 border-b border-subtle bg-base flex items-center px-3 gap-2 flex-shrink-0 z-20 select-none">
-        <button
-          onClick={onOpenSessions}
-          className="w-9 h-9 flex items-center justify-center rounded-xl active:bg-glass transition-colors flex-shrink-0"
-          aria-label="所有对话"
-        >
-          <svg
-            className="w-[18px] h-[18px] text-faint"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+    // fixed inset-0：钉死在可见视口
+    <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ background: "var(--paper)" }}>
+      {/* ── Topbar：hamburger | 中央 brand+breadcrumb | 右 panel 按钮 ── */}
+      <header
+        className="h-12 flex items-center px-3 gap-2 flex-shrink-0 z-20 select-none"
+        style={{ background: "var(--paper)", borderBottom: "1px solid var(--rule)" }}
+      >
+        <IconButton onClick={openLeftDrawer} ariaLabel={t.recentSessions}>
+          <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
-        </button>
+        </IconButton>
 
         {canBack && (
-          <button
-            onClick={onBack}
-            className="w-9 h-9 flex items-center justify-center rounded-xl active:bg-glass transition-colors flex-shrink-0"
-            aria-label="返回"
-          >
-            <svg
-              className="w-[18px] h-[18px] text-dim"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+          <IconButton onClick={onBack} ariaLabel={t.back}>
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 19l-7-7 7-7" />
             </svg>
-          </button>
+          </IconButton>
         )}
 
-        <div className="flex-1 min-w-0 text-center">
-          <p className="text-sm font-semibold text-md truncate px-2">{panelTitle}</p>
+        <div className="flex-1 min-w-0 flex items-center justify-center">
+          {/* 当前线程标题；子线程时显示 sub title，主线时显示 brand */}
+          {activeThread?.parent_thread_id === null ? (
+            <BrandMark />
+          ) : (
+            <p
+              className="font-serif text-[14px] truncate px-2"
+              style={{ color: "var(--ink)" }}
+            >
+              {activeTitle}
+            </p>
+          )}
         </div>
 
-        {/* 右上角：当在对话视图时显示面板切换徽章 */}
-        {panelIdx === PANEL_CHAT && rollItems.length > 0 && (
-          <button
-            onClick={() => setPanelIdx(PANEL_PINS)}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-950/30 border border-indigo-500/25 text-indigo-400 active:bg-indigo-950/50 transition-colors flex-shrink-0"
-          >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="5" cy="5" r="2" />
-              <circle cx="5" cy="12" r="2" />
-              <circle cx="14" cy="9" r="2" />
-            </svg>
-            <span className="text-[11px] font-semibold">{rollItems.length}</span>
-          </button>
-        )}
+        {/* 右上角：overview drawer 触发按钮，带未读 badge */}
+        <button
+          onClick={() => setRightOpen(true)}
+          aria-label={t.overview}
+          className="relative w-9 h-9 flex items-center justify-center rounded-md active:scale-95 transition-colors"
+          style={{ color: "var(--ink-3)" }}
+        >
+          <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="5" r="2"/>
+            <circle cx="5" cy="19" r="2"/>
+            <circle cx="19" cy="19" r="2"/>
+            <path d="M12 7v4M12 11l-5 6M12 11l5 6"/>
+          </svg>
+          {unreadThreadIdSet.size > 0 && (
+            <span
+              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
+              style={{ background: "var(--accent)" }}
+              aria-hidden
+            />
+          )}
+        </button>
       </header>
 
-      {/* ── 三面板滑动容器 ── */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* ── 子线程时显示锚点上下文 / Anchor context strip in sub-threads ── */}
+      {activeThread?.anchor_text && activeThread.parent_thread_id !== null && (
         <div
-          className="flex h-full"
-          style={{ width: "300%", ...transformStyle }}
+          className="flex-shrink-0 mx-3 mt-2 px-3 py-1.5 rounded-lg text-[11.5px] leading-snug line-clamp-2"
+          style={{
+            background: "var(--accent-soft)",
+            border: "1px solid color-mix(in oklch, var(--accent) 18%, transparent)",
+            color: "var(--accent)",
+          }}
         >
-          {/* ── 左面板：子问题概览 ── */}
-          <div className="flex flex-col h-full overflow-hidden select-none" style={{ width: "33.333%" }}>
-            {rollItems.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8">
-                <div className="w-12 h-12 rounded-2xl bg-surface border border-subtle flex items-center justify-center">
-                  <svg className="w-5 h-5 text-ph" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-                  </svg>
-                </div>
-                <p className="text-sm text-ph text-center leading-relaxed">
-                  {t.selectToPin}
-                </p>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {rollItems.map((item) => (
-                  <MobilePinCard
-                    key={item.thread.id}
-                    item={item}
-                    isActive={activeThreadId === item.thread.id}
-                    onClick={() => navigateAndReturnToChat(item.thread.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── 中面板：主对话 ── */}
-          <div className="flex flex-col h-full overflow-hidden" style={{ width: "33.333%" }}>
-            {activeThread?.anchor_text && activeThread.parent_thread_id !== null && (
-              <div
-                className="flex-shrink-0 mx-4 mt-3 px-3 py-2 rounded-lg text-xs leading-snug line-clamp-2"
-                style={{
-                  background: "var(--accent-soft)",
-                  border: "1px solid color-mix(in oklch, var(--accent) 20%, transparent)",
-                  color: "var(--accent)",
-                }}
-              >
-                <span className="mr-1" style={{ color: "color-mix(in oklch, var(--accent) 60%, var(--ink-4))" }}>›</span>
-                {activeThread.anchor_text}
-              </div>
-            )}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <MessageList
-                messages={activeMessages}
-                streamingText={streamingText}
-                statusText={activeStatus}
-                anchorsByMessage={anchorsByMessage}
-                unreadThreadIds={unreadThreadIdSet}
-                suggestions={activeSuggestions}
-                anchorText={activeThread?.anchor_text}
-                userAvatarUrl={userAvatarUrl}
-                onMessageRef={onMessageRef}
-                onTextSelect={onTextSelect}
-                onAnchorClick={onAnchorClick}
-                onAnchorHover={onAnchorHover}
-                onSendSuggestion={onSendSuggestion}
-              />
-            </div>
-          </div>
-
-          {/* ── 右面板：线程树概览 ── */}
-          <div className="flex flex-col h-full overflow-hidden select-none" style={{ width: "33.333%" }}>
-            {/* 列表 / 节点图 切换 */}
-            <div className="flex-shrink-0 flex items-center gap-1 px-3 pt-2 pb-1">
-              <div className="flex items-center gap-0.5 bg-glass rounded-lg p-0.5">
-                <button
-                  onClick={() => setTreeView("dots")}
-                  className={`flex items-center gap-1 px-2 h-6 rounded-md transition-colors ${
-                    treeView === "dots" ? "bg-surface text-md shadow-sm" : "text-ph"
-                  }`}
-                >
-                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="8" y1="6" x2="21" y2="6" />
-                    <line x1="8" y1="12" x2="21" y2="12" />
-                    <line x1="8" y1="18" x2="21" y2="18" />
-                    <circle cx="3" cy="6" r="1.5" fill="currentColor" stroke="none" />
-                    <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                    <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none" />
-                  </svg>
-                  <span className="text-[10px] font-medium">{t.viewList}</span>
-                </button>
-                <button
-                  onClick={() => setTreeView("canvas")}
-                  className={`flex items-center gap-1 px-2 h-6 rounded-md transition-colors ${
-                    treeView === "canvas" ? "bg-surface text-md shadow-sm" : "text-ph"
-                  }`}
-                >
-                  <svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="19" cy="19" r="2" />
-                    <path d="M12 7v4M12 11l-5 6M12 11l5 6" />
-                  </svg>
-                  <span className="text-[10px] font-medium">{t.viewGraph}</span>
-                </button>
-              </div>
-              <span className="text-[9px] text-ph tabular-nums ml-1">{threads.length}</span>
-            </div>
-
-            {/* 视图内容 */}
-            <div className="flex-1 min-h-0 relative">
-              {treeView === "dots" ? (
-                <ThreadTree
-                  threads={threads}
-                  activeThreadId={activeThreadId}
-                  unreadCounts={unreadCounts}
-                  messagesByThread={messagesByThread}
-                  onSelect={(threadId) => navigateAndReturnToChat(threadId)}
-                />
-              ) : (
-                <ThreadGraph
-                  threads={threads}
-                  activeThreadId={activeThreadId}
-                  unreadCounts={unreadCounts}
-                  messagesByThread={messagesByThread}
-                  onSelect={(threadId) => navigateAndReturnToChat(threadId)}
-                />
-              )}
-            </div>
-          </div>
+          <span className="mr-1.5" style={{ color: "color-mix(in oklch, var(--accent) 60%, var(--ink-4))" }}>›</span>
+          {activeThread.anchor_text}
         </div>
+      )}
+
+      {/* ── 主对话区 ── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <MessageList
+          messages={activeMessages}
+          streamingText={streamingText}
+          statusText={activeStatus}
+          anchorsByMessage={anchorsByMessage}
+          unreadThreadIds={unreadThreadIdSet}
+          suggestions={activeSuggestions}
+          anchorText={activeThread?.anchor_text}
+          userAvatarUrl={userAvatarUrl}
+          onMessageRef={onMessageRef}
+          onTextSelect={onTextSelect}
+          onAnchorClick={onAnchorClick}
+          onAnchorHover={onAnchorHover}
+          onSendSuggestion={onSendSuggestion}
+        />
       </div>
 
-      {/* ── 底部区域：InputBar（仅对话面板）+ 左右切换按钮 ── */}
+      {/* ── 输入栏 ── */}
       <div className="flex-shrink-0">
-        {/* InputBar 仅在对话面板显示 */}
-        {panelIdx === PANEL_CHAT && (
-          <InputBar
-            sessionId={sessionId}
-            onSend={onSend}
-            disabled={isStreaming || !activeThreadId}
-            webSearch={webSearch}
-            onWebSearchToggle={onWebSearchToggle}
-          />
-        )}
+        <InputBar
+          sessionId={sessionId}
+          onSend={onSend}
+          disabled={isStreaming || !activeThreadId}
+          webSearch={webSearch}
+          onWebSearchToggle={onWebSearchToggle}
+          isAnon={isAnon}
+        />
+      </div>
 
-        {/* 左下 / 右下切换按钮 */}
-        <div className="flex items-center justify-between px-4 pt-2 pb-3 bg-base border-t border-subtle/40" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
-          {/* 左按钮 */}
-          {panelIdx !== PANEL_PINS ? (
-            <button
-              onClick={() => setPanelIdx(panelIdx - 1)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-subtle active:bg-glass transition-colors"
-            >
-              <svg className="w-3.5 h-3.5 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M15 19l-7-7 7-7" />
-              </svg>
-              <span className="text-xs text-dim">
-                {panelIdx === PANEL_CHAT ? (
-                  <span className="flex items-center gap-1">
-                    {t.subQuestions}
-                    {rollItems.length > 0 && (
-                      <span className="w-4 h-4 rounded-full bg-indigo-500/80 text-white text-[9px] flex items-center justify-center font-semibold">
-                        {rollItems.length > 9 ? "9+" : rollItems.length}
+      {/* ── 左 drawer：sessions + 固定底部（lang / account） ── */}
+      <Drawer open={leftOpen} onClose={() => setLeftOpen(false)} side="left">
+        {/* head */}
+        <div
+          className="flex items-center justify-between px-4 h-12 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--rule)" }}
+        >
+          <BrandMark />
+          <button
+            onClick={() => setLeftOpen(false)}
+            className="w-8 h-8 flex items-center justify-center rounded-md active:scale-95 transition-colors"
+            style={{ color: "var(--ink-3)" }}
+            aria-label="close"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* sessions list */}
+        <div className="flex-1 overflow-y-auto px-2 py-2 scrollbar-thin">
+          <div
+            className="font-mono text-[10px] uppercase tracking-[0.2em] px-2 mb-2"
+            style={{ color: "var(--ink-3)" }}
+          >
+            {t.recentSessions}
+          </div>
+          {sessionsLoading ? (
+            <div className="flex items-center justify-center gap-1.5 py-10">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="w-[5px] h-[5px] rounded-full animate-bounce"
+                  style={{ background: "var(--ink-5)", animationDelay: `${i * 150}ms`, animationDuration: "900ms" }}
+                />
+              ))}
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="text-[12px] text-center py-10" style={{ color: "var(--ink-4)" }}>
+              {t.noSessions}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-[2px]">
+              {sessions.map((s) => {
+                const isActive = s.id === sessionId;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setLeftOpen(false);
+                      router.push(`/chat/${s.id}`);
+                    }}
+                    className="group w-full text-left flex items-start gap-2.5 px-3 py-2.5 rounded-md transition-colors relative active:scale-[0.99]"
+                    style={{ background: isActive ? "var(--ink)" : "transparent" }}
+                  >
+                    <span
+                      className="flex-shrink-0 mt-[5px] w-[3px] h-[28px] rounded-[2px]"
+                      style={{ background: isActive ? "var(--paper)" : "var(--ink-5)" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="font-serif text-[14px] font-medium leading-tight truncate"
+                        style={{ color: isActive ? "var(--paper)" : "var(--ink)" }}
+                      >
+                        {s.title ?? t.untitled}
+                      </p>
+                      <p
+                        className="font-mono text-[10px] mt-1 truncate"
+                        style={{ color: isActive ? "var(--ink-5)" : "var(--ink-4)" }}
+                      >
+                        {formatSessionDate(s.created_at, t.yesterday, t.daysAgo)}
+                      </p>
+                    </div>
+                    {onDeleteSession && (
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }}
+                        className="w-7 h-7 rounded-md flex items-center justify-center"
+                        style={{ color: isActive ? "var(--ink-5)" : "var(--ink-4)" }}
+                        aria-label={t.deleteAccount}
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14H6L5 6" />
+                        </svg>
                       </span>
                     )}
-                  </span>
-                ) : (
-                  t.mainThread
-                )}
-              </span>
-            </button>
-          ) : (
-            <div className="w-20" /> /* 占位，保持右按钮对齐 */
-          )}
-
-          {/* 中间面板指示点 */}
-          <div className="flex items-center gap-1.5">
-            {[PANEL_PINS, PANEL_CHAT, PANEL_TREE].map((p) => (
-              <div
-                key={p}
-                className={`rounded-full transition-all duration-200 ${
-                  panelIdx === p ? "w-4 h-1.5 bg-indigo-400" : "w-1.5 h-1.5 bg-ph/30"
-                }`}
-              />
-            ))}
-          </div>
-
-          {/* 右按钮 */}
-          {panelIdx !== PANEL_TREE ? (
-            <button
-              onClick={() => setPanelIdx(panelIdx + 1)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface border border-subtle active:bg-glass transition-colors"
-            >
-              <span className="text-xs text-dim">
-                {panelIdx === PANEL_CHAT ? t.overview : t.mainThread}
-              </span>
-              <svg className="w-3.5 h-3.5 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          ) : (
-            <div className="w-20" /> /* 占位，保持左按钮对齐 */
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
-      </div>
+
+        {/* New chat */}
+        <div className="px-3 pt-2 pb-1 flex-shrink-0" style={{ borderTop: "1px solid var(--rule)" }}>
+          <button
+            onClick={() => { setLeftOpen(false); onNewChat(); }}
+            className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-[13px] font-medium transition-colors active:scale-[0.99]"
+            style={{ background: "var(--ink)", color: "var(--paper)" }}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {t.newChat}
+          </button>
+        </div>
+
+        {/* 底部固定栏：lang + account */}
+        <div className="px-3 py-3 flex-shrink-0 flex items-center justify-between gap-2" style={{ borderTop: "1px solid var(--rule-soft)" }}>
+          {/* Lang selector — 直接 inline 一个 select */}
+          <div className="flex-1 min-w-0">
+            <LangSelector />
+          </div>
+          {/* Account button (anon → sign in，已登录 → delete account) */}
+          {isAnon && onSignIn ? (
+            <button
+              onClick={() => { setLeftOpen(false); onSignIn(); }}
+              className="h-[30px] px-3 rounded-md text-[12px] font-medium transition-colors"
+              style={{ background: "var(--ink)", color: "var(--paper)" }}
+            >
+              {t.signIn}
+            </button>
+          ) : onDeleteAccount ? (
+            <button
+              onClick={() => { setLeftOpen(false); onDeleteAccount(); }}
+              className="h-[30px] px-3 rounded-md text-[11.5px] transition-colors"
+              style={{ color: "#b84a5b", border: "1px solid var(--rule)" }}
+              aria-label={t.deleteAccount}
+            >
+              {t.deleteAccount}
+            </button>
+          ) : null}
+        </div>
+      </Drawer>
+
+      {/* ── 右 drawer：list/graph + 底部固定 merge/flatten ── */}
+      <Drawer open={rightOpen} onClose={() => setRightOpen(false)} side="right">
+        {/* head */}
+        <div
+          className="flex items-center justify-between px-4 h-12 flex-shrink-0"
+          style={{ borderBottom: "1px solid var(--rule)" }}
+        >
+          <span
+            className="font-mono text-[10px] uppercase tracking-[0.2em]"
+            style={{ color: "var(--ink-3)" }}
+          >
+            {t.overview}
+          </span>
+          <button
+            onClick={() => setRightOpen(false)}
+            className="w-8 h-8 flex items-center justify-center rounded-md active:scale-95 transition-colors"
+            style={{ color: "var(--ink-3)" }}
+            aria-label="close"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* tabs：list / graph，default graph */}
+        <div className="flex flex-shrink-0" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+          <button
+            onClick={() => setOverviewView("list")}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-3 font-mono text-[10.5px] uppercase tracking-[0.14em] transition-colors"
+            style={{
+              color: overviewView === "list" ? "var(--ink)" : "var(--ink-4)",
+              borderBottom: `2px solid ${overviewView === "list" ? "var(--ink)" : "transparent"}`,
+            }}
+          >
+            {t.viewList}
+          </button>
+          <button
+            onClick={() => setOverviewView("graph")}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 py-3 font-mono text-[10.5px] uppercase tracking-[0.14em] transition-colors"
+            style={{
+              color: overviewView === "graph" ? "var(--ink)" : "var(--ink-4)",
+              borderBottom: `2px solid ${overviewView === "graph" ? "var(--ink)" : "transparent"}`,
+            }}
+          >
+            {t.viewGraph}
+          </button>
+        </div>
+
+        {/* body — list or graph */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {overviewView === "list" ? (
+            <ThreadTree
+              threads={threads}
+              activeThreadId={activeThreadId}
+              unreadCounts={unreadCounts}
+              messagesByThread={messagesByThread}
+              onSelect={(id) => {
+                setRightOpen(false);
+                onNavigateTo(id);
+              }}
+            />
+          ) : (
+            <ThreadGraph
+              threads={threads}
+              activeThreadId={activeThreadId}
+              unreadCounts={unreadCounts}
+              messagesByThread={messagesByThread}
+              onSelect={(id) => {
+                setRightOpen(false);
+                onNavigateTo(id);
+              }}
+            />
+          )}
+        </div>
+
+        {/* 底部固定栏 — Merge / Flatten */}
+        <div className="px-3 py-3 flex-shrink-0 flex items-center gap-2" style={{ borderTop: "1px solid var(--rule)" }}>
+          <button
+            onClick={() => { setRightOpen(false); onOpenMerge(); }}
+            disabled={pinCount === 0}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-md text-[12.5px] font-medium transition-colors disabled:opacity-40"
+            style={{
+              background: pinCount > 0 ? "var(--ink)" : "var(--paper-2)",
+              color: pinCount > 0 ? "var(--paper)" : "var(--ink-4)",
+            }}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
+              <path d="M4 4l8 9M20 4l-8 9m0 0v7" />
+            </svg>
+            {t.mergeButton}
+          </button>
+          <button
+            onClick={() => { setRightOpen(false); onOpenFlatten(); }}
+            disabled={pinCount === 0}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-md text-[12.5px] font-medium transition-colors disabled:opacity-40"
+            style={{
+              background: "var(--paper-2)",
+              color: "var(--ink-2)",
+              border: "1px solid var(--rule)",
+            }}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
+              <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+            {t.flattenButton}
+          </button>
+        </div>
+      </Drawer>
+
     </div>
   );
 }
