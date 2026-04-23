@@ -644,7 +644,11 @@ async def chat_stream(
         group=model_type,
         messages=full_messages,
         stream=True,
-        timeout=30,
+        # 流式 timeout 实际约束 TTFT 和 chunk 间隔（非总时长）。8s 足够覆盖
+        # 健康 provider 冷启动，同时在首字节卡住时及时 fallback，避免用户等 30s。
+        # For streams this bounds TTFT and inter-chunk gap (not total duration). 8s covers
+        # healthy cold starts while failing fast on stalled slots so fallback kicks in quickly.
+        timeout=8,
     )
 
     result = ChatStreamResult.__new__(ChatStreamResult)
@@ -671,7 +675,7 @@ async def chat_stream(
 async def _summarizer_call(
     messages: list[dict],
     max_tokens: int,
-    timeout: int = 20,
+    timeout: int = 12,
 ) -> str:
     """
     非流式轻量调用，使用 summarizer 分组。
@@ -713,7 +717,7 @@ async def generate_title_and_suggestions(
             ),
         }],
         max_tokens=200,
-        timeout=15,
+        timeout=10,
     )
 
     title = anchor_text[:20]
@@ -755,7 +759,7 @@ async def summarize(text: str, max_tokens: int) -> str:
             ),
         }],
         max_tokens=max_tokens,
-        timeout=30,
+        timeout=15,
     )
 
 
@@ -776,7 +780,7 @@ async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: in
             ),
         }],
         max_tokens=max_tokens,
-        timeout=30,
+        timeout=15,
     )
 
 
@@ -808,7 +812,7 @@ async def assess_relevance(
             ),
         }],
         max_tokens=500,
-        timeout=30,
+        timeout=15,
     )
 
     try:
@@ -1040,7 +1044,7 @@ async def vision_chat(messages: list[dict]) -> str:
     response = await router.completion(
         group="vision",
         messages=messages,
-        timeout=30,
+        timeout=20,
     )
     return response.choices[0].message.content
 
