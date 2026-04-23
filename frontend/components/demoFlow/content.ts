@@ -1,4 +1,4 @@
-// components/demo/content.ts
+// components/demoFlow/content.ts
 // Welcome-page 三层 walkthrough 的 9 语种文案 —— PinDemo 和 MobilePinDemo 共用。
 // 所有 UI 可见文字都在这里；两个组件只消费不生产。
 //
@@ -53,8 +53,20 @@ export interface DemoContent {
   mergeLabel: string;
   mergeOutputLabel: string;
   suggestionsLabel: string;
+  /** Pin dialog 里自定义输入框 placeholder */
+  customQuestionPlaceholder: string;
+  /** Anchor popover 里 "YOU" / "Deeppin" 小标题 */
+  youLabel: string;
+  aiLabel: string;
+  /** 抽屉 / 大图上 "你在这里" 标示 */
+  youAreHereLabel: string;
+  /** graph-nav-root 时 "点这里" 提示 */
+  tapLabel: string;
+  /** 流式过程中的状态词（右栏 generating） */
   replyingLabel: string;
   generatingLabel: string;
+  /** 背景回复就绪时的指示 */
+  readyLabel: string;
 
   // —— Merge 弹窗内容 ————————————————————————————————————————
   mergeSelectThreads: string;
@@ -64,13 +76,15 @@ export interface DemoContent {
   mergeCopy: string;
   mergeFormats: readonly [string, string, string];
   mergeReport: string;
+  /** merge modal 底下的「N 条分支已选」标签 */
+  mergeBranchesSelected: string;
 
   // —— 每个 phase 的底栏 caption ————————————————————————————————
   caption: Record<DemoPhase, string>;
 }
 
-// 英文作为基准 locale —— 其它 9 种基于这份翻译。
-// English is the base copy — the other eight locales are direct translations.
+// 英文作为基准 locale —— 其它 8 种基于这份翻译。
+// English is the base copy — the other eight locales mirror it.
 export const DEMO_CONTENT: Record<Lang, DemoContent> = {
   en: {
     mainQuestion: "What makes Deeppin different?",
@@ -92,20 +106,20 @@ export const DEMO_CONTENT: Record<Lang, DemoContent> = {
       "What if I change my mind and want to close one?",
     ],
     sub1Before:
-      "Highlight any text → Question → a focused sub-thread opens right there. It inherits the anchor and a main summary, but sees ",
-    sub1Anchor: "none of your other pins",
+      "Welcome to the sub-thread. Your question stays focused here — the main thread above is completely untouched. Any time you want to go deeper, ",
+    sub1Anchor: "pin a phrase and dig another level",
     sub1After:
-      " — full isolation. You can pin again inside, and the compact budget shrinks with depth so the prompt never blows up.",
+      ". You can nest as many layers as you need, and nothing you do here leaks back up.",
     suggestions3: [
-      "Show depth 2 working in practice",
-      "What happens if context gets too long?",
-      "Can I pin across a code block?",
+      "Show me this works the same one layer deeper",
+      "How far can I actually go?",
+      "Can I branch sideways inside this one?",
     ],
     sub2Reply:
-      "At depth 2 the ancestor summary chain stays under ~1.3K tokens — 800 for main, 500 for sub-1, 300 for sub-2. The anchors themselves never get summarized: they're quoted verbatim so the model always sees the exact phrase you cared about. Stack as many layers as you need; each one stays cheap.",
+      "Exactly the same pattern. Pin any phrase here and another focused sub-thread opens below — this layer stays untouched, just like the main did. You're now at depth 2, and there's no cap: keep going, branch sideways, or stop here. Three levels up, your main thread is exactly where you left it.",
     subTitle1: "pin that detail",
     subTitle2: "keep digging",
-    deepTitle: "none of your other pins",
+    deepTitle: "dig another level",
     mainCrumb: "Main",
     followupLabel: "Question",
     pinLabel: "Pin",
@@ -119,58 +133,65 @@ export const DEMO_CONTENT: Record<Lang, DemoContent> = {
     mergeLabel: "Merge",
     mergeOutputLabel: "Merge Output",
     suggestionsLabel: "suggestions",
+    customQuestionPlaceholder: "Or type your own follow-up…",
+    youLabel: "YOU",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "you are here",
+    tapLabel: "tap",
     replyingLabel: "replying in sub-thread…",
     generatingLabel: "generating…",
-    mergeSelectThreads: "Select threads",
+    readyLabel: "ready",
+    mergeSelectThreads: "Branches in this merge",
     mergeAll: "All",
     mergeGenerate: "Generate",
     mergeDownload: "Download Markdown",
     mergeCopy: "Copy",
     mergeFormats: ["Free summary", "Bullet points", "Structured"],
+    mergeBranchesSelected: "3 branches, 1 root",
     mergeReport:
 `## Deeppin in one pass
 
 **Pinning captures intent**
-You pick the exact phrase you want more on, pop open a focused sub-thread, and the main stays untouched — no new tab, no reboot.
+You pick the exact phrase worth expanding, pop a focused sub-thread, and the main stays untouched — no new tab, no reboot.
 
 **Depth stays cheap**
-Sub-threads inherit anchor + main summary only. Compact budgets shrink per level (800 → 500 → 300), so even a four-deep pin costs less than a full retry.
+Sub-threads inherit anchor + rolling main summary. Per-level budgets shrink (800 → 500 → 300); RAG retrieves anything older the summary dropped. A four-deep pin still beats a full retry.
 
 **Merge rebuilds the story**
-When you're ready, select the branches you care about → one structured report, pigment-coded by depth. Pins become headings; replies become the body.
+Pick the branches that matter → one structured report, pigment-coded by depth. Pins become headings; replies become the body.
 
 **Net result**
-Three levels of digging, one coherent artifact, zero drift back in the main thread.`,
+Three levels of digging, one coherent artifact, zero drift in the main thread.`,
     caption: {
       blank: "Fresh conversation — you're about to ask the main question.",
-      "main-stream": "Deeppin types out its reply on the main thread.",
-      "p1-sweep": "Drag across the phrase you want to dig into.",
-      "p1-selpop": "A compact toolbar rises above the selection — hit Question.",
-      "p1-dialog": "Three follow-ups auto-generate for that exact phrase.",
+      "main-stream": "Deeppin streams its reply into the main thread.",
+      "p1-sweep": "Drag across the phrase you want to dig into — it stays highlighted.",
+      "p1-selpop": "Selection stays lit; a toolbar rises above it. Hit Question.",
+      "p1-dialog": "Three follow-ups auto-generate — or type your own in the box.",
       "p1-pick": "Pick the one you actually want to chase.",
-      "p1-underline": "Anchor lands in the reply — AI is already answering in a sub-thread.",
-      "p2-sweep": "Back on main, drag across a second phrase.",
-      "p2-selpop": "Same toolbar, fresh phrase — hit Question again.",
-      "p2-dialog": "New suggestions tuned to the second phrase.",
+      "p1-underline": "Notice two changes at once: the anchor underlines here, and a node appears on the right.",
+      "p2-sweep": "Back on main — drag across a second phrase.",
+      "p2-selpop": "Same toolbar, fresh phrase — highlight stays, hit Question again.",
+      "p2-dialog": "New suggestions — or type your own in the box.",
       "p2-pick": "Pick one.",
-      "p2-underline": "Two anchors planted. AI is working on both in parallel — come back when you want to read.",
-      "l1-hover": "Hover the first anchor — preview pops: title, snippet, Enter.",
+      "p2-underline": "Two anchors, two parallel sub-threads. Come back when ready.",
+      "l1-hover": "Hover the first anchor — a preview shows your question and the reply.",
       "l1-enter": "Click Enter — you're inside sub-thread 1.",
-      "l1-stream": "Sub-thread 1 replies. Main thread stays untouched behind it.",
+      "l1-stream": "Reply was ready while you stayed on main. Here it is, fully written.",
       "p3-sweep": "You can pin inside a sub-thread too — drag across.",
-      "p3-selpop": "Same toolbar, same flow — nothing new to learn.",
-      "p3-dialog": "Follow-ups focused on the sub-thread this time.",
+      "p3-selpop": "Same toolbar, same flow — highlight holds, hit Question.",
+      "p3-dialog": "Follow-ups tuned to the sub-thread — or type your own.",
       "p3-pick": "Pick one.",
-      "p3-underline": "Depth 2 — you can keep going as deep as you need.",
-      "l2-hover": "Hover the deeper anchor — preview, then Enter.",
+      "p3-underline": "Depth 2 — watch the new underline here and the third layer on the tree.",
+      "l2-hover": "Hover the deeper anchor — preview shows question + answer.",
       "l2-enter": "Click Enter — now you're at depth 2.",
-      "l2-stream": "The deepest answer. Three layers of digging, zero topic drift.",
-      "graph-hint": "The right rail tracked every branch all along.",
-      "graph-nav-root": "Click any node to jump there — back to Main.",
-      "graph-navigated": "Back on Main. All branches stay live.",
-      "merge-hint": "Done exploring? Merge pulls it together.",
-      "merge-modal": "Pick which branches to include — ancestors auto-roll up.",
-      "merge-stream": "One structured report is generated from the selected branches.",
+      "l2-stream": "Answer was already waiting. Three layers of digging, zero topic drift.",
+      "graph-hint": "Right rail has tracked every branch all along.",
+      "graph-nav-root": "Tap any node to jump there — notice the pulse on Main.",
+      "graph-navigated": "Back at the Main node. All three branches stay live on the tree.",
+      "merge-hint": "Top-right — tap Merge to assemble everything you pinned.",
+      "merge-modal": "The tree shows every branch; ancestors roll up automatically.",
+      "merge-stream": "A structured report is generated from the selected branches.",
       "merge-done": "Three levels, one coherent artifact. That's the loop.",
     },
   },
@@ -194,20 +215,20 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
       "改变主意想关掉一根针怎么办？",
     ],
     sub1Before:
-      "选中文字 → 点「追问」—— 焦点子线程在那里打开。它继承锚点和主线摘要，但",
-    sub1Anchor: "看不到你别的针",
+      "进入了子线程。你的问题在这里保持聚焦 —— 主线原封不动。想继续往深挖，随时可以",
+    sub1Anchor: "再钉一段话，再开一层",
     sub1After:
-      " —— 完全隔离。子线程里还能再插针，compact 预算随深度收缩，所以 prompt 永远不会爆。",
+      "。想嵌几层都行，你在这里做的任何动作都不会回流到上面。",
     suggestions3: [
-      "给我看一次深度 2 的实战",
-      "上下文太长会怎样？",
-      "可以跨代码块插针吗？",
+      "演示同样的操作在更深一层也能用",
+      "实际能挖多深？",
+      "这一层里还能再横向分支吗？",
     ],
     sub2Reply:
-      "在深度 2，祖先摘要链控制在约 1.3K token 以内 —— 主线 800、子线程 1 给 500、子线程 2 给 300。锚点本身永远不被摘要：它们逐字引用，所以模型始终看得到你关心的原话。想叠多少层都行，每一层都很便宜。",
+      "完全一样的玩法：在这里选中一段话再插针，又会开一层焦点子线程，这一层原封不动 —— 跟主线刚才那样。你现在在深度 2，没有上限：继续往下、横向分支、或者停在这里都行。三层之上的主线，还停在你刚才离开的位置。",
     subTitle1: "钉住那个细节",
     subTitle2: "一直挖下去",
-    deepTitle: "看不到你别的针",
+    deepTitle: "再钉一段继续挖",
     mainCrumb: "主线",
     followupLabel: "追问",
     pinLabel: "插针",
@@ -221,14 +242,21 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
     mergeLabel: "合并",
     mergeOutputLabel: "合并输出",
     suggestionsLabel: "推荐追问",
+    customQuestionPlaceholder: "或者自己输入追问…",
+    youLabel: "你",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "你在这里",
+    tapLabel: "点这里",
     replyingLabel: "正在子线程回复…",
     generatingLabel: "生成中…",
-    mergeSelectThreads: "选择线程",
+    readyLabel: "已就绪",
+    mergeSelectThreads: "本次合并的分支",
     mergeAll: "全选",
     mergeGenerate: "开始生成",
     mergeDownload: "下载 Markdown",
     mergeCopy: "复制",
     mergeFormats: ["自由总结", "要点列表", "结构化分析"],
+    mergeBranchesSelected: "3 条分支 + 1 条主线",
     mergeReport:
 `## Deeppin 一次读懂
 
@@ -236,42 +264,42 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
 选中你想深挖的原话，打开一个焦点子线程，主线纹丝不动 —— 不用开新窗口、不用重起对话。
 
 **深度保持便宜**
-子线程只继承锚点 + 主线摘要；compact 预算逐层收缩（800 → 500 → 300），就算插 4 层也比全历史重发一遍便宜。
+子线程继承锚点 + 滚动主线摘要；compact 预算逐层收缩（800 → 500 → 300），摘要丢掉的更早内容 RAG 兜底。四层深也比全历史重发一遍便宜。
 
 **合并把故事拼回来**
-探索完毕，选出想保留的分支 → 一份结构化报告，按深度配色。针变成小标题，回复变成正文。
+选出想保留的分支 → 一份结构化报告，按深度配色。针变成小标题，回复变成正文。
 
 **最终结果**
 三层深挖，一份完整成品，主线零漂移。`,
     caption: {
       blank: "新对话 —— 你即将提出主问题。",
-      "main-stream": "Deeppin 在主线把回复打出来。",
-      "p1-sweep": "拖选你想深挖的那段文字。",
-      "p1-selpop": "选区上方弹出小工具栏 —— 点「追问」。",
-      "p1-dialog": "围绕这段文字自动生成三条追问。",
+      "main-stream": "Deeppin 在主线流式打出回复。",
+      "p1-sweep": "拖选你想深挖的那段文字 —— 会一直高亮。",
+      "p1-selpop": "选中保持高亮，选区上方弹出工具栏。点「追问」。",
+      "p1-dialog": "自动生成三条追问 —— 也可以在下方输入框写自己的。",
       "p1-pick": "挑一条你真想追的。",
-      "p1-underline": "锚点落在主线里 —— AI 已经在子线程开始回答。",
-      "p2-sweep": "回到主线，再拖选第二段。",
-      "p2-selpop": "同一工具栏，新的文字 —— 再点「追问」。",
-      "p2-dialog": "为第二段文字生成新的追问。",
+      "p1-underline": "同时注意两处变化：这里的锚点多了下划线，右边也多出一个节点。",
+      "p2-sweep": "回到主线 —— 拖选第二段。",
+      "p2-selpop": "同一工具栏，新的文字 —— 高亮保持，再点「追问」。",
+      "p2-dialog": "新的推荐 —— 也可以自己输入。",
       "p2-pick": "挑一条。",
-      "p2-underline": "两根针都埋好了。AI 在后台并行回答，等你想看再回来。",
-      "l1-hover": "鼠标悬停第一根针 —— 浮出预览：标题、摘要、「进入」。",
+      "p2-underline": "两根针、两个并行子线程。想看再回来。",
+      "l1-hover": "悬停第一根针 —— 预览里能看见你的提问和回答。",
       "l1-enter": "点「进入」—— 跳进子线程 1。",
-      "l1-stream": "子线程 1 开始回答。主线在身后原封不动。",
+      "l1-stream": "你还在主线的时候回答就写完了。这里是完整的那份。",
       "p3-sweep": "子线程里也能再插针 —— 继续拖选。",
-      "p3-selpop": "一样的工具栏，一样的流程 —— 没有新东西要学。",
-      "p3-dialog": "这次是针对子线程的追问。",
+      "p3-selpop": "一样的工具栏、一样的流程 —— 高亮保持，点「追问」。",
+      "p3-dialog": "针对子线程的推荐 —— 也可以自己输入。",
       "p3-pick": "挑一条。",
-      "p3-underline": "深度 2 —— 想挖多深挖多深。",
-      "l2-hover": "悬停更深一层的锚点 —— 预览，再点「进入」。",
+      "p3-underline": "深度 2 —— 注意这里的新下划线和树上的第三层。",
+      "l2-hover": "悬停更深的锚点 —— 预览里就有问答。",
       "l2-enter": "点「进入」—— 你现在在深度 2。",
-      "l2-stream": "最深一层的回答。三层深挖，零话题漂移。",
+      "l2-stream": "答案也早就写好了。三层深挖，零话题漂移。",
       "graph-hint": "右栏一直在跟着记录每条分支。",
-      "graph-nav-root": "点任意节点就能跳过去 —— 先跳回主线。",
-      "graph-navigated": "回到主线。所有分支依然活着。",
-      "merge-hint": "探索完了？「合并」把所有分支拼成一份报告。",
-      "merge-modal": "选要合并的分支 —— 祖先自动向上聚合。",
+      "graph-nav-root": "点任意节点就能跳过去 —— 看「主线」节点的脉冲提示。",
+      "graph-navigated": "回到「主线」节点，三条分支全在树上。",
+      "merge-hint": "右上角 —— 点「合并」把所有针拼到一起。",
+      "merge-modal": "树上显示每条分支；祖先自动向上聚合。",
       "merge-stream": "基于选中的分支，流式生成结构化报告。",
       "merge-done": "三层深挖，一份完整成品。循环就这样。",
     },
@@ -296,20 +324,20 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
       "気が変わって閉じたいときは？",
     ],
     sub1Before:
-      "テキストを選ぶ → 質問 → その場に焦点サブスレッドが開く。アンカーとメイン要約だけを受け継ぎ、",
-    sub1Anchor: "他のピンは見えない",
+      "サブスレッドに入った。ここでは質問が絞られた状態で続けられる —— 上のメインスレッドには一切影響しない。さらに深掘りしたくなったら、",
+    sub1Anchor: "フレーズをピン留めしてもう一層開く",
     sub1After:
-      " —— 完全に隔離。中でさらにピン可能、compact 予算は深さに応じて縮むので prompt は決して膨張しない。",
+      "。何層でもネストできるし、ここでの操作は上に漏れない。",
     suggestions3: [
-      "実際に深さ 2 が動くのを見せて",
-      "文脈が長すぎたらどうなる？",
-      "コードブロックをまたいでピンできる？",
+      "もう一層深くても同じように動くのを見せて",
+      "どこまで潜れる？",
+      "このサブ内でも横に分岐できる？",
     ],
     sub2Reply:
-      "深さ 2 でも祖先要約チェーンは約 1.3K トークン以内 —— メイン 800、サブ 1 は 500、サブ 2 は 300。アンカー自体は決して要約されず、そのまま引用されるのでモデルは常にあなたが気にした原文を見る。何層でも積めるし、どの層も安価。",
+      "まったく同じ仕組み。ここでフレーズをピン留めすると、下にまた焦点サブスレッドが開く —— この層はそのまま、さっきのメインと同じ。今、深さ 2 にいる。上限なし：続けて掘る、横に分岐、ここで止めるも自由。三層上のメインスレッドは、離れた時のまま。",
     subTitle1: "そこをピン留め",
     subTitle2: "好きなだけ掘る",
-    deepTitle: "他のピンは見えない",
+    deepTitle: "もう一層開く",
     mainCrumb: "メイン",
     followupLabel: "質問",
     pinLabel: "ピン",
@@ -323,14 +351,21 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
     mergeLabel: "マージ",
     mergeOutputLabel: "統合出力",
     suggestionsLabel: "提案",
+    customQuestionPlaceholder: "自分で質問を書く…",
+    youLabel: "あなた",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "ここにいます",
+    tapLabel: "タップ",
     replyingLabel: "サブスレッドで応答中…",
     generatingLabel: "生成中…",
-    mergeSelectThreads: "スレッドを選択",
+    readyLabel: "準備完了",
+    mergeSelectThreads: "マージ対象の枝",
     mergeAll: "全選択",
     mergeGenerate: "生成開始",
     mergeDownload: "Markdown ダウンロード",
     mergeCopy: "コピー",
     mergeFormats: ["自由要約", "箇条書き", "構造化"],
+    mergeBranchesSelected: "3 本の枝 + 1 本の主線",
     mergeReport:
 `## Deeppin を一気に
 
@@ -338,42 +373,42 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
 掘りたい原文を選び、焦点サブスレッドを開く。メインはそのまま —— 新タブ不要、再起動不要。
 
 **深さは安いまま**
-サブスレッドはアンカー + メイン要約だけを受け継ぎ、compact 予算は層ごとに縮む（800 → 500 → 300）。4 層深掘りでも全履歴再送より安い。
+サブはアンカー + ローリング要約を受け継ぎ、予算は層ごとに縮む（800 → 500 → 300）。要約で落ちた古い内容は RAG が補う。四層深掘りでも全履歴再送より安い。
 
 **マージで物語を組み直す**
-終わったら残したい枝を選ぶ → 一本の構造化レポート、深さで色分け。ピンが見出しに、返答が本文に。
+残したい枝を選ぶ → 一本の構造化レポート、深さで色分け。ピンが見出しに、返答が本文に。
 
 **結果**
 三層の深掘り、一つの成果物、メインでの話題漂流ゼロ。`,
     caption: {
       blank: "新規会話 —— メインの質問を投げる直前。",
-      "main-stream": "Deeppin がメインで返答を打ち出す。",
-      "p1-sweep": "掘りたいフレーズをドラッグして選択。",
-      "p1-selpop": "選択範囲の上にツールバー —— 質問を押す。",
-      "p1-dialog": "そのフレーズに合わせたフォローアップが 3 つ自動生成。",
+      "main-stream": "Deeppin がメインにストリーム返答。",
+      "p1-sweep": "掘りたいフレーズをドラッグ選択 —— ハイライトは残る。",
+      "p1-selpop": "選択はハイライトしたまま、上にツールバー。質問を押す。",
+      "p1-dialog": "フォローアップが 3 つ自動生成 —— 下の欄で自分で書くことも。",
       "p1-pick": "追いたいものを一つ選ぶ。",
-      "p1-underline": "アンカーがメインに現れる —— AI はすでにサブで回答中。",
+      "p1-underline": "二箇所を同時に：ここのアンカー下線と、右の新ノード。",
       "p2-sweep": "メインに戻って、二つ目のフレーズをドラッグ。",
-      "p2-selpop": "同じツールバー、新しいフレーズ —— もう一度質問。",
-      "p2-dialog": "二つ目に合わせた新しい提案。",
+      "p2-selpop": "同じツールバー、新しいフレーズ —— ハイライト保持、もう一度質問。",
+      "p2-dialog": "新しい提案 —— 自分で書いてもよい。",
       "p2-pick": "一つ選ぶ。",
-      "p2-underline": "二本のピンが立った。AI が並行で答えているので、読みたい時に戻ればいい。",
-      "l1-hover": "一本目のアンカーにホバー —— プレビュー：タイトル、抜粋、開く。",
+      "p2-underline": "二本のピン、並行する二つのサブ。読みたい時に戻ればいい。",
+      "l1-hover": "一本目のアンカーにホバー —— プレビューに質問と返答。",
       "l1-enter": "開くを押す —— サブスレッド 1 に入る。",
-      "l1-stream": "サブスレッド 1 が答える。メインは背後で無傷。",
-      "p3-sweep": "サブスレッド内でもピン可能 —— ドラッグして選択。",
-      "p3-selpop": "同じツールバー、同じ流れ —— 新しく覚えることはない。",
-      "p3-dialog": "今回はサブスレッドに絞ったフォローアップ。",
+      "l1-stream": "あなたがメインにいる間に返答は完成。ここにそのまま表示。",
+      "p3-sweep": "サブ内でもピン可能 —— ドラッグして選択。",
+      "p3-selpop": "同じツールバー、同じ流れ —— ハイライト保持、質問を押す。",
+      "p3-dialog": "サブに特化した提案 —— 自分で書いてもよい。",
       "p3-pick": "一つ選ぶ。",
-      "p3-underline": "深さ 2 —— 好きなだけ深く潜れる。",
-      "l2-hover": "深いアンカーにホバー —— プレビュー、そして開く。",
-      "l2-enter": "開くを押す —— 今は深さ 2。",
-      "l2-stream": "最深の答え。三層の深掘り、話題漂流はゼロ。",
-      "graph-hint": "右側は全ての枝をずっと追跡していた。",
-      "graph-nav-root": "どのノードをクリックしても飛べる —— まずメインに戻る。",
-      "graph-navigated": "メインに戻った。すべての枝は生きたまま。",
-      "merge-hint": "探索が終わったら —— マージが全部をまとめる。",
-      "merge-modal": "含める枝を選ぶ —— 祖先は自動で統合。",
+      "p3-underline": "深さ 2 —— ここの新しい下線と、ツリーの第三層を見て。",
+      "l2-hover": "深いアンカーにホバー —— プレビューに質問と答え。",
+      "l2-enter": "開くを押す —— 深さ 2 にいる。",
+      "l2-stream": "答えは既に完成していた。三層の深掘り、話題漂流ゼロ。",
+      "graph-hint": "右側はずっと全ての枝を追跡していた。",
+      "graph-nav-root": "どのノードをタップしても飛べる —— メインノードの脈動に注目。",
+      "graph-navigated": "メインノードに戻った。三本の枝はすべてツリー上に健在。",
+      "merge-hint": "右上 —— マージをタップして、ピンしたものを全部まとめる。",
+      "merge-modal": "ツリーが全ての枝を表示、祖先は自動で統合。",
       "merge-stream": "選ばれた枝から構造化レポートが一本生成される。",
       "merge-done": "三層、一つの成果物。これがループ。",
     },
@@ -398,20 +433,20 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
       "마음이 바뀌어 닫고 싶으면?",
     ],
     sub1Before:
-      "텍스트 선택 → 질문 → 그 자리에 집중 서브 스레드 열림. 앵커 + 메인 요약을 상속하지만,",
-    sub1Anchor: "다른 핀은 전혀 보지 못함",
+      "서브 스레드에 들어왔다. 여기서 질문은 집중된 상태로 이어진다 —— 위의 메인은 그대로. 더 깊이 파고들고 싶으면 언제든 ",
+    sub1Anchor: "구절을 고정하고 한 층 더 열 수 있다",
     sub1After:
-      " —— 완전 격리. 안에서 다시 핀 가능, compact 예산은 깊이에 따라 줄어들어 prompt가 폭발하지 않음.",
+      ". 몇 층이든 중첩 가능하고, 여기서의 동작은 위로 새지 않는다.",
     suggestions3: [
-      "실제로 깊이 2가 동작하는 걸 보여줘",
-      "맥락이 너무 길어지면 어떻게 되나?",
-      "코드 블록을 가로질러 핀 가능한가?",
+      "한 층 더 깊어도 똑같이 동작하는지 보여줘",
+      "얼마나 깊이 갈 수 있나?",
+      "이 안에서 옆으로 분기할 수도 있나?",
     ],
     sub2Reply:
-      "깊이 2에서도 조상 요약 체인은 약 1.3K 토큰 이하 —— 메인 800, 서브 1은 500, 서브 2는 300. 앵커 자체는 결코 요약되지 않고 그대로 인용되어, 모델은 항상 당신이 관심 있는 원문을 본다. 원하는 만큼 층을 쌓아도 각 층은 저렴하다.",
+      "정확히 같은 패턴. 여기서 구절을 고정하면 아래에 또 집중 서브 스레드가 열린다 —— 이 층은 그대로, 방금 메인이 그랬던 것처럼. 지금 깊이 2. 상한 없음: 계속 가든, 옆으로 분기하든, 여기서 멈추든 자유. 세 층 위의 메인 스레드는, 네가 떠난 곳에 그대로 있다.",
     subTitle1: "그 부분을 고정",
     subTitle2: "계속 파고들기",
-    deepTitle: "다른 핀은 안 보임",
+    deepTitle: "한 층 더 열기",
     mainCrumb: "메인",
     followupLabel: "질문",
     pinLabel: "핀",
@@ -425,58 +460,65 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
     mergeLabel: "병합",
     mergeOutputLabel: "병합 출력",
     suggestionsLabel: "추천 질문",
+    customQuestionPlaceholder: "직접 후속 질문 입력…",
+    youLabel: "당신",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "여기 있음",
+    tapLabel: "탭",
     replyingLabel: "서브 스레드에서 응답 중…",
     generatingLabel: "생성 중…",
-    mergeSelectThreads: "스레드 선택",
+    readyLabel: "준비됨",
+    mergeSelectThreads: "병합 대상 분기",
     mergeAll: "전체",
     mergeGenerate: "생성 시작",
     mergeDownload: "Markdown 다운로드",
     mergeCopy: "복사",
     mergeFormats: ["자유 요약", "요점 목록", "구조화"],
+    mergeBranchesSelected: "3개 분기 + 1개 메인",
     mergeReport:
 `## Deeppin 한 번에
 
 **핀은 의도를 붙잡는다**
-파고들고 싶은 원문을 고르고 집중 서브 스레드를 연다. 메인은 그대로 —— 새 탭 없음, 재시작 없음.
+파고들 원문을 고르고 집중 서브 스레드를 연다. 메인은 그대로 —— 새 탭 없음, 재시작 없음.
 
-**깊이는 저렴하게 유지된다**
-서브 스레드는 앵커 + 메인 요약만 상속. compact 예산이 층마다 줄어(800 → 500 → 300), 4층 핀이어도 전체 이력 재전송보다 싸다.
+**깊이는 저렴하게 유지**
+서브는 앵커 + 롤링 메인 요약을 상속. 예산이 층마다 줄어(800 → 500 → 300), 요약이 버린 옛 내용은 RAG가 보충. 4층도 전체 이력 재전송보다 싸다.
 
 **병합이 이야기를 재구성**
-준비되면 원하는 분기를 골라 → 깊이별 색상으로 코딩된 한 편의 구조화 리포트. 핀은 제목, 답변은 본문.
+원하는 분기를 고르면 → 깊이별 색상의 구조화 리포트 한 편. 핀은 제목, 답변은 본문.
 
-**최종 결과**
+**결과**
 세 층의 파고들기, 하나의 일관된 산출물, 메인에서의 주제 표류 없음.`,
     caption: {
       blank: "새 대화 —— 메인 질문을 던질 참.",
-      "main-stream": "Deeppin이 메인에 답변을 찍어낸다.",
-      "p1-sweep": "파고들 구절을 드래그해 선택.",
-      "p1-selpop": "선택 위에 툴바 —— 질문을 누른다.",
-      "p1-dialog": "그 구절에 맞춘 후속 질문 세 개 자동 생성.",
+      "main-stream": "Deeppin이 메인에 답변을 스트리밍.",
+      "p1-sweep": "파고들 구절을 드래그해 선택 —— 하이라이트 유지.",
+      "p1-selpop": "선택은 하이라이트 유지, 위에 툴바. 질문을 누른다.",
+      "p1-dialog": "후속 질문 세 개 자동 생성 —— 아래 상자에 직접 입력도 가능.",
       "p1-pick": "진짜 따라갈 한 개를 고른다.",
-      "p1-underline": "앵커가 메인에 떨어진다 —— AI는 이미 서브 스레드에서 답변 중.",
-      "p2-sweep": "메인에서 두 번째 구절을 드래그.",
-      "p2-selpop": "같은 툴바, 새 구절 —— 다시 질문.",
-      "p2-dialog": "두 번째 구절에 맞춘 새 후속 질문.",
+      "p1-underline": "두 곳을 동시에: 여기 앵커 밑줄과, 오른쪽에 새 노드.",
+      "p2-sweep": "메인으로 돌아가 두 번째 구절을 드래그.",
+      "p2-selpop": "같은 툴바, 새 구절 —— 하이라이트 유지, 다시 질문.",
+      "p2-dialog": "새 제안 —— 직접 입력도 가능.",
       "p2-pick": "하나 고른다.",
-      "p2-underline": "두 핀이 꽂혔다. AI가 병렬로 답하고 있으니, 읽고 싶을 때 오면 된다.",
-      "l1-hover": "첫 앵커에 호버 —— 미리보기: 제목, 발췌, 열기.",
+      "p2-underline": "두 개의 핀, 두 개의 병렬 서브. 준비되면 돌아온다.",
+      "l1-hover": "첫 앵커에 호버 —— 미리보기에 질문과 답변.",
       "l1-enter": "열기 누름 —— 서브 스레드 1에 진입.",
-      "l1-stream": "서브 스레드 1이 응답. 메인은 뒤에서 그대로.",
-      "p3-sweep": "서브 스레드 안에서도 핀 가능 —— 드래그로 선택.",
-      "p3-selpop": "같은 툴바, 같은 흐름 —— 새로 배울 것 없음.",
-      "p3-dialog": "이번엔 서브 스레드에 초점을 둔 후속 질문.",
+      "l1-stream": "당신이 메인에 있는 동안 답변은 완성. 여기 완성본.",
+      "p3-sweep": "서브 안에서도 핀 가능 —— 드래그로 선택.",
+      "p3-selpop": "같은 툴바, 같은 흐름 —— 하이라이트 유지, 질문.",
+      "p3-dialog": "서브에 맞춘 후속 —— 직접 입력도 가능.",
       "p3-pick": "하나 고른다.",
-      "p3-underline": "깊이 2 —— 원하는 만큼 깊이 파고들 수 있다.",
-      "l2-hover": "더 깊은 앵커에 호버 —— 미리보기, 그리고 열기.",
+      "p3-underline": "깊이 2 —— 여기 새 밑줄과 트리의 세 번째 층을 보라.",
+      "l2-hover": "더 깊은 앵커에 호버 —— 미리보기에 질문과 답.",
       "l2-enter": "열기 누름 —— 지금 깊이 2.",
-      "l2-stream": "가장 깊은 답변. 세 층 파고들기, 주제 표류 없음.",
-      "graph-hint": "오른쪽 레일이 모든 분기를 줄곧 추적해 왔다.",
-      "graph-nav-root": "어느 노드든 클릭하면 점프 —— 메인으로 돌아간다.",
-      "graph-navigated": "메인에 복귀. 모든 분기는 살아있다.",
-      "merge-hint": "탐색 끝났어? 병합이 전부를 엮어준다.",
-      "merge-modal": "포함할 분기를 고른다 —— 조상은 자동 집계.",
-      "merge-stream": "선택된 분기로부터 구조화 리포트가 한 편 생성.",
+      "l2-stream": "답변은 이미 완성되어 있었다. 세 층 파고들기, 주제 표류 없음.",
+      "graph-hint": "오른쪽 레일이 줄곧 모든 분기를 추적했다.",
+      "graph-nav-root": "어느 노드든 탭하면 이동 —— 메인 노드의 맥동 주목.",
+      "graph-navigated": "메인 노드에 복귀. 세 분기 모두 트리에 살아있다.",
+      "merge-hint": "오른쪽 상단 —— 병합을 탭해 모든 핀을 조립.",
+      "merge-modal": "트리가 모든 분기를 표시, 조상은 자동 집계.",
+      "merge-stream": "선택된 분기에서 구조화 리포트가 생성.",
       "merge-done": "세 층, 하나의 산출물. 루프는 이렇게.",
     },
   },
@@ -500,20 +542,20 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
       "¿Y si cambio de opinión y quiero cerrar una?",
     ],
     sub1Before:
-      "Selecciona texto → Pregunta → se abre un sub-hilo enfocado allí mismo. Hereda el ancla y un resumen del principal, pero ",
-    sub1Anchor: "no ve ninguno de tus otros pines",
+      "Entraste al sub-hilo. Tu pregunta se mantiene enfocada aquí — el principal arriba queda intacto. Cuando quieras ir más profundo, ",
+    sub1Anchor: "ancla una frase y abre otro nivel",
     sub1After:
-      " — aislamiento total. Puedes anclar otra vez dentro, y el presupuesto compacto se reduce con la profundidad, así el prompt no explota.",
+      ". Puedes anidar tantas capas como necesites, y nada de lo que hagas aquí sube.",
     suggestions3: [
-      "Muéstrame la profundidad 2 funcionando",
-      "¿Qué pasa si el contexto se vuelve demasiado largo?",
-      "¿Puedo anclar cruzando un bloque de código?",
+      "Muéstrame que funciona igual un nivel más abajo",
+      "¿Hasta dónde puedo llegar?",
+      "¿Puedo ramificar lateralmente dentro de este?",
     ],
     sub2Reply:
-      "A profundidad 2 la cadena de resúmenes ancestrales se mantiene bajo ~1.3K tokens — 800 para el principal, 500 para sub-1, 300 para sub-2. Las anclas nunca se resumen: se citan literalmente, así que el modelo siempre ve la frase exacta que te importó. Apila tantas capas como necesites; cada una sigue siendo barata.",
+      "Exactamente el mismo patrón. Ancla cualquier frase aquí y se abre otro sub-hilo enfocado debajo — esta capa queda intacta, como el principal antes. Ahora estás a profundidad 2, sin tope: sigue, ramifica lateralmente o detente aquí. Tres niveles arriba, tu principal está exactamente donde lo dejaste.",
     subTitle1: "anclar ese detalle",
     subTitle2: "seguir cavando",
-    deepTitle: "sin ver otros pines",
+    deepTitle: "abrir otro nivel",
     mainCrumb: "Principal",
     followupLabel: "Pregunta",
     pinLabel: "Anclar",
@@ -527,57 +569,64 @@ Three levels of digging, one coherent artifact, zero drift back in the main thre
     mergeLabel: "Fusionar",
     mergeOutputLabel: "Fusionar salida",
     suggestionsLabel: "sugerencias",
+    customQuestionPlaceholder: "O escribe tu propia pregunta…",
+    youLabel: "TÚ",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "estás aquí",
+    tapLabel: "toca",
     replyingLabel: "respondiendo en sub-hilo…",
     generatingLabel: "generando…",
-    mergeSelectThreads: "Seleccionar hilos",
+    readyLabel: "listo",
+    mergeSelectThreads: "Ramas en esta fusión",
     mergeAll: "Todo",
     mergeGenerate: "Generar",
     mergeDownload: "Descargar Markdown",
     mergeCopy: "Copiar",
     mergeFormats: ["Resumen libre", "Puntos clave", "Estructurado"],
+    mergeBranchesSelected: "3 ramas + 1 principal",
     mergeReport:
 `## Deeppin de una pasada
 
 **Anclar captura la intención**
-Eliges la frase exacta que quieres expandir, abres un sub-hilo enfocado y el principal queda intacto — sin pestaña nueva, sin reinicio.
+Eliges la frase exacta que quieres expandir, abres un sub-hilo enfocado, y el principal queda intacto — sin pestaña nueva, sin reinicio.
 
 **La profundidad sigue siendo barata**
-Los sub-hilos heredan ancla + resumen principal. El presupuesto compacto se reduce por nivel (800 → 500 → 300), así que incluso un pin de 4 niveles cuesta menos que un reintento completo.
+Los sub-hilos heredan ancla + resumen continuo del principal. Presupuesto por nivel decrece (800 → 500 → 300); RAG recupera lo que el resumen soltó. Un pin a cuatro niveles sigue ganándole a un reintento completo.
 
 **Fusionar reconstruye la historia**
-Cuando estés listo, selecciona las ramas que te importan → un informe estructurado, codificado por profundidad. Los pines se vuelven títulos; las respuestas, el cuerpo.
+Elige las ramas que importan → un informe estructurado, coloreado por profundidad. Los pines se vuelven títulos; las respuestas, el cuerpo.
 
 **Resultado neto**
 Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo principal.`,
     caption: {
       blank: "Conversación nueva — estás a punto de hacer la pregunta principal.",
-      "main-stream": "Deeppin escribe su respuesta en el hilo principal.",
-      "p1-sweep": "Arrastra sobre la frase en la que quieres profundizar.",
-      "p1-selpop": "Aparece una barra compacta sobre la selección — pulsa Pregunta.",
-      "p1-dialog": "Tres seguimientos se generan para esa frase exacta.",
+      "main-stream": "Deeppin transmite su respuesta en el principal.",
+      "p1-sweep": "Arrastra sobre la frase a profundizar — queda resaltada.",
+      "p1-selpop": "El resalte se queda, una barra aparece arriba. Pulsa Pregunta.",
+      "p1-dialog": "Tres seguimientos se generan — o escribe el tuyo abajo.",
       "p1-pick": "Elige el que de verdad quieres perseguir.",
-      "p1-underline": "El ancla cae en la respuesta — la IA ya está respondiendo en un sub-hilo.",
-      "p2-sweep": "De vuelta al principal, arrastra sobre una segunda frase.",
-      "p2-selpop": "La misma barra, frase nueva — pulsa Pregunta otra vez.",
-      "p2-dialog": "Nuevas sugerencias ajustadas a la segunda frase.",
+      "p1-underline": "Dos cambios a la vez: el ancla se subraya aquí y un nodo aparece a la derecha.",
+      "p2-sweep": "De vuelta al principal — arrastra sobre una segunda frase.",
+      "p2-selpop": "Misma barra, frase nueva — resalte se mantiene, pulsa Pregunta.",
+      "p2-dialog": "Nuevas sugerencias — o escribe la tuya.",
       "p2-pick": "Elige una.",
-      "p2-underline": "Dos anclas plantadas. La IA trabaja en ambas en paralelo — vuelve cuando quieras leer.",
-      "l1-hover": "Pasa el ratón por la primera ancla — vista previa: título, extracto, Abrir.",
+      "p2-underline": "Dos anclas, dos sub-hilos paralelos. Vuelve cuando estés listo.",
+      "l1-hover": "Pasa el ratón por la primera ancla — la vista muestra tu pregunta y la respuesta.",
       "l1-enter": "Pulsa Abrir — estás dentro del sub-hilo 1.",
-      "l1-stream": "El sub-hilo 1 responde. El principal queda intacto detrás.",
+      "l1-stream": "La respuesta ya estaba lista mientras seguías en el principal. Aquí completa.",
       "p3-sweep": "También puedes anclar dentro de un sub-hilo — arrastra.",
-      "p3-selpop": "Misma barra, mismo flujo — nada nuevo que aprender.",
-      "p3-dialog": "Esta vez los seguimientos se centran en el sub-hilo.",
+      "p3-selpop": "Misma barra, mismo flujo — resalte se mantiene, pulsa Pregunta.",
+      "p3-dialog": "Seguimientos centrados en el sub-hilo — o escribe el tuyo.",
       "p3-pick": "Elige una.",
-      "p3-underline": "Profundidad 2 — puedes seguir tan hondo como necesites.",
-      "l2-hover": "Pasa el ratón por el ancla más profunda — vista previa, luego Abrir.",
+      "p3-underline": "Profundidad 2 — mira el nuevo subrayado y la tercera capa del árbol.",
+      "l2-hover": "Pasa el ratón por el ancla más profunda — vista con pregunta y respuesta.",
       "l2-enter": "Pulsa Abrir — ahora estás a profundidad 2.",
-      "l2-stream": "La respuesta más profunda. Tres niveles, cero deriva de tema.",
-      "graph-hint": "La barra derecha ha seguido cada rama todo el tiempo.",
-      "graph-nav-root": "Haz clic en cualquier nodo para saltar — vuelve al principal.",
-      "graph-navigated": "De vuelta al principal. Todas las ramas siguen vivas.",
-      "merge-hint": "¿Terminaste de explorar? Fusionar lo integra todo.",
-      "merge-modal": "Elige qué ramas incluir — los ancestros se agregan solos.",
+      "l2-stream": "La respuesta ya estaba esperando. Tres niveles, cero deriva de tema.",
+      "graph-hint": "La barra derecha siguió cada rama todo el tiempo.",
+      "graph-nav-root": "Toca cualquier nodo para saltar — fíjate en el pulso sobre Principal.",
+      "graph-navigated": "De vuelta al nodo Principal. Las tres ramas siguen vivas en el árbol.",
+      "merge-hint": "Arriba a la derecha — toca Fusionar para ensamblar todos los pines.",
+      "merge-modal": "El árbol muestra cada rama; los ancestros se agregan solos.",
       "merge-stream": "Se genera un informe estructurado a partir de las ramas elegidas.",
       "merge-done": "Tres niveles, un artefacto coherente. Ese es el bucle.",
     },
@@ -602,20 +651,20 @@ Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo pri
       "Et si je change d'avis et que je veux en fermer une ?",
     ],
     sub1Before:
-      "Sélectionne du texte → Question → un sous-fil ciblé s'ouvre sur place. Il hérite de l'ancre et d'un résumé du principal, mais ",
-    sub1Anchor: "ne voit aucune de tes autres épingles",
+      "Tu es dans le sous-fil. Ta question reste concentrée ici — le principal au-dessus reste intact. Quand tu veux aller plus profond, ",
+    sub1Anchor: "épingle une phrase et ouvre un autre niveau",
     sub1After:
-      " — isolation complète. Tu peux épingler à nouveau à l'intérieur, et le budget compact se réduit avec la profondeur, donc le prompt n'explose pas.",
+      ". Tu peux imbriquer autant de couches que tu veux, et rien de ce que tu fais ici ne remonte.",
     suggestions3: [
-      "Montre-moi la profondeur 2 en pratique",
-      "Que se passe-t-il si le contexte devient trop long ?",
-      "Puis-je épingler à travers un bloc de code ?",
+      "Montre-moi que ça marche pareil un niveau plus profond",
+      "Jusqu'où je peux aller ?",
+      "Puis-je me ramifier latéralement dedans ?",
     ],
     sub2Reply:
-      "À profondeur 2, la chaîne de résumés ancestraux reste sous ~1,3K tokens — 800 pour le principal, 500 pour sous-1, 300 pour sous-2. Les ancres elles-mêmes ne sont jamais résumées : elles sont citées à l'identique, donc le modèle voit toujours la phrase exacte qui t'importait. Empile autant de couches que nécessaire ; chacune reste bon marché.",
+      "Exactement le même schéma. Épingle n'importe quelle phrase ici et un autre sous-fil ciblé s'ouvre en dessous — cette couche reste intacte, comme le principal tout à l'heure. Tu es maintenant à profondeur 2, sans plafond : continue, ramifie, ou arrête ici. Trois niveaux plus haut, ton fil principal est exactement là où tu l'as laissé.",
     subTitle1: "épingler ce détail",
     subTitle2: "continuer à creuser",
-    deepTitle: "aucune autre épingle visible",
+    deepTitle: "ouvrir un autre niveau",
     mainCrumb: "Principal",
     followupLabel: "Question",
     pinLabel: "Épingler",
@@ -629,14 +678,21 @@ Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo pri
     mergeLabel: "Fusionner",
     mergeOutputLabel: "Fusionner la sortie",
     suggestionsLabel: "suggestions",
+    customQuestionPlaceholder: "Ou tape ta propre question…",
+    youLabel: "TOI",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "tu es ici",
+    tapLabel: "clique",
     replyingLabel: "réponse dans le sous-fil…",
     generatingLabel: "génération…",
-    mergeSelectThreads: "Sélectionner les fils",
+    readyLabel: "prêt",
+    mergeSelectThreads: "Branches dans cette fusion",
     mergeAll: "Tout",
     mergeGenerate: "Générer",
     mergeDownload: "Télécharger Markdown",
     mergeCopy: "Copier",
     mergeFormats: ["Résumé libre", "Points clés", "Structuré"],
+    mergeBranchesSelected: "3 branches + 1 principal",
     mergeReport:
 `## Deeppin d'un trait
 
@@ -644,42 +700,42 @@ Tres niveles de exploración, un artefacto coherente, cero deriva en el hilo pri
 Tu choisis la phrase exacte à creuser, tu ouvres un sous-fil ciblé, et le principal reste intact — pas de nouvel onglet, pas de redémarrage.
 
 **La profondeur reste bon marché**
-Les sous-fils héritent de l'ancre + résumé principal. Le budget compact se réduit par niveau (800 → 500 → 300), donc même une épingle de niveau 4 coûte moins qu'un renvoi complet.
+Les sous-fils héritent de l'ancre + résumé continu du principal. Budget par niveau (800 → 500 → 300) ; RAG récupère ce que le résumé a perdu. Une épingle à quatre niveaux coûte toujours moins qu'un renvoi complet.
 
 **Fusionner reconstruit l'histoire**
-Quand tu es prêt, sélectionne les branches qui comptent → un rapport structuré, coloré par profondeur. Les épingles deviennent titres ; les réponses, le corps.
+Choisis les branches qui comptent → un rapport structuré, coloré par profondeur. Les épingles deviennent titres ; les réponses, le corps.
 
 **Résultat net**
 Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil principal.`,
     caption: {
       blank: "Nouvelle conversation — tu vas poser la question principale.",
-      "main-stream": "Deeppin tape sa réponse sur le fil principal.",
-      "p1-sweep": "Glisse sur la phrase que tu veux creuser.",
-      "p1-selpop": "Une barre compacte apparaît au-dessus de la sélection — clique Question.",
-      "p1-dialog": "Trois suivis se génèrent pour cette phrase précise.",
+      "main-stream": "Deeppin diffuse sa réponse dans le fil principal.",
+      "p1-sweep": "Glisse sur la phrase à creuser — la surbrillance reste.",
+      "p1-selpop": "La sélection reste en surbrillance, une barre apparaît au-dessus. Clique Question.",
+      "p1-dialog": "Trois suivis se génèrent — ou tape le tien dans la boîte.",
       "p1-pick": "Choisis celui que tu veux vraiment poursuivre.",
-      "p1-underline": "L'ancre tombe dans la réponse — l'IA répond déjà dans un sous-fil.",
-      "p2-sweep": "Retour au principal, glisse sur une deuxième phrase.",
-      "p2-selpop": "Même barre, nouvelle phrase — clique Question à nouveau.",
-      "p2-dialog": "Nouvelles suggestions ajustées à la deuxième phrase.",
+      "p1-underline": "Deux changements à la fois : l'ancre se souligne ici, un nœud apparaît à droite.",
+      "p2-sweep": "Retour au principal — glisse sur une deuxième phrase.",
+      "p2-selpop": "Même barre, phrase nouvelle — la surbrillance reste, clique Question.",
+      "p2-dialog": "Nouvelles suggestions — ou écris la tienne.",
       "p2-pick": "Choisis-en une.",
-      "p2-underline": "Deux ancres plantées. L'IA travaille sur les deux en parallèle — reviens quand tu veux lire.",
-      "l1-hover": "Survole la première ancre — aperçu : titre, extrait, Ouvrir.",
+      "p2-underline": "Deux ancres, deux sous-fils parallèles. Reviens quand prêt.",
+      "l1-hover": "Survole la première ancre — un aperçu montre question et réponse.",
       "l1-enter": "Clique Ouvrir — tu es dans le sous-fil 1.",
-      "l1-stream": "Le sous-fil 1 répond. Le principal reste intact derrière.",
+      "l1-stream": "La réponse était prête pendant que tu restais sur le principal. La voici, complète.",
       "p3-sweep": "Tu peux aussi épingler dans un sous-fil — glisse.",
-      "p3-selpop": "Même barre, même flux — rien de nouveau à apprendre.",
-      "p3-dialog": "Cette fois les suivis se concentrent sur le sous-fil.",
+      "p3-selpop": "Même barre, même flux — surbrillance maintenue, clique Question.",
+      "p3-dialog": "Suivis centrés sur le sous-fil — ou écris le tien.",
       "p3-pick": "Choisis-en une.",
-      "p3-underline": "Profondeur 2 — tu peux aller aussi profond que nécessaire.",
-      "l2-hover": "Survole l'ancre plus profonde — aperçu, puis Ouvrir.",
+      "p3-underline": "Profondeur 2 — regarde le nouveau soulignement et la troisième couche de l'arbre.",
+      "l2-hover": "Survole l'ancre plus profonde — aperçu avec question et réponse.",
       "l2-enter": "Clique Ouvrir — tu es maintenant à profondeur 2.",
-      "l2-stream": "La réponse la plus profonde. Trois niveaux, zéro dérive.",
+      "l2-stream": "La réponse attendait déjà. Trois niveaux, zéro dérive.",
       "graph-hint": "La barre de droite a suivi chaque branche depuis le début.",
-      "graph-nav-root": "Clique n'importe quel nœud pour sauter — retour au principal.",
-      "graph-navigated": "Retour au principal. Toutes les branches restent vivantes.",
-      "merge-hint": "Exploration terminée ? Fusionner assemble tout.",
-      "merge-modal": "Choisis les branches à inclure — les ancêtres s'agrègent automatiquement.",
+      "graph-nav-root": "Clique n'importe quel nœud pour sauter — note le pulse sur Principal.",
+      "graph-navigated": "Retour au nœud Principal. Les trois branches restent vivantes dans l'arbre.",
+      "merge-hint": "En haut à droite — clique Fusionner pour assembler toutes les épingles.",
+      "merge-modal": "L'arbre montre chaque branche ; les ancêtres s'agrègent automatiquement.",
       "merge-stream": "Un rapport structuré est généré à partir des branches choisies.",
       "merge-done": "Trois niveaux, un artefact cohérent. C'est la boucle.",
     },
@@ -704,20 +760,20 @@ Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil pri
       "Was, wenn ich es mir anders überlege und einen schließen will?",
     ],
     sub1Before:
-      "Text markieren → Frage → ein fokussierter Sub-Thread öffnet sich an Ort und Stelle. Er erbt den Anker plus eine Haupt-Zusammenfassung, aber ",
-    sub1Anchor: "sieht keinen deiner anderen Pins",
+      "Im Sub-Thread. Deine Frage bleibt hier fokussiert — der Haupt-Thread oben bleibt unberührt. Wenn du tiefer willst, ",
+    sub1Anchor: "hefte eine Phrase an und öffne eine weitere Ebene",
     sub1After:
-      " — vollständig isoliert. Du kannst innen wieder anheften, und das Compact-Budget schrumpft mit der Tiefe, sodass der Prompt nicht explodiert.",
+      ". Du kannst so viele Ebenen verschachteln wie du willst, und nichts davon fließt nach oben zurück.",
     suggestions3: [
-      "Zeig mir Tiefe 2 in der Praxis",
-      "Was passiert, wenn der Kontext zu lang wird?",
-      "Kann ich über einen Code-Block hinweg anheften?",
+      "Zeig, dass es auf einer Ebene tiefer genauso funktioniert",
+      "Wie tief kann ich wirklich gehen?",
+      "Kann ich hier drin auch seitlich verzweigen?",
     ],
     sub2Reply:
-      "Bei Tiefe 2 bleibt die Vorfahren-Zusammenfassungskette unter ~1,3K Tokens — 800 für Haupt, 500 für Sub-1, 300 für Sub-2. Die Anker selbst werden nie zusammengefasst: sie werden wortwörtlich zitiert, damit das Modell stets die exakte Phrase sieht, die dir wichtig war. Stapele so viele Schichten wie nötig; jede bleibt günstig.",
+      "Exakt dasselbe Muster. Hefte hier eine Phrase an und darunter öffnet sich ein weiterer fokussierter Sub-Thread — diese Ebene bleibt unberührt, wie der Haupt vorhin. Du bist jetzt auf Tiefe 2, ohne Obergrenze: weitergehen, seitlich verzweigen oder hier stoppen. Drei Ebenen höher ist dein Haupt-Thread genau da, wo du ihn verlassen hast.",
     subTitle1: "dieses Detail anheften",
     subTitle2: "tief weitergraben",
-    deepTitle: "keine anderen Pins sichtbar",
+    deepTitle: "eine Ebene öffnen",
     mainCrumb: "Haupt",
     followupLabel: "Frage",
     pinLabel: "Anheften",
@@ -731,14 +787,21 @@ Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil pri
     mergeLabel: "Zusammenführen",
     mergeOutputLabel: "Ausgabe zusammenführen",
     suggestionsLabel: "Vorschläge",
+    customQuestionPlaceholder: "Oder tipp deine eigene Frage…",
+    youLabel: "DU",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "du bist hier",
+    tapLabel: "klick",
     replyingLabel: "antwortet im Sub-Thread…",
     generatingLabel: "wird generiert…",
-    mergeSelectThreads: "Threads wählen",
+    readyLabel: "bereit",
+    mergeSelectThreads: "Zweige in dieser Zusammenführung",
     mergeAll: "Alle",
     mergeGenerate: "Generieren",
     mergeDownload: "Markdown herunterladen",
     mergeCopy: "Kopieren",
     mergeFormats: ["Freies Resümee", "Stichpunkte", "Strukturiert"],
+    mergeBranchesSelected: "3 Zweige + 1 Haupt",
     mergeReport:
 `## Deeppin auf einen Blick
 
@@ -746,42 +809,42 @@ Trois niveaux d'exploration, un artefact cohérent, zéro dérive sur le fil pri
 Du wählst die exakte Phrase, die du vertiefen willst, öffnest einen fokussierten Sub-Thread, und der Haupt-Thread bleibt unberührt — kein neuer Tab, kein Neustart.
 
 **Tiefe bleibt günstig**
-Sub-Threads erben nur Anker + Haupt-Zusammenfassung. Das Compact-Budget schrumpft pro Ebene (800 → 500 → 300), sodass selbst ein Pin in Tiefe 4 weniger kostet als ein vollständiger erneuter Durchlauf.
+Sub-Threads erben Anker + laufende Haupt-Zusammenfassung. Budget pro Ebene schrumpft (800 → 500 → 300); RAG holt, was die Zusammenfassung verworfen hat. Ein Pin vier Ebenen tief kostet immer noch weniger als ein kompletter Wiederholungslauf.
 
 **Zusammenführen baut die Geschichte zurück**
-Wenn du fertig bist, wähle die Zweige, die zählen → ein strukturierter Bericht, nach Tiefe eingefärbt. Pins werden zu Überschriften; Antworten zum Körper.
+Wähle die Zweige, die zählen → ein strukturierter Bericht, nach Tiefe eingefärbt. Pins werden zu Überschriften; Antworten zum Körper.
 
 **Nettoergebnis**
 Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
     caption: {
       blank: "Neue Unterhaltung — du stellst gleich die Hauptfrage.",
-      "main-stream": "Deeppin tippt die Antwort im Haupt-Thread.",
-      "p1-sweep": "Ziehe über die Phrase, die du vertiefen willst.",
-      "p1-selpop": "Eine kompakte Toolbar erscheint über der Auswahl — klicke Frage.",
-      "p1-dialog": "Drei Folgefragen werden für genau diese Phrase generiert.",
+      "main-stream": "Deeppin streamt die Antwort in den Haupt-Thread.",
+      "p1-sweep": "Ziehe über die Phrase, die du vertiefen willst — Markierung bleibt.",
+      "p1-selpop": "Auswahl bleibt markiert, Toolbar erscheint oben. Klicke Frage.",
+      "p1-dialog": "Drei Folgefragen werden generiert — oder tippe unten deine eigene.",
       "p1-pick": "Wähle die, die du wirklich verfolgen willst.",
-      "p1-underline": "Der Anker landet in der Antwort — die KI antwortet schon im Sub-Thread.",
-      "p2-sweep": "Zurück im Haupt, ziehe über eine zweite Phrase.",
-      "p2-selpop": "Dieselbe Toolbar, neue Phrase — klicke Frage erneut.",
-      "p2-dialog": "Neue Vorschläge passend zur zweiten Phrase.",
+      "p1-underline": "Zwei Änderungen gleichzeitig: der Anker wird hier unterstrichen, ein Knoten taucht rechts auf.",
+      "p2-sweep": "Zurück im Haupt — ziehe über eine zweite Phrase.",
+      "p2-selpop": "Dieselbe Toolbar, neue Phrase — Markierung bleibt, klicke Frage.",
+      "p2-dialog": "Neue Vorschläge — oder tippe deine eigene.",
       "p2-pick": "Wähle eine.",
-      "p2-underline": "Zwei Anker gesetzt. Die KI arbeitet parallel an beiden — komm zurück, wenn du lesen willst.",
-      "l1-hover": "Den ersten Anker überfahren — Vorschau: Titel, Ausschnitt, Öffnen.",
+      "p2-underline": "Zwei Anker, zwei parallele Sub-Threads. Komm zurück, wenn bereit.",
+      "l1-hover": "Fahre über den ersten Anker — Vorschau zeigt Frage und Antwort.",
       "l1-enter": "Öffnen klicken — du bist im Sub-Thread 1.",
-      "l1-stream": "Sub-Thread 1 antwortet. Haupt-Thread bleibt dahinter unberührt.",
+      "l1-stream": "Die Antwort war fertig, während du im Haupt bliebst. Hier komplett.",
       "p3-sweep": "Auch im Sub-Thread kannst du anheften — ziehen.",
-      "p3-selpop": "Gleiche Toolbar, gleicher Ablauf — nichts Neues zu lernen.",
-      "p3-dialog": "Diesmal Folgefragen, die sich auf den Sub-Thread konzentrieren.",
+      "p3-selpop": "Gleiche Toolbar, gleicher Ablauf — Markierung bleibt, klicke Frage.",
+      "p3-dialog": "Folgefragen auf den Sub-Thread fokussiert — oder tippe deine eigene.",
       "p3-pick": "Wähle eine.",
-      "p3-underline": "Tiefe 2 — du kannst so tief gehen, wie du willst.",
-      "l2-hover": "Den tieferen Anker überfahren — Vorschau, dann Öffnen.",
+      "p3-underline": "Tiefe 2 — schau die neue Unterstreichung und die dritte Ebene im Baum.",
+      "l2-hover": "Fahre über den tieferen Anker — Vorschau mit Frage und Antwort.",
       "l2-enter": "Öffnen klicken — jetzt bist du auf Tiefe 2.",
-      "l2-stream": "Die tiefste Antwort. Drei Ebenen, null Thema-Drift.",
+      "l2-stream": "Die Antwort wartete schon. Drei Ebenen, null Thema-Drift.",
       "graph-hint": "Die rechte Leiste hat die ganze Zeit jeden Zweig verfolgt.",
-      "graph-nav-root": "Klicke einen beliebigen Knoten, um dorthin zu springen — zurück zum Haupt.",
-      "graph-navigated": "Zurück im Haupt. Alle Zweige bleiben aktiv.",
-      "merge-hint": "Fertig erkundet? Zusammenführen fasst alles zusammen.",
-      "merge-modal": "Wähle, welche Zweige enthalten sein sollen — Vorfahren werden automatisch aggregiert.",
+      "graph-nav-root": "Klicke einen beliebigen Knoten zum Springen — beachte den Puls auf Haupt.",
+      "graph-navigated": "Zurück am Haupt-Knoten. Alle drei Zweige bleiben im Baum aktiv.",
+      "merge-hint": "Oben rechts — klicke Zusammenführen, um alles Angeheftete zusammenzubauen.",
+      "merge-modal": "Der Baum zeigt jeden Zweig; Vorfahren werden automatisch aggregiert.",
       "merge-stream": "Aus den gewählten Zweigen wird ein strukturierter Bericht generiert.",
       "merge-done": "Drei Ebenen, ein kohärentes Artefakt. Das ist der Loop.",
     },
@@ -806,20 +869,20 @@ Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
       "E se eu mudar de ideia e quiser fechar um?",
     ],
     sub1Before:
-      "Selecione texto → Pergunta → um sub-tópico focado abre ali mesmo. Herda a âncora e um resumo do principal, mas ",
-    sub1Anchor: "não vê nenhum dos seus outros pins",
+      "Entrou no sub-tópico. Sua pergunta fica focada aqui — o principal acima permanece intacto. Quando quiser ir mais fundo, ",
+    sub1Anchor: "fixe uma frase e abra outro nível",
     sub1After:
-      " — isolamento total. Pode fixar de novo por dentro, e o orçamento compact encolhe com a profundidade, então o prompt não explode.",
+      ". Pode aninhar quantas camadas precisar, e nada do que fizer aqui vaza para cima.",
     suggestions3: [
-      "Mostre a profundidade 2 em ação",
-      "O que acontece se o contexto ficar longo demais?",
-      "Posso fixar atravessando um bloco de código?",
+      "Mostre que funciona igual um nível mais fundo",
+      "Até onde dá para ir?",
+      "Dá para ramificar lateralmente dentro deste?",
     ],
     sub2Reply:
-      "Na profundidade 2, a cadeia de resumos ancestrais fica abaixo de ~1.3K tokens — 800 para o principal, 500 para sub-1, 300 para sub-2. As âncoras nunca são resumidas: são citadas literalmente, então o modelo sempre vê a frase exata que você se importou. Empilhe quantas camadas precisar; cada uma continua barata.",
+      "Exatamente o mesmo padrão. Fixe qualquer frase aqui e outro sub-tópico focado abre abaixo — esta camada fica intacta, como o principal fez antes. Você está agora na profundidade 2, sem teto: continue, ramifique lateralmente, ou pare aqui. Três níveis acima, seu principal está exatamente onde você deixou.",
     subTitle1: "fixar esse detalhe",
     subTitle2: "continuar cavando",
-    deepTitle: "sem ver outros pins",
+    deepTitle: "abrir outro nível",
     mainCrumb: "Principal",
     followupLabel: "Pergunta",
     pinLabel: "Fixar",
@@ -833,14 +896,21 @@ Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
     mergeLabel: "Mesclar",
     mergeOutputLabel: "Mesclar saída",
     suggestionsLabel: "sugestões",
+    customQuestionPlaceholder: "Ou escreva sua própria pergunta…",
+    youLabel: "VOCÊ",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "você está aqui",
+    tapLabel: "toque",
     replyingLabel: "respondendo no sub-tópico…",
     generatingLabel: "gerando…",
-    mergeSelectThreads: "Selecionar tópicos",
+    readyLabel: "pronto",
+    mergeSelectThreads: "Ramos nesta mesclagem",
     mergeAll: "Tudo",
     mergeGenerate: "Gerar",
     mergeDownload: "Baixar Markdown",
     mergeCopy: "Copiar",
     mergeFormats: ["Resumo livre", "Tópicos", "Estruturado"],
+    mergeBranchesSelected: "3 ramos + 1 principal",
     mergeReport:
 `## Deeppin de uma só vez
 
@@ -848,42 +918,42 @@ Drei Ebenen Erkundung, ein kohärentes Artefakt, null Drift im Haupt-Thread.`,
 Você escolhe a frase exata para aprofundar, abre um sub-tópico focado, e o principal fica intacto — sem nova aba, sem reiniciar.
 
 **Profundidade continua barata**
-Sub-tópicos herdam apenas âncora + resumo principal. O orçamento compact encolhe por nível (800 → 500 → 300), então mesmo um pin de 4 níveis custa menos que uma repetição completa.
+Sub-tópicos herdam âncora + resumo contínuo do principal. Orçamento por nível encolhe (800 → 500 → 300); o RAG traz o que o resumo descartou. Mesmo um pin de 4 níveis custa menos que uma repetição completa.
 
 **Mesclar reconstrói a história**
-Quando estiver pronto, selecione as ramificações relevantes → um relatório estruturado, codificado por profundidade. Pins viram títulos; respostas, corpo.
+Selecione as ramificações que importam → um relatório estruturado, codificado por profundidade. Pins viram títulos; respostas, corpo.
 
 **Resultado líquido**
 Três níveis de exploração, um artefato coerente, zero desvio no tópico principal.`,
     caption: {
       blank: "Conversa nova — você vai fazer a pergunta principal.",
-      "main-stream": "O Deeppin escreve a resposta no tópico principal.",
-      "p1-sweep": "Arraste sobre a frase que quer aprofundar.",
-      "p1-selpop": "Uma barra compacta surge sobre a seleção — toque Pergunta.",
-      "p1-dialog": "Três acompanhamentos são gerados para essa frase exata.",
+      "main-stream": "O Deeppin transmite a resposta no tópico principal.",
+      "p1-sweep": "Arraste sobre a frase a aprofundar — fica destacada.",
+      "p1-selpop": "A seleção fica destacada, uma barra surge acima. Toque Pergunta.",
+      "p1-dialog": "Três acompanhamentos são gerados — ou escreva o seu na caixa.",
       "p1-pick": "Escolha o que você realmente quer seguir.",
-      "p1-underline": "A âncora cai na resposta — a IA já está respondendo num sub-tópico.",
-      "p2-sweep": "De volta ao principal, arraste sobre uma segunda frase.",
-      "p2-selpop": "Mesma barra, frase nova — toque Pergunta de novo.",
-      "p2-dialog": "Novas sugestões ajustadas à segunda frase.",
+      "p1-underline": "Duas mudanças ao mesmo tempo: a âncora é sublinhada aqui e um nó aparece à direita.",
+      "p2-sweep": "De volta ao principal — arraste sobre uma segunda frase.",
+      "p2-selpop": "Mesma barra, frase nova — destaque permanece, toque Pergunta.",
+      "p2-dialog": "Novas sugestões — ou escreva a sua.",
       "p2-pick": "Escolha uma.",
-      "p2-underline": "Duas âncoras plantadas. A IA trabalha em paralelo — volte quando quiser ler.",
-      "l1-hover": "Passe o mouse na primeira âncora — prévia: título, trecho, Abrir.",
+      "p2-underline": "Duas âncoras, dois sub-tópicos paralelos. Volte quando pronto.",
+      "l1-hover": "Passe o mouse na primeira âncora — a prévia mostra pergunta e resposta.",
       "l1-enter": "Toque Abrir — você está dentro do sub-tópico 1.",
-      "l1-stream": "O sub-tópico 1 responde. O principal fica intacto atrás.",
+      "l1-stream": "A resposta já estava pronta enquanto você ficava no principal. Aqui completa.",
       "p3-sweep": "Também dá para fixar dentro de um sub-tópico — arraste.",
-      "p3-selpop": "Mesma barra, mesmo fluxo — nada novo para aprender.",
-      "p3-dialog": "Desta vez os acompanhamentos focam no sub-tópico.",
+      "p3-selpop": "Mesma barra, mesmo fluxo — destaque permanece, toque Pergunta.",
+      "p3-dialog": "Acompanhamentos focados no sub-tópico — ou escreva o seu.",
       "p3-pick": "Escolha uma.",
-      "p3-underline": "Profundidade 2 — pode ir tão fundo quanto quiser.",
-      "l2-hover": "Passe o mouse na âncora mais funda — prévia, depois Abrir.",
+      "p3-underline": "Profundidade 2 — veja o novo sublinhado e a terceira camada na árvore.",
+      "l2-hover": "Passe o mouse na âncora mais funda — prévia com pergunta e resposta.",
       "l2-enter": "Toque Abrir — agora você está na profundidade 2.",
-      "l2-stream": "A resposta mais funda. Três níveis, zero desvio de tópico.",
+      "l2-stream": "A resposta já esperava. Três níveis, zero desvio de tópico.",
       "graph-hint": "A barra direita vem rastreando cada ramo o tempo todo.",
-      "graph-nav-root": "Toque em qualquer nó para saltar — de volta ao principal.",
-      "graph-navigated": "De volta ao principal. Todos os ramos continuam vivos.",
-      "merge-hint": "Terminou de explorar? Mesclar junta tudo.",
-      "merge-modal": "Escolha os ramos a incluir — ancestrais agregam-se sozinhos.",
+      "graph-nav-root": "Toque em qualquer nó para saltar — repare no pulso sobre o Principal.",
+      "graph-navigated": "De volta ao nó Principal. Os três ramos continuam vivos na árvore.",
+      "merge-hint": "Canto superior direito — toque Mesclar para juntar tudo que você fixou.",
+      "merge-modal": "A árvore mostra cada ramo; ancestrais agregam-se sozinhos.",
       "merge-stream": "Um relatório estruturado é gerado a partir dos ramos escolhidos.",
       "merge-done": "Três níveis, um artefato coerente. Esse é o loop.",
     },
@@ -908,20 +978,20 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
       "А если я передумаю и захочу закрыть одну?",
     ],
     sub1Before:
-      "Выделите текст → Вопрос → сфокусированная подветка откроется прямо там. Она наследует якорь и сводку основной ветки, но ",
-    sub1Anchor: "не видит других ваших закладок",
+      "Вы в подветке. Ваш вопрос остаётся сфокусированным здесь — основная ветка наверху не тронута. Когда захотите глубже, ",
+    sub1Anchor: "закрепите фразу и откройте ещё уровень",
     sub1After:
-      " — полная изоляция. Внутри можно закреплять ещё раз; compact-бюджет сокращается с глубиной, так что prompt не раздуется.",
+      ". Можно вложить сколько угодно слоёв, и ничего из того, что вы здесь делаете, не течёт обратно наверх.",
     suggestions3: [
-      "Покажи реальную работу глубины 2",
-      "Что будет, если контекст станет слишком длинным?",
-      "Можно ли закреплять через кодовый блок?",
+      "Покажи, что на уровень глубже работает так же",
+      "Насколько глубоко реально уйти?",
+      "Можно ли внутри этого ответвиться в бок?",
     ],
     sub2Reply:
-      "На глубине 2 цепочка сводок предков остаётся под ~1,3K токенов — 800 для основной, 500 для подветки 1, 300 для подветки 2. Сами якоря никогда не сжимаются: они цитируются дословно, поэтому модель всегда видит точную фразу, которая вас заинтересовала. Складывайте сколько угодно слоёв; каждый остаётся дешёвым.",
+      "Ровно тот же шаблон. Закрепите любую фразу здесь — и ниже откроется ещё одна сфокусированная подветка, этот уровень останется нетронутым, как основная ранее. Сейчас вы на глубине 2, без потолка: продолжайте, ответвляйтесь, или остановитесь здесь. Три уровня выше, ваша основная ветка ровно там, где вы её оставили.",
     subTitle1: "закрепить эту деталь",
     subTitle2: "копать дальше",
-    deepTitle: "другие закладки не видно",
+    deepTitle: "открыть ещё уровень",
     mainCrumb: "Главная",
     followupLabel: "Вопрос",
     pinLabel: "Закрепить",
@@ -935,14 +1005,21 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
     mergeLabel: "Объединить",
     mergeOutputLabel: "Объединить вывод",
     suggestionsLabel: "подсказки",
+    customQuestionPlaceholder: "Или введите свой вопрос…",
+    youLabel: "ВЫ",
+    aiLabel: "Deeppin",
+    youAreHereLabel: "вы здесь",
+    tapLabel: "нажмите",
     replyingLabel: "отвечает в подветке…",
     generatingLabel: "генерация…",
-    mergeSelectThreads: "Выбрать ветки",
+    readyLabel: "готово",
+    mergeSelectThreads: "Ветви в этом объединении",
     mergeAll: "Все",
     mergeGenerate: "Сгенерировать",
     mergeDownload: "Скачать Markdown",
     mergeCopy: "Копировать",
     mergeFormats: ["Свободное резюме", "Ключевые пункты", "Структурировано"],
+    mergeBranchesSelected: "3 ветви + 1 главная",
     mergeReport:
 `## Deeppin одним заходом
 
@@ -950,42 +1027,42 @@ Três níveis de exploração, um artefato coerente, zero desvio no tópico prin
 Вы выбираете точную фразу для углубления, открываете сфокусированную подветку, и основная остаётся нетронутой — ни новой вкладки, ни перезапуска.
 
 **Глубина остаётся дешёвой**
-Подветки наследуют только якорь + сводку основной. Compact-бюджет сокращается на уровне (800 → 500 → 300), так что даже закладка на глубине 4 стоит меньше полного повтора.
+Подветки наследуют якорь + скользящую сводку основной. Бюджет на уровне сокращается (800 → 500 → 300); RAG достаёт то, что сводка отбросила. Закладка на глубине 4 всё равно стоит меньше полного повтора.
 
 **Объединение собирает историю**
-Когда готовы, выберите нужные ветви → один структурированный отчёт с кодировкой по глубине. Закладки становятся заголовками; ответы — телом.
+Выберите нужные ветви → один структурированный отчёт с кодировкой по глубине. Закладки становятся заголовками; ответы — телом.
 
 **Итог**
 Три уровня исследования, один связный артефакт, ноль дрейфа в основной ветке.`,
     caption: {
       blank: "Новый разговор — вы вот-вот зададите основной вопрос.",
       "main-stream": "Deeppin печатает ответ в основной ветке.",
-      "p1-sweep": "Проведите по фразе, которую хотите углубить.",
-      "p1-selpop": "Компактная панель появляется над выделением — нажмите Вопрос.",
-      "p1-dialog": "Три уточняющих вопроса генерируются под эту фразу.",
+      "p1-sweep": "Проведите по фразе для углубления — подсветка остаётся.",
+      "p1-selpop": "Выделение подсвечено, сверху появляется панель. Нажмите Вопрос.",
+      "p1-dialog": "Три уточнения генерируются — или впишите свой в поле ниже.",
       "p1-pick": "Выберите тот, что действительно хотите преследовать.",
-      "p1-underline": "Якорь ложится в ответ — ИИ уже отвечает в подветке.",
-      "p2-sweep": "Обратно на главной, проведите по второй фразе.",
-      "p2-selpop": "Та же панель, новая фраза — нажмите Вопрос снова.",
-      "p2-dialog": "Новые подсказки под вторую фразу.",
+      "p1-underline": "Два изменения сразу: якорь подчёркивается здесь, и справа появляется узел.",
+      "p2-sweep": "Обратно на главной — проведите по второй фразе.",
+      "p2-selpop": "Та же панель, новая фраза — подсветка сохраняется, нажмите Вопрос.",
+      "p2-dialog": "Новые подсказки — или впишите свой.",
       "p2-pick": "Выберите одну.",
-      "p2-underline": "Две закладки поставлены. ИИ работает параллельно — возвращайтесь, когда хотите прочитать.",
-      "l1-hover": "Наведите на первый якорь — предпросмотр: заголовок, фрагмент, Открыть.",
-      "l1-enter": "Нажмите Открыть — вы внутри подветки 1.",
-      "l1-stream": "Подветка 1 отвечает. Основная остаётся нетронутой позади.",
+      "p2-underline": "Две закладки, две параллельные подветки. Возвращайтесь, когда будете готовы.",
+      "l1-hover": "Наведите на первый якорь — в предпросмотре вопрос и ответ.",
+      "l1-enter": "Нажмите Открыть — вы в подветке 1.",
+      "l1-stream": "Ответ был готов, пока вы оставались на главной. Вот он целиком.",
       "p3-sweep": "Закреплять можно и внутри подветки — проведите.",
-      "p3-selpop": "Та же панель, тот же поток — ничего нового учить не нужно.",
-      "p3-dialog": "На этот раз уточнения заточены под подветку.",
+      "p3-selpop": "Та же панель, тот же поток — подсветка сохраняется, нажмите Вопрос.",
+      "p3-dialog": "Уточнения, заточенные под подветку — или впишите свой.",
       "p3-pick": "Выберите одну.",
-      "p3-underline": "Глубина 2 — можно копать сколько угодно глубоко.",
-      "l2-hover": "Наведите на более глубокий якорь — предпросмотр, затем Открыть.",
-      "l2-enter": "Нажмите Открыть — теперь вы на глубине 2.",
-      "l2-stream": "Самый глубокий ответ. Три уровня, ноль дрейфа темы.",
+      "p3-underline": "Глубина 2 — посмотрите на новое подчёркивание и третий уровень дерева.",
+      "l2-hover": "Наведите на более глубокий якорь — предпросмотр с вопросом и ответом.",
+      "l2-enter": "Нажмите Открыть — вы теперь на глубине 2.",
+      "l2-stream": "Ответ уже ждал. Три уровня, ноль дрейфа темы.",
       "graph-hint": "Правая панель всё это время отслеживала каждую ветвь.",
-      "graph-nav-root": "Щёлкните любой узел, чтобы прыгнуть — назад в основную.",
-      "graph-navigated": "Снова на основной. Все ветви остаются живыми.",
-      "merge-hint": "Закончили исследовать? Объединение собирает всё вместе.",
-      "merge-modal": "Выберите, какие ветви включить — предки агрегируются автоматически.",
+      "graph-nav-root": "Щёлкните любой узел, чтобы прыгнуть — обратите внимание на пульс на Главной.",
+      "graph-navigated": "Снова на узле «Главная». Все три ветви живы в дереве.",
+      "merge-hint": "Вверху справа — нажмите Объединить, чтобы собрать всё, что вы закрепили.",
+      "merge-modal": "Дерево показывает каждую ветвь; предки агрегируются автоматически.",
       "merge-stream": "Из выбранных ветвей генерируется один структурированный отчёт.",
       "merge-done": "Три уровня, один связный артефакт. Таков цикл.",
     },

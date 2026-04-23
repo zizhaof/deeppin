@@ -17,41 +17,50 @@ import { useDemoController } from "@/lib/useDemoController";
 import { DEMO_CONTENT, type DemoContent } from "@/components/demoFlow/content";
 import { DEMO_PHASES, type DemoPhase } from "@/components/demoFlow/types";
 
-// ── Delays —— 手机端 sweep 需要放完 Select FAB 点击再开始扫，整体稍长
-// Mobile delays — sweep phases are longer so the Select-FAB tap hint plays
-// out before the sweep itself starts.
+// ── Delays —— mobile sweep 稍长（要放完 Select FAB 点击再开始扫）
+// Mobile delays — sweep phases are longer to cover the Select-FAB tap hint.
 const DELAYS: Record<DemoPhase, number> = {
   blank: 1500,
   "main-stream": 5500,
-  "p1-sweep": 2800,
-  "p1-selpop": 2800,
-  "p1-dialog": 3800,
-  "p1-pick": 1300,
-  "p1-underline": 2000,
-  "p2-sweep": 2800,
-  "p2-selpop": 2800,
-  "p2-dialog": 3800,
-  "p2-pick": 1300,
+  "p1-sweep": 2900,
+  "p1-selpop": 3400,
+  "p1-dialog": 4500,
+  "p1-pick": 1400,
+  "p1-underline": 3400,
+  "p2-sweep": 2900,
+  "p2-selpop": 3400,
+  "p2-dialog": 4500,
+  "p2-pick": 1400,
   "p2-underline": 4200,
-  "l1-hover": 3200,
+  "l1-hover": 3400,
   "l1-enter": 1500,
-  "l1-stream": 5000,
-  "p3-sweep": 2800,
-  "p3-selpop": 2800,
-  "p3-dialog": 3800,
-  "p3-pick": 1300,
-  "p3-underline": 3600,
-  "l2-hover": 3000,
+  "l1-stream": 4000,
+  "p3-sweep": 2900,
+  "p3-selpop": 3400,
+  "p3-dialog": 4500,
+  "p3-pick": 1400,
+  "p3-underline": 4000,
+  "l2-hover": 3200,
   "l2-enter": 1500,
-  "l2-stream": 5500,
+  "l2-stream": 4200,
   "graph-hint": 3000,
-  "graph-nav-root": 3200,
-  "graph-navigated": 2000,
-  "merge-hint": 2500,
+  "graph-nav-root": 4000,
+  "graph-navigated": 3800,
+  "merge-hint": 3500,
   "merge-modal": 3200,
-  "merge-stream": 4500,
+  "merge-stream": 4800,
   "merge-done": 5500,
 };
+
+const PHASE_IDX: Record<DemoPhase, number> = DEMO_PHASES.reduce(
+  (acc, p, i) => {
+    acc[p] = i;
+    return acc;
+  },
+  {} as Record<DemoPhase, number>,
+);
+const atOrAfter = (current: DemoPhase, ref: DemoPhase) =>
+  PHASE_IDX[current] >= PHASE_IDX[ref];
 
 const inMainView = (p: DemoPhase) =>
   p === "blank" ||
@@ -97,8 +106,10 @@ export default function MobilePinDemo() {
     [],
   );
 
-  // Sweep 延后 900ms 开始，给 Select FAB 点击让路，之后 1200ms 扫完
-  // Sweep animates after a 900ms Select-FAB-tap delay, then runs 1200ms.
+  // Sweep：每次 sweep phase 延后 900ms 开始（给 Select FAB 点击让路），
+  // 然后 1200ms 扫完。非 sweep 阶段定格在 1 以保持高亮。
+  // Each sweep waits 900ms for the Select-FAB tap hint, then runs 1200ms.
+  // Outside of sweep, stays pinned at 1 so the selection stays lit.
   const [sweepPct, setSweepPct] = useState(0);
   const rafRef = useRef<number | null>(null);
   useEffect(() => {
@@ -129,7 +140,7 @@ export default function MobilePinDemo() {
     };
   }, [phase]);
 
-  // Tap ring：每个有交互的 phase 挂一个时点触发 press + print + ring
+  // Tap ring —— 每个有交互的 phase 在末尾挂一次 press + print + ring
   const [tapRing, setTapRing] = useState(false);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -149,7 +160,7 @@ export default function MobilePinDemo() {
       "l2-enter": DELAYS["l2-enter"] - 900,
       "graph-hint": DELAYS["graph-hint"] - 1400,
       "graph-nav-root": DELAYS["graph-nav-root"] - 1300,
-      "merge-hint": DELAYS["merge-hint"] - 1100,
+      "merge-hint": DELAYS["merge-hint"] - 1300,
     };
     const off = schedule[phase];
     if (off == null) return;
@@ -159,7 +170,7 @@ export default function MobilePinDemo() {
     };
   }, [phase]);
 
-  // 流式打字
+  // ── 流式 —— 同 desktop 策略：main + merge 流式，l1 / l2 不流式
   const [mainLen, setMainLen] = useState(0);
   const [sub1Len, setSub1Len] = useState(0);
   const [sub2Len, setSub2Len] = useState(0);
@@ -171,6 +182,31 @@ export default function MobilePinDemo() {
   const sub1FullLen =
     c.sub1Before.length + c.sub1Anchor.length + c.sub1After.length;
 
+  const runStream = (
+    total: number,
+    fullMs: number,
+    setter: (n: number) => void,
+    tickMs = 28,
+  ) => {
+    if (total === 0) {
+      setter(0);
+      return () => {};
+    }
+    let i = 0;
+    setter(0);
+    const ticks = Math.max(1, Math.floor(fullMs / tickMs));
+    const step = Math.max(1, Math.ceil(total / ticks));
+    const tick = () => {
+      i = Math.min(total, i + step);
+      setter(i);
+      if (i < total) streamTimerRef.current = setTimeout(tick, tickMs);
+    };
+    tick();
+    return () => {
+      if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
+    };
+  };
+
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
     if (phase === "blank") {
@@ -181,78 +217,41 @@ export default function MobilePinDemo() {
       setMainLen(mainFullLen);
       return;
     }
-    setMainLen(0);
-    let i = 0;
-    const tick = () => {
-      i = Math.min(mainFullLen, i + 5);
-      setMainLen(i);
-      if (i < mainFullLen) streamTimerRef.current = setTimeout(tick, 32);
-    };
-    tick();
-    return () => {
-      if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    };
+    return runStream(mainFullLen, DELAYS["main-stream"] * 0.8, setMainLen);
   }, [phase, mainFullLen]);
 
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    if (phase !== "l1-stream") {
-      setSub1Len(
-        inSub1View(phase) || inDeepestView(phase) || inMergeView(phase)
-          ? sub1FullLen
-          : 0,
-      );
-      return;
+    if (
+      inSub1View(phase) ||
+      inDeepestView(phase) ||
+      inMergeView(phase) ||
+      atOrAfter(phase, "p3-underline")
+    ) {
+      setSub1Len(sub1FullLen);
+    } else {
+      setSub1Len(0);
     }
-    setSub1Len(0);
-    let i = 0;
-    const tick = () => {
-      i = Math.min(sub1FullLen, i + 4);
-      setSub1Len(i);
-      if (i < sub1FullLen) streamTimerRef.current = setTimeout(tick, 34);
-    };
-    tick();
-    return () => {
-      if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    };
   }, [phase, sub1FullLen]);
 
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    if (phase !== "l2-stream") {
-      setSub2Len(
-        inDeepestView(phase) || inMergeView(phase) ? c.sub2Reply.length : 0,
-      );
-      return;
+    if (inDeepestView(phase) || inMergeView(phase)) {
+      setSub2Len(c.sub2Reply.length);
+    } else {
+      setSub2Len(0);
     }
-    setSub2Len(0);
-    let i = 0;
-    const tick = () => {
-      i = Math.min(c.sub2Reply.length, i + 4);
-      setSub2Len(i);
-      if (i < c.sub2Reply.length) streamTimerRef.current = setTimeout(tick, 30);
-    };
-    tick();
-    return () => {
-      if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-    };
   }, [phase, c.sub2Reply]);
 
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
     if (phase === "merge-stream") {
-      setMergeLen(0);
-      let i = 0;
-      const tick = () => {
-        i = Math.min(c.mergeReport.length, i + 8);
-        setMergeLen(i);
-        if (i < c.mergeReport.length)
-          streamTimerRef.current = setTimeout(tick, 22);
-      };
-      tick();
-      return () => {
-        if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
-      };
+      return runStream(
+        c.mergeReport.length,
+        DELAYS["merge-stream"] * 0.8,
+        setMergeLen,
+        22,
+      );
     }
     if (phase === "merge-done") {
       setMergeLen(c.mergeReport.length);
@@ -277,38 +276,30 @@ export default function MobilePinDemo() {
   const dialogPicked =
     phase === "p1-pick" || phase === "p2-pick" || phase === "p3-pick";
 
-  const anchor1Visible = ![
-    "blank", "main-stream",
-    "p1-sweep", "p1-selpop", "p1-dialog", "p1-pick",
-  ].includes(phase);
-  const anchor2Visible = ![
-    "blank", "main-stream",
-    "p1-sweep", "p1-selpop", "p1-dialog", "p1-pick", "p1-underline",
-    "p2-sweep", "p2-selpop", "p2-dialog", "p2-pick",
-  ].includes(phase);
-  const anchor1Breathing = [
-    "p1-underline",
-    "p2-sweep", "p2-selpop", "p2-dialog", "p2-pick", "p2-underline",
-    "l1-hover",
-  ].includes(phase);
-  const anchor2Breathing = [
-    "p2-underline",
-    "l1-hover", "l1-enter", "l1-stream",
-    "p3-sweep", "p3-selpop", "p3-dialog", "p3-pick", "p3-underline",
-    "l2-hover", "l2-enter", "l2-stream",
-    "graph-hint", "graph-nav-root", "graph-navigated",
-  ].includes(phase);
+  // 选择高亮持续 sweep + selpop + dialog + pick
+  const anchor1Selecting =
+    phase === "p1-sweep" || phase === "p1-selpop" ||
+    phase === "p1-dialog" || phase === "p1-pick";
+  const anchor2Selecting =
+    phase === "p2-sweep" || phase === "p2-selpop" ||
+    phase === "p2-dialog" || phase === "p2-pick";
+  const sub1AnchorSelecting =
+    phase === "p3-sweep" || phase === "p3-selpop" ||
+    phase === "p3-dialog" || phase === "p3-pick";
 
-  const sub1AnchorShown =
-    (viewSub1 || viewDeep || viewMerge) &&
-    !["l1-stream", "p3-sweep", "p3-selpop", "p3-dialog", "p3-pick"].includes(
-      phase,
-    );
-  const sub1AnchorBreathing = ["p3-underline", "l2-hover"].includes(phase);
+  const anchor1Visible = atOrAfter(phase, "p1-underline");
+  const anchor2Visible = atOrAfter(phase, "p2-underline");
+  const sub1AnchorVisible = atOrAfter(phase, "p3-underline");
+  const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-enter"];
+  const anchor2Breathing = anchor2Visible;
+  const sub1AnchorBreathing =
+    sub1AnchorVisible && PHASE_IDX[phase] < PHASE_IDX["l2-enter"];
 
-  // 手机端锚点提示：l1-hover / l2-hover 时在锚点上画 tap 指示（提示点击）
-  // Anchor tap hint on mobile: l1-hover / l2-hover phases show a tap ring
-  // on the anchor since mobile users tap (no hover).
+  const nodePulse: "sub1" | "sub2" | "deep" | null =
+    phase === "p1-underline" ? "sub1" :
+    phase === "p2-underline" ? "sub2" :
+    phase === "p3-underline" ? "deep" : null;
+
   const tapHintAnchor1 = phase === "l1-hover" || phase === "l1-enter";
   const tapHintSub1Anchor = phase === "l2-hover" || phase === "l2-enter";
 
@@ -395,6 +386,7 @@ export default function MobilePinDemo() {
           </span>
         </div>
 
+        {/* topbar with Merge + overview buttons */}
         <div
           className="flex items-center px-2 gap-1"
           style={{
@@ -444,10 +436,11 @@ export default function MobilePinDemo() {
             >
               Deeppin
             </span>
+            {/* Merge button —— demo-merge-hint 脉冲放大 */}
             <span
               className={`relative ml-2 inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium ${
-                mergeBtnPulse ? "demo-tap-press" : ""
-              }`}
+                mergeBtnPulse ? "demo-merge-hint" : ""
+              } ${tapOnMerge ? "demo-tap-press" : ""}`}
               style={{
                 background: mergeBtnPulse ? "var(--accent)" : "var(--ink)",
                 color: "var(--paper)",
@@ -533,6 +526,8 @@ export default function MobilePinDemo() {
               anchor2Visible={anchor2Visible}
               anchor1Breathing={anchor1Breathing}
               anchor2Breathing={anchor2Breathing}
+              anchor1Selecting={anchor1Selecting}
+              anchor2Selecting={anchor2Selecting}
               selpopOn={selpopOn}
               selpopTap={tapRing && (phase === "p1-selpop" || phase === "p2-selpop")}
               tapHintAnchor1={tapHintAnchor1}
@@ -549,8 +544,9 @@ export default function MobilePinDemo() {
               phase={phase}
               sweepPct={sweepPct}
               sub1Len={sub1Len}
-              sub1AnchorShown={sub1AnchorShown}
+              sub1AnchorVisible={sub1AnchorVisible}
               sub1AnchorBreathing={sub1AnchorBreathing}
+              sub1AnchorSelecting={sub1AnchorSelecting}
               selpopOn={selpopOn}
               selpopTap={tapRing && phase === "p3-selpop"}
               tapHintSub1Anchor={tapHintSub1Anchor}
@@ -608,6 +604,7 @@ export default function MobilePinDemo() {
             </div>
           )}
 
+          {/* Right drawer Graph */}
           <div
             className="absolute top-0 right-0 bottom-0 transition-transform duration-300 ease-out flex flex-col"
             style={{
@@ -663,13 +660,15 @@ export default function MobilePinDemo() {
                 c={c}
                 anchor1Visible={anchor1Visible}
                 anchor2Visible={anchor2Visible}
-                sub1AnchorShown={sub1AnchorShown}
+                sub1AnchorVisible={sub1AnchorVisible}
                 activeNode={activeNode}
                 anchor1Breathing={anchor1Breathing}
                 anchor2Breathing={anchor2Breathing}
                 sub1AnchorBreathing={sub1AnchorBreathing}
+                nodePulse={nodePulse}
                 rootTapHint={phase === "graph-nav-root"}
                 rootTap={phase === "graph-nav-root" && tapRing}
+                atRootLabel={phase === "graph-navigated"}
               />
             </div>
             <div
@@ -724,6 +723,13 @@ export default function MobilePinDemo() {
           0%, 100% { box-shadow: 0 0 0 0 rgba(42, 42, 114, 0.50); }
           50%      { box-shadow: 0 0 0 8px rgba(42, 42, 114, 0); }
         }
+        .demo-merge-hint {
+          animation: demo-merge-hint 1.4s ease-in-out infinite;
+        }
+        @keyframes demo-merge-hint {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(42,42,114,0.50); transform: scale(1); }
+          50%      { box-shadow: 0 0 0 10px rgba(42,42,114,0); transform: scale(1.05); }
+        }
         .demo-tap-print-sm {
           width: 28px; height: 28px;
           margin-left: -14px; margin-top: -14px;
@@ -742,6 +748,7 @@ function MobileMainView({
   c, phase, sweepPct, mainLen,
   anchor1Visible, anchor2Visible,
   anchor1Breathing, anchor2Breathing,
+  anchor1Selecting, anchor2Selecting,
   selpopOn, selpopTap,
   tapHintAnchor1, enterTap,
 }: {
@@ -753,6 +760,8 @@ function MobileMainView({
   anchor2Visible: boolean;
   anchor1Breathing: boolean;
   anchor2Breathing: boolean;
+  anchor1Selecting: boolean;
+  anchor2Selecting: boolean;
   selpopOn: 0 | 1 | 2 | 3;
   selpopTap: boolean;
   tapHintAnchor1: boolean;
@@ -772,8 +781,6 @@ function MobileMainView({
   const [s0, s1, s2, s3, s4] = [
     c.aiBefore1, c.anchor1, c.aiBetween, c.anchor2, c.aiAfter2,
   ].map(slice);
-  const sweep1 = phase === "p1-sweep";
-  const sweep2 = phase === "p2-sweep";
 
   return (
     <div className="h-full p-3 overflow-hidden">
@@ -801,7 +808,7 @@ function MobileMainView({
                 className="w-[4px] h-[4px] rounded-full"
                 style={{ background: "var(--ink-3)" }}
               />
-              YOU
+              {c.youLabel}
             </div>
             <div
               className="max-w-[88%] px-3 py-2 text-[12px] leading-[1.5]"
@@ -834,7 +841,7 @@ function MobileMainView({
                   color: "var(--ink-3)",
                 }}
               >
-                Deeppin
+                {c.aiLabel}
               </span>
             </div>
             <div
@@ -852,7 +859,8 @@ function MobileMainView({
                 <MobileAnchor
                   text={s1}
                   pigment="var(--pig-1)"
-                  sweeping={sweep1}
+                  selecting={anchor1Selecting}
+                  sweeping={phase === "p1-sweep"}
                   sweepPct={sweepPct}
                   visible={anchor1Visible}
                   breathing={anchor1Breathing}
@@ -873,7 +881,8 @@ function MobileMainView({
                 <MobileAnchor
                   text={s3}
                   pigment="var(--pig-2)"
-                  sweeping={sweep2}
+                  selecting={anchor2Selecting}
+                  sweeping={phase === "p2-sweep"}
                   sweepPct={sweepPct}
                   visible={anchor2Visible}
                   breathing={anchor2Breathing}
@@ -916,23 +925,23 @@ function MobileMainView({
 // ── MobileSub1View ───────────────────────────────────────────────────────
 function MobileSub1View({
   c, phase, sweepPct, sub1Len,
-  sub1AnchorShown, sub1AnchorBreathing,
+  sub1AnchorVisible, sub1AnchorBreathing, sub1AnchorSelecting,
   selpopOn, selpopTap, tapHintSub1Anchor, enterTap,
 }: {
   c: DemoContent;
   phase: DemoPhase;
   sweepPct: number;
   sub1Len: number;
-  sub1AnchorShown: boolean;
+  sub1AnchorVisible: boolean;
   sub1AnchorBreathing: boolean;
+  sub1AnchorSelecting: boolean;
   selpopOn: 0 | 1 | 2 | 3;
   selpopTap: boolean;
   tapHintSub1Anchor: boolean;
   enterTap: boolean;
 }) {
   const full = c.sub1Before.length + c.sub1Anchor.length + c.sub1After.length;
-  const streaming = phase === "l1-stream" && sub1Len < full;
-  const show = phase === "l1-stream" ? sub1Len : full;
+  const show = sub1Len > 0 ? sub1Len : full;
   let rem = show;
   const slice = (s: string) => {
     const t = s.slice(0, rem);
@@ -940,7 +949,6 @@ function MobileSub1View({
     return t;
   };
   const [b, a, rest] = [c.sub1Before, c.sub1Anchor, c.sub1After].map(slice);
-  const sweep3 = phase === "p3-sweep";
 
   return (
     <div className="h-full p-3 overflow-hidden">
@@ -980,7 +988,7 @@ function MobileSub1View({
             className="w-[4px] h-[4px] rounded-full"
             style={{ background: "var(--ink-3)" }}
           />
-          YOU
+          {c.youLabel}
         </div>
         <div
           className="max-w-[80%] px-3 py-2 text-[11.5px] leading-[1.5]"
@@ -1013,7 +1021,7 @@ function MobileSub1View({
               color: "var(--ink-3)",
             }}
           >
-            Deeppin
+            {c.aiLabel}
           </span>
         </div>
         <div
@@ -1031,9 +1039,10 @@ function MobileSub1View({
             <MobileAnchor
               text={a}
               pigment="var(--pig-3)"
-              sweeping={sweep3}
+              selecting={sub1AnchorSelecting}
+              sweeping={phase === "p3-sweep"}
               sweepPct={sweepPct}
-              visible={sub1AnchorShown}
+              visible={sub1AnchorVisible}
               breathing={sub1AnchorBreathing}
               tapHint={tapHintSub1Anchor}
               tapFiring={enterTap}
@@ -1048,23 +1057,8 @@ function MobileSub1View({
             </MobileAnchor>
           )}
           {rest}
-          {streaming && (
-            <span
-              className="inline-block w-[2px] h-3 align-middle ml-[1px]"
-              style={{
-                background: "var(--accent)",
-                animation: "mp-sub-caret 1s steps(2) infinite",
-              }}
-            />
-          )}
         </div>
       </div>
-      <style jsx>{`
-        @keyframes mp-sub-caret {
-          0%, 50% { opacity: 1; }
-          51%, 100% { opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }
@@ -1077,7 +1071,7 @@ function MobileDeepestView({
   phase: DemoPhase;
   sub2Len: number;
 }) {
-  const streaming = phase === "l2-stream" && sub2Len < c.sub2Reply.length;
+  void phase;
   return (
     <div className="h-full p-3 overflow-hidden">
       <div
@@ -1127,7 +1121,7 @@ function MobileDeepestView({
             className="w-[4px] h-[4px] rounded-full"
             style={{ background: "var(--ink-3)" }}
           />
-          YOU
+          {c.youLabel}
         </div>
         <div
           className="max-w-[80%] px-3 py-2 text-[11.5px] leading-[1.5]"
@@ -1160,7 +1154,7 @@ function MobileDeepestView({
               color: "var(--ink-3)",
             }}
           >
-            Deeppin
+            {c.aiLabel}
           </span>
         </div>
         <div
@@ -1173,35 +1167,21 @@ function MobileDeepestView({
             borderBottomLeftRadius: 3,
           }}
         >
-          {c.sub2Reply.slice(0, sub2Len)}
-          {streaming && (
-            <span
-              className="inline-block w-[2px] h-3 align-middle ml-[1px]"
-              style={{
-                background: "var(--accent)",
-                animation: "mp-deep-caret 1s steps(2) infinite",
-              }}
-            />
-          )}
+          {c.sub2Reply.slice(0, sub2Len || c.sub2Reply.length)}
         </div>
       </div>
-      <style jsx>{`
-        @keyframes mp-deep-caret {
-          0%, 50% { opacity: 1; }
-          51%, 100% { opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }
 
-// ── MobileAnchor + MobileSelPop + MobileDialog ──────────────────────────
+// ── MobileAnchor / SelPop / Dialog ──────────────────────────────────────
 function MobileAnchor({
-  text, pigment, sweeping, sweepPct,
+  text, pigment, selecting, sweeping, sweepPct,
   visible, breathing, tapHint, tapFiring, children,
 }: {
   text: string;
   pigment: string;
+  selecting: boolean;
   sweeping: boolean;
   sweepPct: number;
   visible: boolean;
@@ -1210,12 +1190,13 @@ function MobileAnchor({
   tapFiring: boolean;
   children?: React.ReactNode;
 }) {
-  const bg = sweeping
-    ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 36)}%, transparent)`
+  const pct = sweeping ? sweepPct : selecting ? 1 : 0;
+  const bg = selecting
+    ? `color-mix(in oklch, var(--accent) ${Math.round(pct * 36)}%, transparent)`
     : undefined;
   const bb = visible
     ? `${breathing ? 3 : 1}px solid ${pigment}`
-    : sweeping
+    : selecting
       ? "1px solid transparent"
       : "none";
   const innerStyle: React.CSSProperties = breathing
@@ -1291,6 +1272,7 @@ function MobileSelPop({
   );
 }
 
+// Mobile pin dialog —— 3 条 suggestion + 输入框
 function MobileDialog({
   c, dialogOn, picked, tapRing,
 }: {
@@ -1325,7 +1307,7 @@ function MobileDialog({
         style={{ background: "rgba(27,26,23,0.35)" }}
       />
       <div
-        className="relative w-[88%] max-w-[320px] rounded-xl shadow-[0_12px_36px_rgba(27,26,23,0.18)]"
+        className="relative w-[92%] max-w-[340px] rounded-xl shadow-[0_12px_36px_rgba(27,26,23,0.18)]"
         style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
       >
         <div
@@ -1351,7 +1333,7 @@ function MobileDialog({
             </div>
           </div>
         </div>
-        <div className="px-3 py-2.5 flex flex-col gap-1.5">
+        <div className="px-3 pt-2 flex flex-col gap-1.5">
           {suggestions.map((q, i) => (
             <div
               key={q}
@@ -1374,34 +1356,66 @@ function MobileDialog({
             </div>
           ))}
         </div>
+        {/* divider + input */}
+        <div className="mx-3 my-2" style={{ borderTop: "1px solid var(--rule-soft)" }} />
+        <div className="px-3 pb-3 flex items-end gap-1.5">
+          <div
+            className="flex-1 rounded-md px-2 py-1.5 text-[10.5px] leading-snug"
+            style={{
+              background: "var(--paper-2)",
+              border: "1px solid var(--rule)",
+              color: "var(--ink-4)",
+              minHeight: 32,
+            }}
+          >
+            {c.customQuestionPlaceholder}
+          </div>
+          <span
+            className="inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0"
+            style={{ background: "var(--rule)", color: "var(--ink-4)" }}
+          >
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
-// ── MiniGraph（mobile drawer 内）────────────────────────────────────────
+// ── MiniGraph（drawer 内）—— 支持 nodePulse + rootTapHint + atRootLabel
 function MiniGraph({
-  c, anchor1Visible, anchor2Visible, sub1AnchorShown,
+  c, anchor1Visible, anchor2Visible, sub1AnchorVisible,
   activeNode,
   anchor1Breathing, anchor2Breathing, sub1AnchorBreathing,
-  rootTapHint, rootTap,
+  nodePulse, rootTapHint, rootTap, atRootLabel,
 }: {
   c: DemoContent;
   anchor1Visible: boolean;
   anchor2Visible: boolean;
-  sub1AnchorShown: boolean;
+  sub1AnchorVisible: boolean;
   activeNode: "main" | "sub1" | "sub2" | "deep";
   anchor1Breathing: boolean;
   anchor2Breathing: boolean;
   sub1AnchorBreathing: boolean;
+  nodePulse: "sub1" | "sub2" | "deep" | null;
   rootTapHint: boolean;
   rootTap: boolean;
+  atRootLabel: boolean;
 }) {
-  const W = 260, H = 180;
-  const mainX = W * 0.22, mainY = H * 0.22;
-  const sub1X = W * 0.3, sub1Y = H * 0.55;
-  const sub2X = W * 0.7, sub2Y = H * 0.38;
-  const deepX = W * 0.5, deepY = H * 0.85;
+  const W = 260, H = 200;
+  const mainX = W * 0.24, mainY = H * 0.2;
+  const sub1X = W * 0.28, sub1Y = H * 0.52;
+  const sub2X = W * 0.7, sub2Y = H * 0.36;
+  const deepX = W * 0.48, deepY = H * 0.82;
 
   return (
     <svg
@@ -1425,7 +1439,7 @@ function MiniGraph({
           strokeWidth={1}
         />
       )}
-      {sub1AnchorShown && (
+      {sub1AnchorVisible && (
         <path
           d={`M ${sub1X} ${sub1Y} C ${sub1X} ${sub1Y + 30}, ${deepX} ${deepY - 30}, ${deepX} ${deepY}`}
           fill="none"
@@ -1436,27 +1450,19 @@ function MiniGraph({
 
       <g>
         {rootTapHint && (
-          <circle
-            cx={mainX}
-            cy={mainY}
-            r={8}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth={2}
-          >
-            <animate
-              attributeName="r"
-              values="6;12;6"
-              dur="1.2s"
-              repeatCount="indefinite"
-            />
-            <animate
-              attributeName="opacity"
-              values="0.7;0.05;0.7"
-              dur="1.2s"
-              repeatCount="indefinite"
-            />
-          </circle>
+          <>
+            <circle
+              cx={mainX}
+              cy={mainY}
+              r={12}
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth={2.5}
+            >
+              <animate attributeName="r" values="8;18;8" dur="1.1s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.85;0.05;0.85" dur="1.1s" repeatCount="indefinite" />
+            </circle>
+          </>
         )}
         <circle
           cx={mainX}
@@ -1476,6 +1482,41 @@ function MiniGraph({
         >
           {c.mainCrumb}
         </text>
+        {rootTapHint && (
+          <g>
+            <rect
+              x={mainX - 18}
+              y={mainY - 36}
+              width={36}
+              height={14}
+              rx={4}
+              fill="var(--accent)"
+            />
+            <text
+              x={mainX}
+              y={mainY - 26}
+              fontSize={8.5}
+              fill="var(--paper)"
+              style={{ fontFamily: "var(--font-mono)" }}
+              textAnchor="middle"
+              fontWeight={600}
+            >
+              {c.tapLabel}
+            </text>
+          </g>
+        )}
+        {atRootLabel && (
+          <text
+            x={mainX}
+            y={mainY - 16}
+            fontSize={8.5}
+            fill="var(--accent)"
+            style={{ fontFamily: "var(--font-mono)" }}
+            textAnchor="middle"
+          >
+            ◉ {c.youAreHereLabel}
+          </text>
+        )}
         {rootTap && (
           <circle cx={mainX} cy={mainY} r={2} fill="var(--accent)">
             <animate attributeName="r" values="2;16;2" dur="1.1s" repeatCount="1" />
@@ -1486,6 +1527,19 @@ function MiniGraph({
 
       {anchor1Visible && (
         <g>
+          {nodePulse === "sub1" && (
+            <circle
+              cx={sub1X}
+              cy={sub1Y}
+              r={9}
+              fill="none"
+              stroke="var(--pig-1)"
+              strokeWidth={2}
+            >
+              <animate attributeName="r" values="6;14;6" dur="1.2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.9;0;0.9" dur="1.2s" repeatCount="indefinite" />
+            </circle>
+          )}
           <circle
             cx={sub1X}
             cy={sub1Y}
@@ -1520,6 +1574,19 @@ function MiniGraph({
 
       {anchor2Visible && (
         <g>
+          {nodePulse === "sub2" && (
+            <circle
+              cx={sub2X}
+              cy={sub2Y}
+              r={9}
+              fill="none"
+              stroke="var(--pig-2)"
+              strokeWidth={2}
+            >
+              <animate attributeName="r" values="6;14;6" dur="1.2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.9;0;0.9" dur="1.2s" repeatCount="indefinite" />
+            </circle>
+          )}
           <circle
             cx={sub2X}
             cy={sub2Y}
@@ -1552,8 +1619,21 @@ function MiniGraph({
         </g>
       )}
 
-      {sub1AnchorShown && (
+      {sub1AnchorVisible && (
         <g>
+          {nodePulse === "deep" && (
+            <circle
+              cx={deepX}
+              cy={deepY}
+              r={9}
+              fill="none"
+              stroke="var(--pig-3)"
+              strokeWidth={2}
+            >
+              <animate attributeName="r" values="6;14;6" dur="1.2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.9;0;0.9" dur="1.2s" repeatCount="indefinite" />
+            </circle>
+          )}
           <circle
             cx={deepX}
             cy={deepY}
@@ -1589,7 +1669,7 @@ function MiniGraph({
   );
 }
 
-// ── MobileMergeOverlay ───────────────────────────────────────────────────
+// ── MobileMergeOverlay —— 用实际 graph 代替 flat list（同 desktop）
 function MobileMergeOverlay({
   c, modalOpen, contentShown, done, mergeLen,
 }: {
@@ -1619,83 +1699,80 @@ function MobileMergeOverlay({
           transition: "transform 300ms cubic-bezier(0.16,1,0.3,1)",
         }}
       >
+        {/* 顶栏：dot + 标题 + 数量 + 关闭 —— 对齐真实 MergeOutput */}
         <div
           className="flex items-center gap-1.5 px-3 py-2"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
         >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth={2}
-            strokeLinecap="round"
-          >
-            <path d="M4 4l8 9M20 4l-8 9m0 0v7" />
-          </svg>
           <span
-            className="font-serif text-[12px] font-medium"
+            className="w-[7px] h-[7px] rounded-full"
+            style={{ background: "var(--accent)" }}
+          />
+          <span
+            className="font-serif text-[13px] font-medium"
             style={{ color: "var(--ink)" }}
           >
             {c.mergeOutputLabel}
           </span>
+          <span
+            className="font-mono text-[9px] tabular-nums"
+            style={{ color: "var(--ink-4)" }}
+          >
+            {c.mergeBranchesSelected}
+          </span>
           <span className="flex-1" />
           <span
-            className="font-mono text-[8.5px] px-1.5 py-[1px] rounded-sm"
-            style={{
-              background: "var(--accent-soft)",
-              color: "var(--accent)",
-              border: "1px solid var(--accent)",
-            }}
+            className="w-5 h-5 flex items-center justify-center"
+            style={{ color: "var(--ink-4)" }}
           >
-            {c.mergeFormats[2]}
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </span>
         </div>
 
+        {/* Format row —— 3 个选项卡 */}
         <div
-          className="px-3 py-2 space-y-1"
+          className="flex gap-1 px-2 py-1.5 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
         >
-          <div className="flex items-center justify-between">
+          {c.mergeFormats.map((f, i) => {
+            const isActive = i === 0;
+            return (
+              <span
+                key={f}
+                className="flex-1 rounded px-1.5 py-1 text-center"
+                style={{
+                  background: isActive ? "var(--accent-soft)" : "var(--paper-2)",
+                  border: `1px solid ${isActive ? "var(--accent)" : "var(--rule-soft)"}`,
+                  color: isActive ? "var(--accent)" : "var(--ink-3)",
+                }}
+              >
+                <div className="text-[10px] font-medium leading-tight">{f}</div>
+              </span>
+            );
+          })}
+        </div>
+
+        {/* graph tree 选择（全选）*/}
+        <div
+          className="px-3 py-2"
+          style={{ borderBottom: "1px solid var(--rule-soft)", background: "var(--paper-2)" }}
+        >
+          <div className="flex items-center mb-1.5">
             <span
               className="font-mono text-[8.5px] uppercase tracking-[0.14em]"
               style={{ color: "var(--ink-4)" }}
             >
               {c.mergeSelectThreads}
             </span>
-            <span
-              className="font-mono text-[8.5px]"
-              style={{ color: "var(--accent)" }}
-            >
-              {c.mergeAll}
-            </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { label: c.subTitle1, color: "var(--pig-1)" },
-              { label: c.subTitle2, color: "var(--pig-2)" },
-              { label: c.deepTitle, color: "var(--pig-3)" },
-            ].map((th, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-[1px] rounded-sm"
-                style={{
-                  background: "var(--accent-soft)",
-                  color: "var(--ink-2)",
-                  border: "1px solid var(--accent)",
-                }}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: th.color }}
-                />
-                {th.label.length > 10 ? th.label.slice(0, 10) + "…" : th.label}
-              </span>
-            ))}
+          <div style={{ height: 80 }}>
+            <MergeGraphPreviewMobile c={c} />
           </div>
         </div>
 
-        <div className="px-3 py-2 overflow-y-auto" style={{ height: 200 }}>
+        <div className="px-3 py-2 overflow-y-auto" style={{ height: 130 }}>
           {!contentShown ? (
             <div className="h-full flex items-center justify-center">
               <span
@@ -1775,6 +1852,64 @@ function MobileMergeOverlay({
         }
       `}</style>
     </div>
+  );
+}
+
+function MergeGraphPreviewMobile({ c }: { c: DemoContent }) {
+  void c;
+  const W = 320, H = 80;
+  const mainX = W * 0.12, mainY = H * 0.5;
+  const sub1X = W * 0.4, sub1Y = H * 0.25;
+  const sub2X = W * 0.4, sub2Y = H * 0.75;
+  const deepX = W * 0.72, deepY = H * 0.25;
+
+  const Check = ({ cx, cy }: { cx: number; cy: number }) => (
+    <g>
+      <circle cx={cx + 5} cy={cy - 5} r={4} fill="var(--accent)" stroke="var(--paper)" strokeWidth={1.2} />
+      <path
+        d={`M ${cx + 3} ${cy - 5} L ${cx + 4.5} ${cy - 3.5} L ${cx + 7} ${cy - 7}`}
+        stroke="var(--paper)"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </g>
+  );
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: "100%", height: "100%" }}
+    >
+      <path
+        d={`M ${mainX} ${mainY} C ${mainX + 30} ${mainY}, ${sub1X - 30} ${sub1Y}, ${sub1X} ${sub1Y}`}
+        fill="none"
+        stroke="var(--rule-strong)"
+        strokeWidth={1}
+      />
+      <path
+        d={`M ${mainX} ${mainY} C ${mainX + 30} ${mainY}, ${sub2X - 30} ${sub2Y}, ${sub2X} ${sub2Y}`}
+        fill="none"
+        stroke="var(--rule-strong)"
+        strokeWidth={1}
+      />
+      <path
+        d={`M ${sub1X} ${sub1Y} C ${sub1X + 30} ${sub1Y}, ${deepX - 30} ${deepY}, ${deepX} ${deepY}`}
+        fill="none"
+        stroke="var(--rule-strong)"
+        strokeWidth={1}
+      />
+
+      <circle cx={mainX} cy={mainY} r={5} fill="var(--ink)" />
+      <circle cx={sub1X} cy={sub1Y} r={5} fill="var(--pig-1)" />
+      <Check cx={sub1X} cy={sub1Y} />
+      <circle cx={sub2X} cy={sub2Y} r={5} fill="var(--pig-2)" />
+      <Check cx={sub2X} cy={sub2Y} />
+      <circle cx={deepX} cy={deepY} r={5} fill="var(--pig-3)" />
+      <Check cx={deepX} cy={deepY} />
+    </svg>
   );
 }
 
