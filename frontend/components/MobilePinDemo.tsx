@@ -19,6 +19,7 @@ import { useLangStore } from "@/stores/useLangStore";
 // the right drawer in (graph + merge/flatten), then slide out and loop.
 type Phase =
   | "idle"
+  | "tap-select"   // 点击底部「Select」FAB 开启选区模式 / Tap the Select FAB to arm selection mode
   | "sweep"
   | "selpop"
   | "dialog"
@@ -35,7 +36,8 @@ type Phase =
   | "drawer-hidden";
 
 const NEXT: Record<Phase, Phase> = {
-  idle: "sweep",
+  idle: "tap-select",
+  "tap-select": "sweep",
   sweep: "selpop",
   selpop: "dialog",
   dialog: "pick",
@@ -53,7 +55,8 @@ const NEXT: Record<Phase, Phase> = {
 };
 
 const DELAYS: Record<Phase, number> = {
-  idle: 1600,
+  idle: 1400,
+  "tap-select": 1700,
   sweep: 1600,
   selpop: 2000,
   dialog: 2400,
@@ -83,6 +86,7 @@ interface Copy {
   pinLabel: string;
   copyLabel: string;
   enterLabel: string;
+  selectLabel: string;
   newReplyLabel: string;
   caption: Record<Phase, string>;
 }
@@ -101,9 +105,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "Pin",
     copyLabel: "Copy",
     enterLabel: "Enter",
+    selectLabel: "Select",
     newReplyLabel: "New",
     caption: {
       idle: "Main thread reply.",
+      "tap-select": "Tap Select to arm text selection.",
       sweep: "Drag across a phrase to select.",
       selpop: "Toolbar appears above the selection.",
       dialog: "Pin opens follow-ups.",
@@ -131,9 +137,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "插针",
     copyLabel: "复制",
     enterLabel: "进入",
+    selectLabel: "选取",
     newReplyLabel: "新",
     caption: {
       idle: "主线 AI 回复。",
+      "tap-select": "先点「选取」开启文字选择。",
       sweep: "拖选一段文字。",
       selpop: "选区上方弹出小工具栏。",
       dialog: "「插针」打开追问选项。",
@@ -161,9 +169,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "ピン",
     copyLabel: "コピー",
     enterLabel: "開く",
+    selectLabel: "選択",
     newReplyLabel: "新着",
     caption: {
       idle: "メインの返答。",
+      "tap-select": "まず「選択」をタップ。",
       sweep: "フレーズをドラッグして選択。",
       selpop: "選択範囲上にツールバー。",
       dialog: "ピンでフォローアップを表示。",
@@ -191,9 +201,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "핀",
     copyLabel: "복사",
     enterLabel: "열기",
+    selectLabel: "선택",
     newReplyLabel: "새글",
     caption: {
       idle: "메인 답변.",
+      "tap-select": "먼저 「선택」을 탭해 선택 모드 켜기.",
       sweep: "구절을 드래그해 선택.",
       selpop: "선택 영역 위에 툴바.",
       dialog: "핀으로 후속 질문 표시.",
@@ -221,9 +233,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "Anclar",
     copyLabel: "Copiar",
     enterLabel: "Abrir",
+    selectLabel: "Seleccionar",
     newReplyLabel: "Nuevo",
     caption: {
       idle: "Respuesta principal.",
+      "tap-select": "Toca Seleccionar para activar.",
       sweep: "Arrastra para seleccionar.",
       selpop: "Barra sobre la selección.",
       dialog: "Anclar abre seguimientos.",
@@ -251,9 +265,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "Épingler",
     copyLabel: "Copier",
     enterLabel: "Ouvrir",
+    selectLabel: "Sélectionner",
     newReplyLabel: "Nouveau",
     caption: {
       idle: "Réponse du fil principal.",
+      "tap-select": "Touche Sélectionner pour activer.",
       sweep: "Glisse pour sélectionner.",
       selpop: "Barre au-dessus de la sélection.",
       dialog: "Épingler ouvre les suivis.",
@@ -281,9 +297,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "Anheften",
     copyLabel: "Kopieren",
     enterLabel: "Öffnen",
+    selectLabel: "Auswählen",
     newReplyLabel: "Neu",
     caption: {
       idle: "Haupt-Thread-Antwort.",
+      "tap-select": "Auf Auswählen tippen, dann markieren.",
       sweep: "Ziehe zum Markieren.",
       selpop: "Toolbar über der Auswahl.",
       dialog: "Anheften öffnet Folgefragen.",
@@ -311,9 +329,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "Fixar",
     copyLabel: "Copiar",
     enterLabel: "Abrir",
+    selectLabel: "Selecionar",
     newReplyLabel: "Novo",
     caption: {
       idle: "Resposta do principal.",
+      "tap-select": "Toque Selecionar para ativar.",
       sweep: "Arraste para selecionar.",
       selpop: "Barra acima da seleção.",
       dialog: "Fixar abre acompanhamentos.",
@@ -341,9 +361,11 @@ const CONTENT: Record<Lang, Copy> = {
     pinLabel: "Закрепить",
     copyLabel: "Копировать",
     enterLabel: "Открыть",
+    selectLabel: "Выбрать",
     newReplyLabel: "Новое",
     caption: {
       idle: "Ответ в главной ветке.",
+      "tap-select": "Коснитесь «Выбрать», чтобы включить выделение.",
       sweep: "Проведите для выделения.",
       selpop: "Панель над выделением.",
       dialog: "Закрепить открывает подсказки.",
@@ -397,6 +419,7 @@ export default function MobilePinDemo() {
     // lasts ~1100ms, so the viewer has a clear look at "where the finger
     // landed" before the next phase takes over.
     const tapPhases: Partial<Record<Phase, number>> = {
+      "tap-select": 1000,  // 点击底部 Select FAB / tap on the Select FAB
       selpop: 1200,        // 点击 Pin 按钮 / tap on Pin chip
       pick: 500,           // 点击 suggestion / tap on suggestion（pick 只 700ms）
       "unread-breathing": 1100, // 点击锚点下划线 / tap on anchor underline → popover
@@ -462,6 +485,15 @@ export default function MobilePinDemo() {
   const activeNode: "main" | "cap" = inSub ? "cap" : "main";
   const breatheRightBtn = phase === "tap-overview";
   const drawerOpen = phase === "drawer-shown";
+  // Select FAB：tap-select..pick 之间进入 "active"（accent 底色）状态，
+  // 提示用户「选区模式已开启」；其余时候灰底 idle
+  // Select FAB — armed state (accent fill) during tap-select..pick so the
+  // viewer sees "selection mode is ON"; idle ink fill otherwise.
+  const selectArmed = ["tap-select", "sweep", "selpop", "dialog", "pick"].includes(phase);
+  // 进入 sub-thread / drawer-open 时把 FAB 藏起来（不是 chat view 场景）
+  // Hide the FAB in sub-thread or overview-drawer phases.
+  const showSelectFab = !inSub && !drawerOpen;
+  const tapOnSelect = phase === "tap-select" && tapRing;
 
   return (
     <div className="w-full select-none" style={{ maxWidth: 380 }}>
@@ -567,6 +599,41 @@ export default function MobilePinDemo() {
           </div>
 
           {showDialog && <Dialog c={c} picked={phase === "pick"} tapRing={tapRing && phase === "pick"} />}
+
+          {/* 底部「Select」FAB —— 跟真实 MobileChatLayout 一致
+              定位（absolute bottom-3 right-3）；tap-select phase 播放点击动画。
+              armed=true 时 accent 底色 + "Cancel" 字样（选区模式开启状态）。
+              Bottom-right Select FAB, mirroring the real MobileChatLayout FAB
+              (same position). Plays the tap animation during tap-select; shows
+              the armed accent fill when selection mode is on. */}
+          {showSelectFab && (
+            <div
+              className={`absolute bottom-3 right-3 z-25 inline-flex items-center gap-1 h-7 px-2.5 rounded-full font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                tapOnSelect ? "demo-tap-press" : ""
+              }`}
+              style={{
+                background: selectArmed ? "var(--accent)" : "var(--ink)",
+                color: "var(--paper)",
+                boxShadow: "0 6px 18px rgba(27,26,23,0.22)",
+              }}
+              aria-hidden
+            >
+              {/* I-beam + highlight 小图标 */}
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 5h4M7 19h4M9 5v14" />
+                <path d="M14 8h6M14 16h6" strokeWidth={2.5} />
+              </svg>
+              {/* 状态切换仅靠底色（accent=ON / ink=OFF），文字保持稳定避免抖
+                  Label stays fixed; on/off state is carried by the fill color. */}
+              <span>{c.selectLabel}</span>
+              {tapOnSelect && (
+                <>
+                  <span key="tap-sel-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
+                  <span key="tap-sel-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+                </>
+              )}
+            </div>
+          )}
 
           {/* 右抽屉 —— drawer-shown 时滑入；带 graph + Merge/Flatten
               Right drawer that slides in during drawer-shown — mirrors the
