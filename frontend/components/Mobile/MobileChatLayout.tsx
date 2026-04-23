@@ -67,6 +67,9 @@ export interface MobileChatLayoutProps {
   isStreaming: boolean;
   webSearch: boolean;
   onWebSearchToggle: (v: boolean) => void;
+  /** 匿名试用额度（已发送轮数），仅 isAnon=true 时 InputBar 会展示
+   *  Anonymous trial turn count; surfaced by InputBar when isAnon. */
+  turnCount?: number;
 
   // Account / auth
   isAnon?: boolean;
@@ -214,6 +217,7 @@ export default function MobileChatLayout({
   isStreaming,
   webSearch,
   onWebSearchToggle,
+  turnCount = 0,
   isAnon = false,
   onSignIn,
   onDeleteAccount,
@@ -421,6 +425,7 @@ export default function MobileChatLayout({
           disabled={isStreaming || !activeThreadId}
           webSearch={webSearch}
           onWebSearchToggle={onWebSearchToggle}
+          turnCount={turnCount}
           isAnon={isAnon}
         />
       </div>

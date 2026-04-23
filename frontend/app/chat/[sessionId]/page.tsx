@@ -1015,6 +1015,7 @@ export default function ChatPage() {
           isStreaming={isStreaming}
           webSearch={webSearch}
           onWebSearchToggle={setWebSearch}
+          turnCount={sessionTurnCount}
           // Account
           isAnon={isAnon}
           onSignIn={handleSignIn}
