@@ -12,7 +12,6 @@ import Link from "next/link";
 import { useT } from "@/stores/useLangStore";
 import type { T } from "@/lib/i18n";
 import SessionDrawer from "@/components/SessionDrawer";
-import ThemeToggle from "@/components/ThemeToggle";
 import LangSelector from "@/components/LangSelector";
 import PinDemo from "@/components/PinDemo";
 
@@ -326,7 +325,6 @@ export default function HomePage() {
           >
             {t.articles}
           </Link>
-          <ThemeToggle />
           <LangSelector />
           {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
            *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat" */}

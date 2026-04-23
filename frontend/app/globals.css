@@ -1,15 +1,9 @@
 @import "tailwindcss";
 
 /* ── 设计系统颜色 token ────────────────────────────────────────────────
-   Design-system color tokens.
-
-   浅色模式（默认）= 新 brand：warm paper + deep-ink indigo。
-   深色模式（html.dark / prefers-color-scheme: dark）= 保留现有 zinc 配色，
-   确保深色用户不受 rebrand 影响；新设计本身是 light-first。
-
-   Light (default) = new brand: warm paper + deep-ink indigo.
-   Dark (html.dark / prefers-color-scheme: dark) = keep the existing zinc stack,
-   so dark-mode users aren't regressed by the rebrand; the new design is light-first.
+   Design-system color tokens. Light-only — warm paper + deep-ink indigo.
+   深色模式已移除（tree / graph 在暖纸配色下读不回 dark；single-theme 更清爽）。
+   Dark mode removed — tree / graph didn't read back well in inverted pigments.
    ──────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -80,146 +74,6 @@
   --foreground: var(--ink);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Dark mode 仍保留 zinc，避免 rebrand 的视觉跃迁打扰深色用户
-       Dark mode keeps zinc — rebrand is light-first, don't regress dark users. */
-    --s-base:       #09090b;
-    --s-surface:    #18181b;
-    --s-elevated:   #27272a;
-
-    --s-surface-95: rgba(24,24,27,0.95);
-    --s-surface-80: rgba(24,24,27,0.80);
-    --s-surface-70: rgba(24,24,27,0.70);
-    --s-surface-60: rgba(24,24,27,0.60);
-    --s-elevated-80: rgba(39,39,42,0.80);
-
-    --s-glass:    rgba(255,255,255,0.04);
-    --s-glass-md: rgba(255,255,255,0.08);
-    --s-glass-lg: rgba(255,255,255,0.12);
-
-    --b-subtle: rgba(255,255,255,0.05);
-    --b-base:   rgba(255,255,255,0.08);
-    --b-strong: rgba(255,255,255,0.14);
-
-    --t-hi:    #f4f4f5;
-    --t-md:    #d4d4d8;
-    --t-lo:    #a1a1aa;
-    --t-dim:   #71717a;
-    --t-faint: #52525b;
-    --t-ph:    #3f3f46;
-
-    --s-disabled:   #27272a;
-    --t-disabled:   #3f3f46;
-
-    --background: #0a0a0a;
-    --foreground: #ededed;
-
-    /* Dark mode 下的 accent 用回现有的亮 indigo；5 色锚点保留，但在深色底上读得出 */
-    --accent:      #6366f1;
-    --accent-2:    #818cf8;
-    --accent-soft: rgba(99,102,241,0.18);
-    --accent-ink:  #4f46e5;
-
-    --pig-1: #818cf8;   /* 原 indigo-400 */
-    --pig-2: #a78bfa;   /* 原 violet-400 */
-    --pig-3: #67e8f9;   /* 原 cyan-300 */
-    --pig-4: #f9a8d4;   /* 原 pink-300 */
-    --pig-5: #fbbf24;   /* 原 amber-400 */
-  }
-}
-
-/* ── 手动主题覆盖（优先级高于 prefers-color-scheme）────────────────────── */
-
-html.dark {
-  --s-base:       #09090b;
-  --s-surface:    #18181b;
-  --s-elevated:   #27272a;
-
-  --s-surface-95: rgba(24,24,27,0.95);
-  --s-surface-80: rgba(24,24,27,0.80);
-  --s-surface-70: rgba(24,24,27,0.70);
-  --s-surface-60: rgba(24,24,27,0.60);
-  --s-elevated-80: rgba(39,39,42,0.80);
-
-  --s-glass:    rgba(255,255,255,0.04);
-  --s-glass-md: rgba(255,255,255,0.08);
-  --s-glass-lg: rgba(255,255,255,0.12);
-
-  --b-subtle: rgba(255,255,255,0.05);
-  --b-base:   rgba(255,255,255,0.08);
-  --b-strong: rgba(255,255,255,0.14);
-
-  --t-hi:    #f4f4f5;
-  --t-md:    #d4d4d8;
-  --t-lo:    #a1a1aa;
-  --t-dim:   #71717a;
-  --t-faint: #52525b;
-  --t-ph:    #3f3f46;
-
-  --s-disabled:   #27272a;
-  --t-disabled:   #3f3f46;
-
-  --background: #0a0a0a;
-  --foreground: #ededed;
-
-  --accent:      #6366f1;
-  --accent-2:    #818cf8;
-  --accent-soft: rgba(99,102,241,0.18);
-  --accent-ink:  #4f46e5;
-
-  --pig-1: #818cf8;
-  --pig-2: #a78bfa;
-  --pig-3: #67e8f9;
-  --pig-4: #f9a8d4;
-  --pig-5: #fbbf24;
-}
-
-html.light {
-  /* 显式声明 light 和 :root 相同——当系统偏好是 dark 时，强制浅色也走新 brand */
-  --s-base:       var(--paper);
-  --s-surface:    var(--card);
-  --s-elevated:   var(--paper-2);
-
-  --s-surface-95: rgba(251,248,242,0.95);
-  --s-surface-80: rgba(251,248,242,0.80);
-  --s-surface-70: rgba(251,248,242,0.70);
-  --s-surface-60: rgba(251,248,242,0.60);
-  --s-elevated-80: rgba(239,234,225,0.80);
-
-  --s-glass:    rgba(27,26,23,0.04);
-  --s-glass-md: rgba(27,26,23,0.07);
-  --s-glass-lg: rgba(27,26,23,0.12);
-
-  --b-subtle: var(--rule-soft);
-  --b-base:   var(--rule);
-  --b-strong: var(--rule-strong);
-
-  --t-hi:    var(--ink);
-  --t-md:    var(--ink-2);
-  --t-lo:    var(--ink-3);
-  --t-dim:   var(--ink-3);
-  --t-faint: var(--ink-4);
-  --t-ph:    var(--ink-5);
-
-  --s-disabled:   #e4ded1;
-  --t-disabled:   var(--ink-5);
-
-  --background: var(--paper);
-  --foreground: var(--ink);
-
-  --accent:      #2a2a72;
-  --accent-2:    #3f3d99;
-  --accent-soft: #e0dcf1;
-  --accent-ink:  #1a1a4a;
-
-  --pig-1: #2a2a72;
-  --pig-2: #7a3d9e;
-  --pig-3: #0e6b68;
-  --pig-4: #b84a5b;
-  --pig-5: #a66a1f;
-}
-
 /* ── Tailwind 调色板重映射 / Tailwind palette remap ─────────────────────
    把 indigo-400..800 映射到新的 deep-ink indigo 阶梯，
    这样 `bg-indigo-600` / `text-indigo-300` 等硬编码类在 light mode 下
@@ -234,11 +88,13 @@ html.light {
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-fraunces), "Fraunces", Georgia, "Times New Roman", serif;
 
+  /* Tailwind indigo-* 映射到深墨蓝 scale。老代码里 bg-indigo-600 等硬编码类
+     自动拿到新 brand 色，不用逐文件改。Only light mode exists. */
   --color-indigo-300: #5f5fb5;
-  --color-indigo-400: var(--accent-2);
-  --color-indigo-500: var(--accent);
-  --color-indigo-600: var(--accent);
-  --color-indigo-700: var(--accent-ink);
+  --color-indigo-400: #3f3d99;
+  --color-indigo-500: #2a2a72;
+  --color-indigo-600: #2a2a72;
+  --color-indigo-700: #1a1a4a;
   --color-indigo-800: #14143e;
   --color-indigo-900: #0d0d2e;
   --color-indigo-950: #07071a;

@@ -7,7 +7,6 @@ import { useState } from "react";
 import type { Thread } from "@/lib/api";
 import { deleteAccount } from "@/lib/api";
 import { useT } from "@/stores/useLangStore";
-import ThemeToggle from "@/components/ThemeToggle";
 import LangSelector from "@/components/LangSelector";
 import { createClient } from "@/lib/supabase";
 
@@ -165,9 +164,6 @@ export default function ThreadNav({
           </span>
         ))}
       </div>
-
-      {/* 主题切换 */}
-      <ThemeToggle />
 
       {/* 语言切换 / Language selector */}
       <LangSelector />

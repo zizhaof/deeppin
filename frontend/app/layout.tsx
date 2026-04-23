@@ -41,12 +41,6 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
-      {/* 在 hydration 之前读取 localStorage 并设置主题 class，防止页面闪烁 */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `(function(){try{var s=localStorage.getItem('deeppin:theme');var t=s?JSON.parse(s).state?.theme:'system';if(t==='dark')document.documentElement.classList.add('dark');else if(t==='light')document.documentElement.classList.add('light');}catch(e){}})();`,
-        }}
-      />
       {/*
         首屏前根据浏览器语言预填 localStorage，zustand 水合时就是浏览器语言。
         无存储值 → 从 navigator.languages 选最接近的支持 locale，命中写入；未命中默认 en。
