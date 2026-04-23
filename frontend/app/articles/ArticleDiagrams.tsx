@@ -2,16 +2,16 @@
 // app/articles/ArticleDiagrams.tsx — SVG diagram components for articles
 
 const C = {
-  boxFill:   "rgba(99,102,241,0.12)",
-  boxStroke: "rgba(99,102,241,0.40)",
-  textHi:    "#e0e7ff",             // indigo-100
-  textMid:   "#c7d2fe",             // indigo-200 — brighter than indigo-300
-  textMut:   "rgba(199,210,254,0.70)",  // indigo-200 at 70% — was 45%
-  arrow:     "rgba(129,140,248,0.80)",  // was 55%
-  accent:    "#818cf8",             // indigo-400
-  warn:      "#fb923c",             // orange-400
-  ok:        "#6ee7b7",             // emerald-300
-  grid:      "rgba(99,102,241,0.08)",
+  boxFill:   "color-mix(in oklch, var(--accent) 15%, transparent)",
+  boxStroke: "color-mix(in oklch, var(--accent) 45%, transparent)",
+  textHi:    "var(--ink)",             // indigo-100
+  textMid:   "var(--ink)",             // indigo-200 — brighter than indigo-300
+  textMut:   "var(--ink-3)",  // indigo-200 at 70% — was 45%
+  arrow:     "color-mix(in oklch, var(--accent) 80%, transparent)",  // was 55%
+  accent:    "var(--accent)",             // indigo-400
+  warn:      "var(--pig-5)",             // orange-400
+  ok:        "var(--pig-3)",             // emerald-300
+  grid:      "color-mix(in oklch, var(--accent) 10%, transparent)",
 };
 
 /* ─── shared primitives ─────────────────────────────────────────────────── */
@@ -22,8 +22,8 @@ function Box({
   x: number; y: number; w: number; h: number;
   label: string; sub?: string; accent?: boolean; warn?: boolean;
 }) {
-  const fill   = warn ? "rgba(251,146,60,0.09)" : accent ? "rgba(99,102,241,0.16)" : C.boxFill;
-  const stroke = warn ? "rgba(251,146,60,0.45)" : accent ? C.accent : C.boxStroke;
+  const fill   = warn ? "color-mix(in oklch, var(--pig-5) 12%, transparent)" : accent ? "color-mix(in oklch, var(--accent) 20%, transparent)" : C.boxFill;
+  const stroke = warn ? "color-mix(in oklch, var(--pig-5) 50%, transparent)" : accent ? C.accent : C.boxStroke;
   const tColor = warn ? C.warn : accent ? C.textHi : C.textMid;
   return (
     <g>
@@ -203,7 +203,7 @@ export function SemanticChunkingDiagram() {
         const cx = (x1 + x2) / 2 - 4;
         const barH = Math.round(d * maxBar);
         const isBreak = breakpoints.includes(i);
-        const barColor = isBreak ? C.warn : "rgba(129,140,248,0.4)";
+        const barColor = isBreak ? C.warn : "color-mix(in oklch, var(--accent) 45%, transparent)";
         const barStroke = isBreak ? C.warn : C.boxStroke;
         return (
           <g key={i}>
@@ -236,9 +236,9 @@ export function SemanticChunkingDiagram() {
 
       {/* Row 3: chunks */}
       {[
-        { label: "Chunk A", from: 0, to: 2, color: "rgba(99,102,241,0.18)" },
-        { label: "Chunk B", from: 3, to: 5, color: "rgba(129,140,248,0.14)" },
-        { label: "Chunk C", from: 6, to: 7, color: "rgba(99,102,241,0.18)" },
+        { label: "Chunk A", from: 0, to: 2, color: "color-mix(in oklch, var(--accent) 22%, transparent)" },
+        { label: "Chunk B", from: 3, to: 5, color: "color-mix(in oklch, var(--accent) 18%, transparent)" },
+        { label: "Chunk C", from: 6, to: 7, color: "color-mix(in oklch, var(--accent) 22%, transparent)" },
       ].map((c) => {
         const x = startX + c.from * (sw + gap);
         const w2 = (c.to - c.from) * (sw + gap) + sw;
@@ -290,11 +290,11 @@ export function SlidingWindowDiagram() {
     <SvgWrap w={640} h={170}>
       {/* full bar background */}
       <rect x={20} y={40} width={600} height={46} rx={8}
-        fill="rgba(39,39,42,0.5)" stroke={C.boxStroke} strokeWidth={1} />
+        fill="var(--paper-2)" stroke={C.boxStroke} strokeWidth={1} />
 
       {/* outside window (compressed) */}
       <rect x={20} y={40} width={360} height={46} rx={8}
-        fill="rgba(63,63,70,0.6)" stroke={C.boxStroke} strokeWidth={1} />
+        fill="var(--rule)" stroke={C.boxStroke} strokeWidth={1} />
       <text x={200} y={59} textAnchor="middle" fill={C.textMut} fontSize={10} fontFamily="inherit">
         msg 1 – {outsideCount}  (out of window)
       </text>
@@ -304,7 +304,7 @@ export function SlidingWindowDiagram() {
 
       {/* window (kept) */}
       <rect x={380} y={40} width={240} height={46} rx={8}
-        fill="rgba(99,102,241,0.14)" stroke={C.accent} strokeWidth={1.25} />
+        fill="color-mix(in oklch, var(--accent) 18%, transparent)" stroke={C.accent} strokeWidth={1.25} />
       <text x={500} y={58} textAnchor="middle" fill={C.textMid} fontSize={10.5} fontWeight={600} fontFamily="inherit">
         msg {outsideCount + 1} – {totalMsgs}
       </text>
@@ -370,8 +370,8 @@ export function TwoPhaseDiagram() {
 
       {/* system msgs note */}
       <rect x={20} y={200} width={480} height={36} rx={6}
-        fill="rgba(110,231,183,0.07)" stroke="rgba(110,231,183,0.25)" strokeWidth={1} />
-      <text x={260} y={216} textAnchor="middle" fill="rgba(110,231,183,0.8)" fontSize={10} fontFamily="inherit">
+        fill="color-mix(in oklch, var(--pig-3) 9%, transparent)" stroke="color-mix(in oklch, var(--pig-3) 30%, transparent)" strokeWidth={1} />
+      <text x={260} y={216} textAnchor="middle" fill="color-mix(in oklch, var(--pig-3) 85%, transparent)" fontSize={10} fontFamily="inherit">
         system messages are never dropped
       </text>
       <text x={260} y={229} textAnchor="middle" fill={C.textMut} fontSize={9} fontFamily="inherit">
@@ -460,7 +460,7 @@ export function MessageDataPathDiagram() {
             {s.parallel ? (
               <>
                 <rect x={bx} y={y} width={bw} height={bh} rx={8}
-                  fill="rgba(251,146,60,0.07)" stroke="rgba(251,146,60,0.3)" strokeWidth={1} />
+                  fill="color-mix(in oklch, var(--pig-5) 9%, transparent)" stroke="color-mix(in oklch, var(--pig-5) 35%, transparent)" strokeWidth={1} />
                 <text x={cx} y={y + bh / 2 - 5} textAnchor="middle"
                   fill={C.warn} fontSize={11.5} fontWeight={600} fontFamily="inherit">{s.label}</text>
                 <text x={cx} y={y + bh / 2 + 11} textAnchor="middle"
@@ -481,12 +481,12 @@ export function MessageDataPathDiagram() {
       })}
       {/* legend */}
       <rect x={420} y={20} width={140} height={52} rx={6}
-        fill="rgba(15,15,20,0.4)" stroke={C.boxStroke} strokeWidth={0.75} />
+        fill="var(--paper-2)" stroke={C.boxStroke} strokeWidth={0.75} />
       <rect x={430} y={30} width={12} height={10} rx={2}
-        fill="rgba(99,102,241,0.16)" stroke={C.accent} strokeWidth={1} />
+        fill="color-mix(in oklch, var(--accent) 20%, transparent)" stroke={C.accent} strokeWidth={1} />
       <text x={447} y={40} fill={C.textMut} fontSize={8.5} fontFamily="inherit">sequential</text>
       <rect x={430} y={48} width={12} height={10} rx={2}
-        fill="rgba(251,146,60,0.07)" stroke="rgba(251,146,60,0.3)" strokeWidth={1} />
+        fill="color-mix(in oklch, var(--pig-5) 9%, transparent)" stroke="color-mix(in oklch, var(--pig-5) 35%, transparent)" strokeWidth={1} />
       <text x={447} y={58} fill={C.textMut} fontSize={8.5} fontFamily="inherit">concurrent</text>
     </SvgWrap>
   );
@@ -689,10 +689,10 @@ export function SystemConnectivityDiagram() {
   return (
     <SvgWrap w={W} h={H}>
       {/* Column backgrounds */}
-      {colBand(col1x, col1w, "rgba(99,102,241,0.04)")}
-      {colBand(col2x, col2w, "rgba(99,102,241,0.06)")}
-      {colBand(col3x, col3w, "rgba(251,146,60,0.04)")}
-      {colBand(col4x, col4w, "rgba(110,231,183,0.04)")}
+      {colBand(col1x, col1w, "color-mix(in oklch, var(--accent) 5%, transparent)")}
+      {colBand(col2x, col2w, "color-mix(in oklch, var(--accent) 8%, transparent)")}
+      {colBand(col3x, col3w, "color-mix(in oklch, var(--pig-5) 5%, transparent)")}
+      {colBand(col4x, col4w, "color-mix(in oklch, var(--pig-3) 5%, transparent)")}
 
       {/* Column headers */}
       <text x={c1} y={headerY} textAnchor="middle" fill={C.accent} fontSize={9} fontWeight={700} fontFamily="inherit" letterSpacing="0.08em">FRONTEND</text>
