@@ -11,6 +11,7 @@ import type { SseErrorInfo } from "@/lib/sse";
 import QuotaExceededModal from "@/components/QuotaExceededModal";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT, useLangStore } from "@/stores/useLangStore";
+import { localizeStatusText } from "@/lib/i18n";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
 import PinMenu from "@/components/PinMenu";
@@ -394,7 +395,10 @@ export default function ChatPage() {
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       makeStreamErrorHandler(threadId, true),
       (tid, title) => updateThreadTitle(tid, title),
-      (text) => setStreamStatus(threadId, text),
+      // 后端 status 文本是 "中文 / English" 双语,这里按 lang 裁掉一半
+      // Backend SSE status text is bilingual ("中文 / English") — keep only
+      // the half matching the active locale before showing it.
+      (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
       ragFilename,
     );
   };
@@ -411,9 +415,9 @@ export default function ChatPage() {
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       makeStreamErrorHandler(threadId, false),
       undefined,
-      (text) => setStreamStatus(threadId, text),
+      (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
     );
-  }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler]);
+  }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler, lang]);
 
   // ── 点击锚点进入子线程 ──────────────────────────────────────────
   const handleAnchorClick = useCallback((threadId: string) => {

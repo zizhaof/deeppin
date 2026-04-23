@@ -189,10 +189,16 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
         <div className="w-10 h-0.5 rounded-full bg-subtle/50 group-hover/rh:bg-indigo-500/30 transition-colors" />
       </div>
       {/* 匿名试用配额条 — 仅对匿名用户显示
-          Anonymous trial quota bar — shown to guests only */}
+          以前用 absolute top-2 right-4 浮在输入框右上角,手机端会跟联网/发送
+          按钮挤在一起。改成放到输入框上方独立一行,右对齐,跟按钮组拉开
+          清晰的垂直距离。
+          Anonymous trial quota bar — was previously absolute-positioned at
+          top-2 right-4 over the input box, which crowded the web-search /
+          send buttons on mobile. Now its own block-level row above the
+          box, right-aligned, with clear vertical breathing room. */}
       {isAnon && (
         <div
-          className={`absolute top-2 right-4 flex items-center gap-1.5 text-[10px] font-mono tabular-nums select-none pointer-events-none transition-colors ${
+          className={`flex justify-end items-center gap-1.5 text-[10px] font-mono tabular-nums select-none pointer-events-none mb-1.5 pr-1 transition-colors ${
             quotaFull ? "text-red-400" : quotaWarn ? "text-amber-400" : "text-faint"
           }`}
           aria-live="polite"
