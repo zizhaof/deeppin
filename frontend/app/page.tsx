@@ -201,31 +201,49 @@ export default function HomePage() {
             <span className="font-serif text-base text-md tracking-tight">Deeppin</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2">
           {/* 登录用户显示头像 + 退出；匿名不显示退出(强引导走登录按钮)
-           *  Signed-in users see avatar + logout; anon users don't get a logout option (nudges toward Sign in) */}
+           *  Signed-in users see avatar + logout; anon users don't get a logout option (nudges toward Sign in).
+           *  Mobile collapses the logout text to an icon-only button to save room
+           *  in the topbar — long English locale strings would otherwise overflow. */}
           {user && !isAnon && (
             <>
               {user.avatar_url && (
                 <img
                   src={user.avatar_url}
                   alt="avatar"
-                  className="w-7 h-7 rounded-full border border-base object-cover"
+                  className="w-6 h-6 md:w-7 md:h-7 rounded-full border border-base object-cover"
                 />
               )}
               <button
                 onClick={handleLogout}
-                className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors"
+                aria-label={t.logout}
+                title={t.logout}
+                className="flex items-center justify-center text-[11px] font-medium text-faint hover:text-md w-7 h-7 md:w-auto md:h-auto md:px-2 md:py-1 rounded-lg border border-subtle hover:border-base transition-colors"
               >
-                {t.logout}
+                {/* 手机:icon only / Mobile: icon only */}
+                <svg className="w-3.5 h-3.5 md:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span className="hidden md:inline">{t.logout}</span>
               </button>
             </>
           )}
+          {/* Articles 链接:手机端 icon only(书本图标),桌面端文本
+           *  Articles link: icon-only on mobile (book icon), text on desktop. */}
           <Link
             href="/articles"
-            className="text-[11px] font-medium text-faint hover:text-md px-2 py-1 rounded-lg border border-subtle hover:border-base transition-colors whitespace-nowrap"
+            aria-label={t.articles}
+            title={t.articles}
+            className="flex items-center justify-center text-[11px] font-medium text-faint hover:text-md w-7 h-7 md:w-auto md:h-auto md:px-2 md:py-1 rounded-lg border border-subtle hover:border-base transition-colors whitespace-nowrap"
           >
-            {t.articles}
+            <svg className="w-3.5 h-3.5 md:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <span className="hidden md:inline">{t.articles}</span>
           </Link>
           <LangSelector />
           {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
