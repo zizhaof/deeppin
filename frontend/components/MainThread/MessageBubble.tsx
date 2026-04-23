@@ -1,7 +1,8 @@
 "use client";
 // components/MainThread/MessageBubble.tsx
 
-import { useRef, useState, useEffect, memo } from "react";
+import { useRef, useState, useEffect, useMemo, memo } from "react";
+import { createPortal } from "react-dom";
 import MarkdownContent from "@/components/MarkdownContent";
 import { useT } from "@/stores/useLangStore";
 
@@ -223,6 +224,34 @@ function renderWithHighlights(
 /** 选区高亮矩形，相对于内容 div 的坐标 */
 interface SelRect { top: number; left: number; width: number; height: number; }
 
+/** 移动端持久选区：一对 text-node caret 位置
+ *  Mobile persistent selection — pair of text-node carets. */
+export interface MBCaret { node: Text; offset: number; }
+export interface MBSelection { start: MBCaret; end: MBCaret; }
+
+/** 把一对 caret 按 DOM 顺序建成 forward Range（反向不会抛错） */
+function buildRangeFromSel(sel: MBSelection): Range | null {
+  try {
+    const range = document.createRange();
+    const { start, end } = sel;
+    const sameNode = start.node === end.node;
+    if (sameNode && start.offset > end.offset) {
+      range.setStart(end.node, end.offset);
+      range.setEnd(start.node, start.offset);
+      return range;
+    }
+    const cmp = start.node.compareDocumentPosition(end.node);
+    if (cmp & Node.DOCUMENT_POSITION_PRECEDING) {
+      range.setStart(end.node, end.offset);
+      range.setEnd(start.node, start.offset);
+    } else {
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+    }
+    return range;
+  } catch { return null; }
+}
+
 function MessageBubble({
   messageId,
   role,
@@ -250,6 +279,16 @@ function MessageBubble({
   const [rawMode, setRawMode] = useState(false);
   /** 选区覆盖层矩形列表（移动端指离后 OS 选区消失，但此层持续显示） */
   const [selRects, setSelRects] = useState<SelRect[]>([]);
+  /** 移动端持久选区 —— ref 里实时改动，state tick 触发 re-render 更新 action sheet 位置 */
+  /** Mobile persistent selection — ref changes on every touch move;
+   *  a paired state tick triggers re-renders so the action-sheet position
+   *  recomputes from the latest range. */
+  const pendingSelRef = useRef<MBSelection | null>(null);
+  const [selectionTick, setSelectionTick] = useState(0);
+  /** 拖动中 —— 隐藏 action sheet，避免手指下面飘浮按钮 */
+  const [dragging, setDragging] = useState(false);
+  /** 给内部 setPending 暴露给 touch handler + action sheet */
+  const overlayUpdaterRef = useRef<(() => void) | null>(null);
 
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
@@ -371,27 +410,42 @@ function MessageBubble({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSelect, isUser, messageId, mobileSelectActive]);
 
-  // 选区模式关闭 → 清掉残留的高亮覆盖层 / Clear stale overlay when select mode toggles off
+  // 选区模式关闭 → 清掉残留的高亮覆盖层 + 选区 ref
+  // Clear stale overlay + pending ref when select mode toggles off
   useEffect(() => {
-    if (mobileSelectActive === false) setSelRects([]);
+    if (mobileSelectActive === false) {
+      setSelRects([]);
+      pendingSelRef.current = null;
+      setSelectionTick((n) => n + 1);
+    }
   }, [mobileSelectActive]);
 
   // ── 移动端「选区模式」自定义 touch 追踪 / Mobile select-mode custom touch tracking ──
-  // 用 caretRangeFromPoint / caretPositionFromPoint 在每个 touchmove 取手指位置
-  // 对应的 text-node + offset，建 Range，渲染高亮覆盖层。touchend 调 onSelect。
-  // No long-press, no native selection — pure finger-down → drag → release flow.
+  //
+  // 行为 / Behavior:
+  //  - 没有 pendingSel → touch-down 开启新选区，start=end=touch
+  //  - 有 pendingSel + touch 落在选区内（或离选区 ≤16px）
+  //      → 判定手指离 start 边近还是 end 边近（几何距离）
+  //      → 近端变为可拖动侧；远端保持；选区保留较大的一半（start..touch 或 touch..end）
+  //      → 手指移动继续更新该端
+  //  - 有 pendingSel + touch 落在选区外很远 → 丢弃旧选区，开新的
+  //  - touchend：不自动 fire onSelect，只停止拖动；选区高亮保留
+  //  - 用户点 action sheet 里的 Pin 按钮才真正 fire onSelect
+  //
+  //  touch-down on nothing → fresh selection
+  //  touch-down inside existing selection (or within 16px grace) → figure out
+  //    which edge is closer (by pixel distance), release that edge at touch,
+  //    keep the other side — finger now drags that released edge
+  //  touch-down clearly outside → restart fresh
+  //  touch-up → stop dragging; highlight stays; user taps Pin in action sheet
+  //    to commit
   useEffect(() => {
     if (!onSelect || isUser || !mobileSelectActive) return;
     const bubble = divRef.current;
     const content = contentRef.current;
     if (!bubble || !content) return;
 
-    type Caret = { node: Text; offset: number };
-    let startCaret: Caret | null = null;
-    let endCaret: Caret | null = null;
-
-    /** caretRangeFromPoint (Webkit) 或 caretPositionFromPoint (Firefox) 兜底 */
-    const caretAt = (x: number, y: number): Caret | null => {
+    const caretAt = (x: number, y: number): MBCaret | null => {
       type CaretPosFn = (x: number, y: number) => { offsetNode: Node; offset: number } | null;
       type CaretRangeFn = (x: number, y: number) => Range | null;
       const doc = document as unknown as {
@@ -415,31 +469,46 @@ function MessageBubble({
       return null;
     };
 
-    /** start..end 排成 forward range（避免反向选区时 setStart > setEnd 抛错） */
-    const buildRange = (): Range | null => {
-      if (!startCaret || !endCaret) return null;
+    /** 取单个 caret 在页面上的 (x,y)，用于「几何距离」判断哪端更近 */
+    const caretPoint = (c: MBCaret): { x: number; y: number } | null => {
       try {
-        const range = document.createRange();
-        // 比较节点位置 / Compare positions in DOM order
-        const cmp = startCaret.node.compareDocumentPosition(endCaret.node);
-        const sameNode = startCaret.node === endCaret.node;
-        if (sameNode && startCaret.offset > endCaret.offset) {
-          range.setStart(endCaret.node, endCaret.offset);
-          range.setEnd(startCaret.node, startCaret.offset);
-        } else if (cmp & Node.DOCUMENT_POSITION_PRECEDING) {
-          range.setStart(endCaret.node, endCaret.offset);
-          range.setEnd(startCaret.node, startCaret.offset);
-        } else {
-          range.setStart(startCaret.node, startCaret.offset);
-          range.setEnd(endCaret.node, endCaret.offset);
+        const r = document.createRange();
+        r.setStart(c.node, c.offset);
+        r.setEnd(c.node, c.offset);
+        const rect = r.getBoundingClientRect();
+        if (!rect.height && !rect.width) {
+          // 零宽 range 有时 rect 取不到；取父节点 rect 的起点
+          const parent = c.node.parentElement;
+          if (parent) {
+            const pr = parent.getBoundingClientRect();
+            return { x: pr.left, y: pr.top + pr.height / 2 };
+          }
+          return null;
         }
-        return range;
+        return { x: rect.left, y: rect.top + rect.height / 2 };
       } catch { return null; }
     };
 
+    /** 触点是否落在当前 pendingSel 内部或边缘（16px grace zone） */
+    const touchOnSelection = (x: number, y: number, sel: MBSelection): boolean => {
+      const range = buildRangeFromSel(sel);
+      if (!range) return false;
+      const grace = 16;
+      for (const r of Array.from(range.getClientRects())) {
+        if (
+          x >= r.left - grace &&
+          x <= r.right + grace &&
+          y >= r.top - grace &&
+          y <= r.bottom + grace
+        ) return true;
+      }
+      return false;
+    };
+
     const updateOverlay = () => {
-      const range = buildRange();
-      if (!range) return;
+      const sel = pendingSelRef.current;
+      const range = sel ? buildRangeFromSel(sel) : null;
+      if (!range) { setSelRects([]); return; }
       const base = content.getBoundingClientRect();
       const rects = Array.from(range.getClientRects())
         .map((r) => ({
@@ -452,42 +521,84 @@ function MessageBubble({
       setSelRects(rects);
     };
 
+    // 暴露更新函数给「调整端」拖动 & action sheet 用
+    overlayUpdaterRef.current = updateOverlay;
+
+    type DragMode = "fresh" | "adjust-start" | "adjust-end" | null;
+    let dragMode: DragMode = null;
+
     const onTouchStart = (e: TouchEvent) => {
       if (!bubble.contains(e.target as Node)) return;
       const touch = e.touches[0];
       const c = caretAt(touch.clientX, touch.clientY);
       if (!c) return;
-      // 落在文本上 → 阻止默认（防止滚动 + 防止 native long-press 选词）
       e.preventDefault();
-      startCaret = c;
-      endCaret = c;
-      setSelRects([]);
+      setDragging(true);
+
+      const cur = pendingSelRef.current;
+      if (!cur) {
+        // 无已有选区 → 新开
+        dragMode = "fresh";
+        pendingSelRef.current = { start: c, end: c };
+        updateOverlay();
+        return;
+      }
+
+      // 有已有选区 → 判断落点位置
+      const inside = touchOnSelection(touch.clientX, touch.clientY, cur);
+      if (!inside) {
+        // 落点在选区外（远）→ 丢弃旧的，开新选区
+        dragMode = "fresh";
+        pendingSelRef.current = { start: c, end: c };
+        updateOverlay();
+        return;
+      }
+
+      // 落点在选区内部或边缘 → 选离触点最近的一端作为「可移动侧」
+      // Release the edge whose caret is closer (in pixels) to the touch.
+      const sp = caretPoint(cur.start);
+      const ep = caretPoint(cur.end);
+      const dist = (p: { x: number; y: number } | null) =>
+        p ? Math.hypot(p.x - touch.clientX, p.y - touch.clientY) : Infinity;
+      const distStart = dist(sp);
+      const distEnd = dist(ep);
+
+      if (distStart <= distEnd) {
+        // 近 start → start 侧可拖，end 保持；选区立即收缩到 [touch..end]
+        dragMode = "adjust-start";
+        pendingSelRef.current = { start: c, end: cur.end };
+      } else {
+        // 近 end → end 侧可拖
+        dragMode = "adjust-end";
+        pendingSelRef.current = { start: cur.start, end: c };
+      }
+      updateOverlay();
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!startCaret) return;
+      if (!dragMode) return;
+      const cur = pendingSelRef.current;
+      if (!cur) return;
       e.preventDefault();
       const touch = e.touches[0];
       const c = caretAt(touch.clientX, touch.clientY);
       if (!c) return;
-      endCaret = c;
+      if (dragMode === "fresh" || dragMode === "adjust-end") {
+        pendingSelRef.current = { start: cur.start, end: c };
+      } else {
+        pendingSelRef.current = { start: c, end: cur.end };
+      }
       updateOverlay();
     };
 
     const onTouchEnd = () => {
-      if (!startCaret || !endCaret) return;
-      const range = buildRange();
-      if (range) {
-        const text = range.toString().trim();
-        if (text) {
-          const startOffset = getCharOffset(bubble, range.startContainer, range.startOffset);
-          const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
-          const rect = range.getBoundingClientRect();
-          onSelect(text, messageId, rect, startOffset, endOffset);
-        }
-      }
-      startCaret = null;
-      endCaret = null;
+      // 不自动 commit 选区；保留高亮让用户点 action sheet 的 Pin
+      // Don't auto-fire onSelect; keep the highlight visible so user can tap
+      // the inline action sheet or touch again to adjust.
+      dragMode = null;
+      setDragging(false);
+      // 触发 re-render 让 action sheet 位置根据最新选区计算
+      setSelectionTick((n) => n + 1);
     };
 
     bubble.addEventListener("touchstart", onTouchStart, { passive: false });
@@ -499,9 +610,74 @@ function MessageBubble({
       bubble.removeEventListener("touchmove", onTouchMove);
       bubble.removeEventListener("touchend", onTouchEnd);
       bubble.removeEventListener("touchcancel", onTouchEnd);
+      overlayUpdaterRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileSelectActive, isUser, messageId, onSelect]);
+
+  // ── 行内 action sheet（Copy / Pin / Cancel）─────────────────────────
+  // 挂在选区右下方；拖动中隐藏；点 Pin 后才 fire onSelect
+  // Inline action sheet pinned below the selection; hides during drag;
+  // Pin tap is the only thing that fires onSelect.
+  const sheet = useMemo(() => {
+    if (!mobileSelectActive || dragging) return null;
+    const sel = pendingSelRef.current;
+    if (!sel) return null;
+    const range = buildRangeFromSel(sel);
+    if (!range) return null;
+    const rect = range.getBoundingClientRect();
+    if (!rect.width && !rect.height) return null;
+    const text = range.toString().trim();
+    if (!text) return null;
+
+    // Default: 选区下方；若会被屏幕底遮住，放到选区上方
+    // Default below selection; flip above if it would clip.
+    const SHEET_W = 176;
+    const SHEET_H = 44;
+    const margin = 8;
+    let top = rect.bottom + 8;
+    if (top + SHEET_H > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - SHEET_H - 8);
+    }
+    let left = rect.left + rect.width / 2 - SHEET_W / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - SHEET_W - margin));
+
+    return { top, left, text, rect, range };
+  // selectionTick 的作用：touchend 时 bump，让 action sheet 位置重算
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileSelectActive, dragging, selectionTick]);
+
+  const commitPin = () => {
+    const bubble = divRef.current;
+    const sel = pendingSelRef.current;
+    if (!bubble || !sel || !onSelect) return;
+    const range = buildRangeFromSel(sel);
+    if (!range) return;
+    const text = range.toString().trim();
+    if (!text) return;
+    const startOffset = getCharOffset(bubble, range.startContainer, range.startOffset);
+    const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
+    const rect = range.getBoundingClientRect();
+    onSelect(text, messageId, rect, startOffset, endOffset);
+    // 保留选区（pending），父组件处理完 PinDialog 再通过 mobileSelectActive→false 清掉
+    // Keep the pending selection until parent toggles mobileSelectActive off.
+  };
+
+  const commitCopy = async () => {
+    if (!sheet) return;
+    try { await navigator.clipboard.writeText(sheet.text); }
+    catch { /* silent */ }
+    // 复制完清掉选区
+    pendingSelRef.current = null;
+    setSelRects([]);
+    setSelectionTick((n) => n + 1);
+  };
+
+  const cancelSelection = () => {
+    pendingSelRef.current = null;
+    setSelRects([]);
+    setSelectionTick((n) => n + 1);
+  };
 
   return (
     <div
@@ -653,6 +829,79 @@ function MessageBubble({
           </div>
         )}
       </div>
+
+      {/* 移动端行内 action sheet — 固定定位到选区下方（或上方，若空间不够）
+          Mobile inline action sheet pinned next to the selection (below,
+          or above if it would clip). Only rendered when there's a pending
+          selection and we're not actively dragging. */}
+      {sheet && typeof document !== "undefined" && createPortal(
+        <div
+          role="menu"
+          style={{
+            position: "fixed",
+            top: sheet.top,
+            left: sheet.left,
+            zIndex: 60,
+            background: "var(--ink)",
+            color: "var(--paper)",
+            borderRadius: 10,
+            padding: 3,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 2,
+            boxShadow: "0 8px 24px rgba(27,26,23,0.22)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={commitCopy}
+            className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-md text-[12px] active:bg-white/10 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" style={{ opacity: 0.8 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+            {t.copy}
+          </button>
+          <button
+            type="button"
+            onClick={commitPin}
+            className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-md text-[12px] font-medium transition-colors"
+            style={{ background: "var(--accent)" }}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
+            </svg>
+            {t.pinAction}
+          </button>
+          <button
+            type="button"
+            onClick={cancelSelection}
+            aria-label="cancel"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-md active:bg-white/10 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" style={{ opacity: 0.7 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+          {/* 下三角 —— 仅当 sheet 在选区下方时显示（用 top 推断） */}
+          {sheet.top > sheet.rect.bottom && (
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: -4,
+                left: sheet.rect.left + sheet.rect.width / 2 - sheet.left - 4,
+                width: 8,
+                height: 8,
+                background: "var(--ink)",
+                transform: "rotate(45deg)",
+              }}
+            />
+          )}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

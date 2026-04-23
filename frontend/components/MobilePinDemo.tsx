@@ -380,7 +380,12 @@ export default function MobilePinDemo() {
   const inSub = phase === "ai-replying" || phase === "sub-thread" || phase === "enter";
   const showNewReplyTag = phase === "popover" || phase === "enter";
 
-  const TOTAL_H = 38 + 360 + 36; // chrome + body + caption (固定)
+  // Mac chrome (38) + chat body (320) + mini graph strip (60) + caption (36)
+  const BODY_H = 320;
+  const GRAPH_H = 60;
+  const TOTAL_H = 38 + BODY_H + GRAPH_H + 36;
+  const showCapNode = anchorVisible;
+  const activeNode: "main" | "cap" = inSub ? "cap" : "main";
 
   return (
     <div className="w-full select-none" style={{ maxWidth: 380 }}>
@@ -410,7 +415,7 @@ export default function MobilePinDemo() {
         </div>
 
         {/* Body — main view + sub view stacked, opacity crossfade */}
-        <div className="relative" style={{ height: 360, background: "var(--paper)" }}>
+        <div className="relative" style={{ height: BODY_H, background: "var(--paper)" }}>
           <div className={`absolute inset-0 transition-opacity duration-200 ${inSub ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
             <MainView
               c={c}
@@ -428,6 +433,33 @@ export default function MobilePinDemo() {
           </div>
 
           {showDialog && <Dialog c={c} picked={phase === "pick"} />}
+        </div>
+
+        {/* Mini graph strip — 横向 2 个 pigment 圆节点 + bezier 连线
+            Mini graph strip — 2 pigment circles + bezier edge, horizontally
+            laid out so it fits in 60px height. Mirrors the desktop's
+            right-rail graph in spirit. */}
+        <div
+          className="relative px-3 flex items-center"
+          style={{
+            height: GRAPH_H,
+            background: "var(--paper-2)",
+            borderTop: "1px solid var(--rule)",
+          }}
+        >
+          <span className="font-mono text-[9px] uppercase tracking-[0.18em] mr-3 flex-shrink-0" style={{ color: "var(--ink-4)" }}>
+            graph
+          </span>
+          <div className="flex-1 relative h-full">
+            <MiniGraph
+              showCapNode={showCapNode}
+              activeNode={activeNode}
+              breathing={breathing}
+              capLabel={c.subTitle}
+              mainLabel={c.mainCrumb}
+              phase={phase}
+            />
+          </div>
         </div>
 
         {/* Caption */}
@@ -659,5 +691,101 @@ function Dialog({ c, picked }: { c: Copy; picked: boolean }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── 横向 mini graph：main 节点 + 可选 sub 节点 + bezier 边 ──────────────
+// Horizontal mini graph for the bottom strip of MobilePinDemo: main node
+// at left, optional sub node at right (when sub-thread spawns), connected
+// with a smooth curve. Active node fills with pigment + breathing pulse.
+function MiniGraph({
+  showCapNode,
+  activeNode,
+  breathing,
+  capLabel,
+  mainLabel,
+  phase,
+}: {
+  showCapNode: boolean;
+  activeNode: "main" | "cap";
+  breathing: boolean;
+  capLabel: string;
+  mainLabel: string;
+  phase: string;
+}) {
+  // 视口 240×60 —— 在 30% 和 70% 处放两个圆
+  const W = 240, H = 60;
+  const mainX = W * 0.18, mainY = H / 2;
+  const capX = W * 0.78, capY = H / 2;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "100%", display: "block" }}>
+      {/* edge */}
+      {showCapNode && (
+        <path
+          d={`M ${mainX} ${mainY} C ${mainX + 30} ${mainY}, ${capX - 30} ${capY}, ${capX} ${capY}`}
+          fill="none"
+          stroke="var(--rule-strong)"
+          strokeWidth={1}
+          style={{ opacity: phase === "underline-appear" ? 0 : 1, transition: "opacity 320ms ease" }}
+        />
+      )}
+
+      {/* main */}
+      <g>
+        <circle
+          cx={mainX}
+          cy={mainY}
+          r={activeNode === "main" ? 5.5 : 4}
+          fill={activeNode === "main" ? "var(--ink)" : "var(--paper-2)"}
+          stroke="var(--ink)"
+          strokeWidth={activeNode === "main" ? 0 : 1.25}
+        />
+        <text
+          x={mainX + 9}
+          y={mainY + 3.5}
+          fontSize={9.5}
+          style={{ fontFamily: "var(--font-serif)" }}
+          fill={activeNode === "main" ? "var(--ink)" : "var(--ink-3)"}
+          fontWeight={activeNode === "main" ? 500 : 400}
+        >
+          {mainLabel}
+        </text>
+      </g>
+
+      {/* cap (sub-thread) */}
+      {showCapNode && (
+        <g style={{
+          opacity: phase === "underline-appear" ? 0 : 1,
+          transform: phase === "underline-appear" ? "translateX(-4px)" : "translateX(0)",
+          transition: "opacity 380ms ease, transform 380ms cubic-bezier(0.16, 1, 0.3, 1)",
+          transformOrigin: `${capX}px ${capY}px`,
+        }}>
+          <circle
+            cx={capX}
+            cy={capY}
+            r={activeNode === "cap" ? 5.5 : 4}
+            fill={activeNode === "cap" ? "var(--pig-1)" : "var(--paper-2)"}
+            stroke="var(--pig-1)"
+            strokeWidth={activeNode === "cap" ? 0 : 1.25}
+          />
+          {breathing && (
+            <circle cx={capX + 6} cy={capY - 4} r={3} fill="var(--accent)" stroke="var(--paper)" strokeWidth={1}>
+              <animate attributeName="r" values="3;4;3" dur="1.6s" repeatCount="indefinite" />
+            </circle>
+          )}
+          <text
+            x={capX + 9}
+            y={capY + 3.5}
+            fontSize={9.5}
+            style={{ fontFamily: "var(--font-serif)" }}
+            fill={activeNode === "cap" ? "var(--ink)" : "var(--ink-3)"}
+            fontWeight={activeNode === "cap" ? 500 : 400}
+          >
+            {capLabel.length > 12 ? capLabel.slice(0, 12) + "…" : capLabel}
+          </text>
+        </g>
+      )}
+    </svg>
   );
 }
