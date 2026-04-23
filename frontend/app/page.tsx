@@ -202,34 +202,17 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2">
-          {/* 登录用户显示头像 + 退出；匿名不显示退出(强引导走登录按钮)
-           *  Signed-in users see avatar + logout; anon users don't get a logout option (nudges toward Sign in).
-           *  Mobile collapses the logout text to an icon-only button to save room
-           *  in the topbar — long English locale strings would otherwise overflow. */}
-          {user && !isAnon && (
-            <>
-              {user.avatar_url && (
-                <img
-                  src={user.avatar_url}
-                  alt="avatar"
-                  className="w-6 h-6 md:w-7 md:h-7 rounded-full border border-base object-cover"
-                />
-              )}
-              <button
-                onClick={handleLogout}
-                aria-label={t.logout}
-                title={t.logout}
-                className="flex items-center justify-center text-[11px] font-medium text-faint hover:text-md w-7 h-7 md:w-auto md:h-auto md:px-2 md:py-1 rounded-lg border border-subtle hover:border-base transition-colors"
-              >
-                {/* 手机:icon only / Mobile: icon only */}
-                <svg className="w-3.5 h-3.5 md:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                <span className="hidden md:inline">{t.logout}</span>
-              </button>
-            </>
+          {/* 登录用户保留头像；退出按钮在下方主 CTA 位置（替代了「新对话」）
+           *  Signed-in users keep the avatar; the logout action lives in the
+           *  primary CTA slot below (replaced the former "New chat" button on
+           *  the welcome page, per the directive to surface auth controls
+           *  instead of session actions in the header). */}
+          {user && !isAnon && user.avatar_url && (
+            <img
+              src={user.avatar_url}
+              alt="avatar"
+              className="w-6 h-6 md:w-7 md:h-7 rounded-full border border-base object-cover"
+            />
           )}
           {/* Articles 链接:手机端 icon only(书本图标),桌面端文本
            *  Articles link: icon-only on mobile (book icon), text on desktop. */}
@@ -246,27 +229,30 @@ export default function HomePage() {
             <span className="hidden md:inline">{t.articles}</span>
           </Link>
           <LangSelector />
-          {/* 右上角主 CTA:匿名 → 登录(linkIdentity 保留试用数据),登录 → 新对话
-           *  Top-right primary CTA: anon users get "Sign in" (linkIdentity preserves trial data); signed-in get "New chat".
-           *  Mobile (< md): smaller font + tighter padding so the button stays
-           *  on one line in the cramped topbar; desktop keeps the original look. */}
-          {isAnon ? (
+          {/* 右上角主 CTA —— 只管登录/登出。未登录（user === null）和匿名
+           *  (isAnon) 都显示 Sign in；只有真实登录（user && !isAnon）才显示
+           *  Logout。新对话由下方 Hero 输入框承接，不在这里。
+           *  Welcome page topbar CTA shows Sign in for unauthenticated + anon
+           *  users, Logout only for genuinely signed-in users. New chat is
+           *  started from the hero input below. */}
+          {user && !isAnon ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 text-[11px] md:text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg transition-colors font-medium whitespace-nowrap"
+            >
+              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              {t.logout}
+            </button>
+          ) : (
             <button
               onClick={handleSignIn}
               className="flex items-center gap-1.5 text-[11px] md:text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg transition-colors font-medium whitespace-nowrap"
             >
               {t.signIn}
-            </button>
-          ) : (
-            <button
-              onClick={() => handleNewChat()}
-              disabled={creating}
-              className="flex items-center gap-1.5 text-[11px] md:text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg transition-colors font-medium whitespace-nowrap"
-            >
-              <svg className="w-3 md:w-3.5 h-3 md:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              {creating ? t.creating : t.newChat}
             </button>
           )}
         </div>
