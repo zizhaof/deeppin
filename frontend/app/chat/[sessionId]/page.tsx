@@ -166,14 +166,17 @@ export default function ChatPage() {
     return () => clearTimeout(id);
   }, [flattenToast]);
 
-  // 右栏宽度（可拖拽调整）—— 左栏已移除，只剩右栏一个可调节点
-  // Right panel width (left panel was removed — only right resizer remains).
-  const [rightW, setRightW] = useState(() =>
-    typeof window !== "undefined" ? Number(localStorage.getItem("deeppin:right-w")) || 288 : 288
-  );
-  const MIN_SIDE = 200;
-  // 上限 = 窗口宽度的一半，为主对话区留出 >= 200px 的空间
-  // Max = half of viewport width; main column always keeps >= 200px.
+  // 右栏宽度（可拖拽调整）—— 默认按 4:1（main:rail）比例设定。
+  // Right panel width — defaults to a 4:1 main:rail ratio (rail ~= 20% of viewport).
+  const [rightW, setRightW] = useState(() => {
+    if (typeof window === "undefined") return 340;
+    const stored = Number(localStorage.getItem("deeppin:right-w"));
+    if (stored > 0) return stored;
+    return Math.max(240, Math.min(420, Math.round(window.innerWidth * 0.2)));
+  });
+  const MIN_SIDE = 220;
+  // 上限 = 窗口宽度的一半，为主对话区留出 >= 220px 的空间
+  // Max = half of viewport width; main column always keeps >= 220px.
   const maxSide = () =>
     typeof window !== "undefined" ? Math.max(MIN_SIDE, Math.floor(window.innerWidth / 2)) : 640;
 

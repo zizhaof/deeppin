@@ -10,108 +10,9 @@ import QuotaExceededModal from "@/components/QuotaExceededModal";
 import { createClient } from "@/lib/supabase";
 import Link from "next/link";
 import { useT } from "@/stores/useLangStore";
-import type { T } from "@/lib/i18n";
 import SessionDrawer from "@/components/SessionDrawer";
 import LangSelector from "@/components/LangSelector";
 import PinDemo from "@/components/PinDemo";
-
-// ── 分隔线 ────────────────────────────────────────────────────────────
-
-function Divider({ label }: { label: string }) {
-  return (
-    <div className="w-full max-w-[420px] flex items-center gap-3">
-      <div className="flex-1 h-px bg-base" />
-      <span className="text-[9px] font-semibold text-ph uppercase tracking-[0.18em]">{label}</span>
-      <div className="flex-1 h-px bg-base" />
-    </div>
-  );
-}
-
-// ── 问题陈述 ──────────────────────────────────────────────────────────
-
-function ProblemStatement({ t }: { t: T }) {
-  return (
-    <div className="w-full max-w-[420px] space-y-3">
-      {/* 情景铺垫 */}
-      <p className="text-[13px] text-lo leading-relaxed mb-4">{t.problemSetup}</p>
-
-      {/* 两个坏选择 */}
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: t.badChoice1Label, desc: t.badChoice1Desc },
-          { label: t.badChoice2Label, desc: t.badChoice2Desc },
-        ].map((item, i) => (
-          <div key={i} className="relative rounded-xl border border-base bg-surface-60 p-4 overflow-hidden">
-            {/* 顶部红线 */}
-            <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-red-500/50 to-red-500/10" />
-            <div className="flex items-center gap-1.5 mb-2">
-              <svg className="w-3 h-3 text-red-500/50 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-              <span className="text-xs font-medium text-dim line-through decoration-red-500/40 decoration-1">{item.label}</span>
-            </div>
-            <p className="text-[11px] text-faint leading-relaxed">{item.desc}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* 解法 */}
-      <div className="relative rounded-xl border border-indigo-500/20 bg-indigo-950/40 p-4 overflow-hidden">
-        {/* 顶部 indigo 线 */}
-        <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-indigo-500/70 via-indigo-400/30 to-transparent" />
-        {/* 内部光晕 */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_70%_at_5%_0%,rgba(99,102,241,0.09),transparent_65%)]" />
-        <div className="relative flex items-start gap-3">
-          <div className="mt-0.5 w-5 h-5 rounded-md bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center flex-shrink-0">
-            <svg className="w-2.5 h-2.5 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-indigo-300 mb-1">{t.solutionLabel}</p>
-            <p className="text-xs text-lo leading-relaxed">{t.solutionDesc}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 使用步骤（竖向时间线）────────────────────────────────────────────
-
-function HowItWorks({ t }: { t: T }) {
-  const steps = [
-    { num: "01", title: t.step1Title, desc: t.step1Desc },
-    { num: "02", title: t.step2Title, desc: t.step2Desc },
-    { num: "03", title: t.step3Title, desc: t.step3Desc },
-    { num: "04", title: t.step4Title, desc: t.step4Desc },
-  ];
-
-  return (
-    <div className="w-full max-w-[420px]">
-      <div className="relative pl-[52px]">
-        {/* 竖向连接线 */}
-        <div className="absolute left-[19px] top-5 bottom-5 w-px bg-base" />
-
-        <div className="space-y-1">
-          {steps.map((step, i) => (
-            <div key={i} className="relative flex items-start gap-0 pb-6 last:pb-0">
-              {/* 数字圆点 */}
-              <div className="absolute left-[-33px] w-[26px] h-[26px] rounded-full border border-base bg-base flex items-center justify-center z-10">
-                <span className="font-mono text-[9px] text-faint tracking-tight">{step.num}</span>
-              </div>
-              {/* 内容 */}
-              <div className="pt-0.5">
-                <p className="text-[13px] font-medium text-md leading-snug mb-1">{step.title}</p>
-                <p className="text-[11px] text-faint leading-relaxed">{step.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── 主页 ─────────────────────────────────────────────────────────────
 
@@ -406,32 +307,15 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* ── 插针演示 ── */}
+        {/* ── 插针演示 —— 演示已自带「两个坏选项」的文案 + pin 的解法，
+             所以 Why / How sections 删掉，避免重复。
+             PinDemo now carries the "two bad options" framing + the pin fix
+             inside its AI reply — the separate Why / How sections are redundant. ── */}
         <div style={fadeUp(60)}>
           <PinDemo />
         </div>
 
-        {/* ── 分隔 Why ── */}
-        <div style={fadeUp(80)} className="w-full max-w-[420px]">
-          <Divider label="why" />
-        </div>
-
-        {/* ── 问题陈述 ── */}
-        <div style={fadeUp(140)}>
-          <ProblemStatement t={t} />
-        </div>
-
-        {/* ── 分隔 How ── */}
-        <div style={fadeUp(200)} className="w-full max-w-[420px]">
-          <Divider label={t.howToUseTitle} />
-        </div>
-
-        {/* ── 步骤 ── */}
-        <div style={fadeUp(240)}>
-          <HowItWorks t={t} />
-        </div>
-
-        <div className="h-8" />
+        <div className="h-16" />
       </main>
 
       <QuotaExceededModal
