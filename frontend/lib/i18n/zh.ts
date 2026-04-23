@@ -160,4 +160,6 @@ export const zh: T = {
   mergeSaveToChat: "保存到对话",
   mergeReselect: "重新选择",
   signInTerms: "登录即代表你同意 Deeppin 的服务条款和隐私政策。",
+  selectMode: "选取",
+  cancel: "取消",
 };

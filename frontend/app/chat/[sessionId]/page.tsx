@@ -11,6 +11,7 @@ import type { SseErrorInfo } from "@/lib/sse";
 import QuotaExceededModal from "@/components/QuotaExceededModal";
 import { useThreadStore } from "@/stores/useThreadStore";
 import { useT, useLangStore } from "@/stores/useLangStore";
+import { localizeStatusText } from "@/lib/i18n";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
 import PinMenu from "@/components/PinMenu";
@@ -394,7 +395,10 @@ export default function ChatPage() {
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       makeStreamErrorHandler(threadId, true),
       (tid, title) => updateThreadTitle(tid, title),
-      (text) => setStreamStatus(threadId, text),
+      // 后端 status 文本是 "中文 / English" 双语,这里按 lang 裁掉一半
+      // Backend SSE status text is bilingual ("中文 / English") — keep only
+      // the half matching the active locale before showing it.
+      (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
       ragFilename,
     );
   };
@@ -411,18 +415,18 @@ export default function ChatPage() {
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       makeStreamErrorHandler(threadId, false),
       undefined,
-      (text) => setStreamStatus(threadId, text),
+      (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
     );
-  }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler]);
+  }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler, lang]);
 
   // ── 点击锚点进入子线程 ──────────────────────────────────────────
   const handleAnchorClick = useCallback((threadId: string) => {
     handleNavigateTo(threadId);
   }, [handleNavigateTo]);
 
-  // ── 打开 session 抽屉时懒加载列表 ──────────────────────────────
-  const handleOpenSessions = useCallback(() => {
-    setShowSessions(true);
+  // ── Sessions 列表懒加载（首次访问时拉一次）
+  //    Lazy-fetch the session list (kicked off on first drawer open). */
+  const ensureSessionsLoaded = useCallback(() => {
     if (sessions.length === 0) {
       setSessionsLoading(true);
       listSessions()
@@ -431,6 +435,13 @@ export default function ChatPage() {
         .finally(() => setSessionsLoading(false));
     }
   }, [sessions.length]);
+
+  // 桌面 SessionDrawer 入口:打开抽屉 + 懒加载
+  // Desktop entry point: open the legacy SessionDrawer + lazy-load.
+  const handleOpenSessions = useCallback(() => {
+    setShowSessions(true);
+    ensureSessionsLoaded();
+  }, [ensureSessionsLoaded]);
 
   // ── 新建对话：匿名用户弹登录引导，登录用户直接跳新 UUID ───────────
   // New chat: anon users get the sign-in prompt; signed-in users go straight to a fresh UUID.
@@ -500,6 +511,38 @@ export default function ChatPage() {
     []
   );
 
+  // 手机端专用:用户在 inline action sheet 上点 Pin 时直接走 handlePin
+  // (动作语义已经是「我要插针」,不再需要 PinMenu 中转)。
+  //
+  // 需要保持函数引用稳定(MessageBubble 的 touch useEffect 依赖它),但
+  // handlePin 在每次 render 被重建,且闭包读 mainThread / activeThreadId
+  // 等在首渲染时都还 undefined。`useCallback([], [])` 会把首渲染那个
+  // "handlePin=会提前 return 的版本" 冻住,点 Pin 永远无反应。
+  // 用 ref 兜底:callback 引用稳定,但 handlePinRef.current 每次 render
+  // 刷成最新的那个 handlePin。
+  //
+  // Mobile-only bridge — taps on Pin skip PinMenu and go straight to
+  // handlePin. We must keep this callback referentially stable (the
+  // touch-handler useEffect in MessageBubble has it as a dep), but
+  // handlePin is recreated each render and closes over mainThread /
+  // activeThreadId, which are undefined on the very first render before
+  // the session API resolves. A `useCallback(fn, [])` would freeze the
+  // first-render handlePin forever, so the early-return `if (!mainThread)`
+  // fires on every tap and nothing happens. Use a ref to always reach
+  // the latest handlePin while keeping the outer callback stable.
+  const handlePinRef = useRef<((info: SelectionInfo) => void) | null>(null);
+  const handleMobileSelectionPin = useCallback(
+    (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
+      const container = scrollContainerRef.current;
+      const centerY = rect.top + rect.height / 2;
+      const anchorContentY = container
+        ? centerY - container.getBoundingClientRect().top + container.scrollTop
+        : centerY;
+      handlePinRef.current?.({ text, messageId, rect, anchorContentY, startOffset, endOffset });
+    },
+    []
+  );
+
   const handlePin = async (info: SelectionInfo) => {
     clearActiveHighlight();
     setSelection(null);
@@ -556,6 +599,11 @@ export default function ChatPage() {
       setError(String(e));
     }
   };
+
+  // 每次 render 刷新 handlePinRef(稳定 callback 通过 ref 总能读到最新 handlePin)
+  // Refresh the handlePin ref every render so the stable mobile bridge
+  // always calls the latest closure, not a frozen first-render one.
+  handlePinRef.current = handlePin;
 
   // ── rollItems（当前激活线程的直接子针） ─────────────────────────
   const rollItems: ThreadCardItem[] = [];
@@ -869,7 +917,18 @@ export default function ChatPage() {
           onBack={navigateBack}
           onForward={navigateForward}
           onNavigateTo={handleNavigateTo}
-          onOpenSessions={handleOpenSessions}
+          // Sessions
+          sessions={sessions}
+          sessionsLoading={sessionsLoading}
+          // 手机端内置自己的左抽屉,这里只负责懒加载 sessions(不开 SessionDrawer,
+          // 否则桌面遗留抽屉会和手机抽屉同时弹出两层)。
+          // Mobile layout owns its own left drawer — only trigger the lazy
+          // session fetch here; opening the legacy SessionDrawer too would
+          // result in two stacked drawers on mobile.
+          onOpenSessions={ensureSessionsLoaded}
+          onDeleteSession={handleDeleteSession}
+          onNewChat={handleNewChat}
+          // Active conversation
           activeMessages={activeMessages}
           streamingText={streamingText}
           activeStatus={activeStatus}
@@ -878,18 +937,29 @@ export default function ChatPage() {
           activeThread={activeThread ?? null}
           userAvatarUrl={userAvatarUrl}
           onMessageRef={handleMessageRef}
-          onTextSelect={handleTextSelect}
+          // 手机端 Pin tap 直接创建子线程,跳过 PinMenu(其 mobile 分支已被
+          // inline action sheet 取代)。Mobile inline Pin tap creates the
+          // sub-thread directly — bypasses PinMenu's removed mobile branch.
+          onTextSelect={handleMobileSelectionPin}
           onAnchorClick={handleAnchorClick}
           onAnchorHover={handleAnchorHover}
           onSendSuggestion={(q) => { if (activeThreadId) handleSendSuggestion(activeThreadId, q); }}
+          // Right drawer
           rollItems={rollItems}
           unreadCounts={unreadCounts}
           messagesByThread={messagesByThread}
+          pinCount={pinCount}
+          onOpenMerge={() => setShowMerge(true)}
+          onOpenFlatten={() => setShowFlattenConfirm(true)}
+          // Composer
           sessionId={sessionId}
           onSend={handleSend}
           isStreaming={isStreaming}
           webSearch={webSearch}
           onWebSearchToggle={setWebSearch}
+          // Account
+          isAnon={isAnon}
+          onSignIn={handleSignIn}
         />
       </div>
 
@@ -902,7 +972,19 @@ export default function ChatPage() {
 
       <PinStartDialog
         info={pinDialog}
-        onSend={(threadId, question) => handleSendSuggestion(threadId, question)}
+        onSend={(threadId, question) => {
+          // 手机端只显示 activeThread,新建子线程后必须切过去,否则 AI
+          // 回复流进用户看不到的线程。桌面端有右栏 card 同屏显示,保持
+          // 在主线不跳转。
+          // Mobile shows only the active thread — navigate into the new
+          // sub-thread so the streaming answer is actually visible.
+          // Desktop keeps the main thread in view (sub-thread shows up
+          // as a rail card).
+          if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+            handleNavigateTo(threadId);
+          }
+          handleSendSuggestion(threadId, question);
+        }}
         onClose={() => setPinDialog(null)}
       />
 
@@ -986,17 +1068,22 @@ export default function ChatPage() {
         </div>
       )}
 
-      <SessionDrawer
-        open={showSessions}
-        onClose={() => setShowSessions(false)}
-        sessions={sessions}
-        loading={sessionsLoading}
-        currentSessionId={sessionId}
-        t={t}
-        onDelete={handleDeleteSession}
-        isAnon={isAnon}
-        onAnonNewChat={() => setQuotaModal({ variant: "session" })}
-      />
+      {/* 桌面专属:手机端 MobileChatLayout 自带左抽屉,不能再渲染这一层
+          Desktop only — MobileChatLayout owns its own session drawer on
+          mobile, so gating this on md+ prevents two drawers stacking. */}
+      <div className="hidden md:contents">
+        <SessionDrawer
+          open={showSessions}
+          onClose={() => setShowSessions(false)}
+          sessions={sessions}
+          loading={sessionsLoading}
+          currentSessionId={sessionId}
+          t={t}
+          onDelete={handleDeleteSession}
+          isAnon={isAnon}
+          onAnonNewChat={() => setQuotaModal({ variant: "session" })}
+        />
+      </div>
 
       <QuotaExceededModal
         open={quotaModal !== null}

@@ -132,57 +132,15 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
         />
       </div>
 
-      {/* ── 移动端：底部 action bar（与浏览器原生 Copy 菜单共存，不冲突） ── */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 animate-in slide-in-from-bottom-2 duration-150">
-        {/* 选中文字预览 — ink 底 paper 字，跟桌面端 selpop 同一语言
-            Selected-text preview — ink bg + paper text (mirrors desktop selpop). */}
-        <div
-          className="mx-3 mb-1 px-3 py-1.5 rounded-xl"
-          style={{ background: "var(--ink)", border: "1px solid var(--accent-ink)" }}
-        >
-          <p className="text-[11px] leading-relaxed line-clamp-2" style={{ color: "var(--ink-5)" }}>
-            <span className="mr-1" style={{ color: "var(--ink-4)" }}>&quot;</span>
-            {selection.text.length > 80 ? selection.text.slice(0, 80) + "…" : selection.text}
-          </p>
-        </div>
-        {/* 操作按钮行 */}
-        <div className="flex items-center gap-2 px-3 pb-safe pb-4 bg-surface/95 backdrop-blur-xl border-t border-subtle">
-          {/* 关闭 */}
-          <button
-            onPointerDown={e => { e.preventDefault(); onClose(); }}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-ph active:bg-glass transition-colors flex-shrink-0"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-
-          <div className="flex-1" />
-
-          {/* 复制 */}
-          <button
-            onPointerDown={e => { e.preventDefault(); handleCopy(); }}
-            className="flex items-center gap-2 px-4 h-10 rounded-xl border border-subtle bg-glass text-hi active:bg-surface transition-colors"
-          >
-            <svg className="w-4 h-4 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-            </svg>
-            <span className="text-sm">{t.copy ?? "复制"}</span>
-          </button>
-
-          {/* 插针 */}
-          <button
-            onPointerDown={e => { e.preventDefault(); onPin(selection); }}
-            className="flex items-center gap-2 px-4 h-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 active:bg-indigo-700 text-white transition-colors font-medium"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
-            </svg>
-            <span className="text-sm">{t.pinAction}</span>
-          </button>
-        </div>
-      </div>
+      {/* ── 移动端底部 action bar 已删除 —— MessageBubble 在 mobile select-mode
+           下用就地 portal 渲染 Copy/Pin 弹层，触发 onSelect 时 PinMenu 也会被
+           Chat page 拉起，但 md:hidden 这条路径不再渲染任何东西，避免出现
+           「就地一个 + 底部一个」两套 action sheet 的重复。
+           Mobile bottom action bar removed — MessageBubble in mobile select-
+           mode already renders its own inline portal sheet (Copy / Pin /
+           Cancel) right next to the selection. PinMenu is still mounted by
+           the chat page when onSelect fires, but its mobile branch is now
+           a no-op so the user doesn't see two duplicate sheets. ── */}
     </>,
     document.body
   );

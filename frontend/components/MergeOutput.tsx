@@ -11,6 +11,7 @@ import { useThreadStore } from "@/stores/useThreadStore";
 import MarkdownContent from "@/components/MarkdownContent";
 import MergeGraph from "@/components/MergeGraph";
 import { useLangStore, useT } from "@/stores/useLangStore";
+import { localizeStatusText } from "@/lib/i18n";
 
 interface Props {
   sessionId: string;
@@ -144,7 +145,9 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       },
       (fullText) => { setContent(fullText); setState("done"); },
       (msg) => { setErrorMsg(msg); setState("error"); },
-      (text) => setStatus(text),
+      // 后端 status 是 "中文 / English" 双语,按 lang 裁掉一半
+      // Backend bilingual status — keep only the locale-matching half.
+      (text) => setStatus(localizeStatusText(text, lang)),
       format === "custom" ? customPrompt : undefined,
       lang,
     );
