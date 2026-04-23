@@ -391,13 +391,17 @@ export default function MobilePinDemo() {
   useEffect(() => {
     if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
     setTapRing(false);
+    // 值 = 距离 phase 结束前多少 ms 点亮 tap press —— 动画持续 1100ms，留够时间
+    // 让用户看清"哪里被按下"，再过渡到下一个 phase
+    // Value = ms-before-phase-end when the tap press lights up. Press animation
+    // lasts ~1100ms, so the viewer has a clear look at "where the finger
+    // landed" before the next phase takes over.
     const tapPhases: Partial<Record<Phase, number>> = {
-      // 值 = 距离 phase 结束前多少 ms 点亮 ripple（ripple 本身约 650ms）
-      // Value = ms-before-phase-end to trigger ripple (ripple lasts ~650ms).
-      selpop: 900,        // 点击 Pin 按钮 / tap on Pin chip
-      pick: 300,          // 点击 suggestion / tap on suggestion
-      popover: 900,       // 点击 Enter / tap on Enter button
-      "tap-overview": 700, // 点击 overview / tap on overview button
+      selpop: 1200,        // 点击 Pin 按钮 / tap on Pin chip
+      pick: 500,           // 点击 suggestion / tap on suggestion（pick 只 700ms）
+      "unread-breathing": 1100, // 点击锚点下划线 / tap on anchor underline → popover
+      popover: 1200,       // 点击 Enter / tap on Enter button
+      "tap-overview": 1100, // 点击 overview / tap on overview button
     };
     const offset = tapPhases[phase];
     if (offset == null) return;
@@ -535,7 +539,10 @@ export default function MobilePinDemo() {
               />
             )}
             {phase === "tap-overview" && tapRing && (
-              <span key="tap-ov" className="demo-tap-ripple demo-tap-ripple-sm" aria-hidden />
+              <>
+                <span key="tap-ov-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
+                <span key="tap-ov-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+              </>
             )}
           </span>
         </div>
@@ -656,44 +663,83 @@ export default function MobilePinDemo() {
           50%      { box-shadow: 0 0 0 8px rgba(42, 42, 114, 0); }
         }
 
-        /* 一次性点击 ripple —— 中心从小环放大 + 淡出，代表"这里被按下"
-           One-shot tap ripple: ring grows from center and fades out, marks
-           where the user just tapped. */
-        :global(.demo-tap-ripple) {
+        /* 触点主体 ——"手指按下"的实心圆盘 + 径向光晕，是这里被按下的
+           primary visual。比纯 ripple 更"重"，远距离也能一眼看见。
+           The main "finger-pressing-here" visual: a filled accent disc +
+           radial halo. Heavier than a thin ring; reads from far away. */
+        :global(.demo-tap-print) {
           pointer-events: none;
           position: absolute;
           left: 50%;
           top: 50%;
-          width: 36px;
-          height: 36px;
-          margin-left: -18px;
-          margin-top: -18px;
+          width: 44px;
+          height: 44px;
+          margin-left: -22px;
+          margin-top: -22px;
           border-radius: 9999px;
-          border: 2px solid var(--accent);
-          animation: demo-tap-ripple 640ms ease-out 1 forwards;
+          background: radial-gradient(
+            circle,
+            color-mix(in oklch, var(--accent) 85%, transparent) 0%,
+            color-mix(in oklch, var(--accent) 55%, transparent) 40%,
+            color-mix(in oklch, var(--accent) 0%, transparent) 72%
+          );
+          animation: demo-tap-print 1100ms ease-out 1 forwards;
           z-index: 40;
         }
-        :global(.demo-tap-ripple-sm) {
-          width: 26px;
-          height: 26px;
-          margin-left: -13px;
-          margin-top: -13px;
+        :global(.demo-tap-print-sm) {
+          width: 32px;
+          height: 32px;
+          margin-left: -16px;
+          margin-top: -16px;
         }
-        @keyframes demo-tap-ripple {
-          0%   { transform: scale(0.35); opacity: 0.95; }
-          60%  { opacity: 0.75; }
-          100% { transform: scale(1.55); opacity: 0; }
+        @keyframes demo-tap-print {
+          0%   { transform: scale(0.4); opacity: 0; }
+          15%  { transform: scale(0.9); opacity: 0.95; }
+          55%  { transform: scale(1.0); opacity: 0.85; }
+          100% { transform: scale(1.6); opacity: 0; }
         }
 
-        /* 按下瞬间：目标元素本体的"被按下"缩压反馈（与 ripple 同步）
-           Press-down scale on the tapped element itself (sync with ripple). */
+        /* 同步的细环 ripple ——"按下 → 扩散"的第二层反馈
+           Concentric outward ring — secondary "it radiates" feedback. */
+        :global(.demo-tap-ring) {
+          pointer-events: none;
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 44px;
+          height: 44px;
+          margin-left: -22px;
+          margin-top: -22px;
+          border-radius: 9999px;
+          border: 2.5px solid var(--accent);
+          animation: demo-tap-ring 1100ms ease-out 1 forwards;
+          z-index: 41;
+        }
+        :global(.demo-tap-ring-sm) {
+          width: 32px;
+          height: 32px;
+          margin-left: -16px;
+          margin-top: -16px;
+        }
+        @keyframes demo-tap-ring {
+          0%   { transform: scale(0.35); opacity: 0; }
+          20%  { transform: scale(0.85); opacity: 0.9; }
+          100% { transform: scale(2.1); opacity: 0; }
+        }
+
+        /* 按下时目标元素本身的"发亮 + 缩压"高亮 —— 跟 MergeDemo 的 btnPulsing
+           同一思路：accent 填充变浓 + 强 box-shadow 光晕 + 轻微 scale。
+           On the tapped element itself: accent fill brightens, strong
+           box-shadow glow, slight scale — mirrors MergeDemo.btnPulsing so
+           the user's eye locks onto "this is what just got tapped". */
         :global(.demo-tap-press) {
-          animation: demo-tap-press 640ms ease-out 1;
+          animation: demo-tap-press 1100ms ease-out 1;
         }
         @keyframes demo-tap-press {
-          0%   { transform: scale(1); }
-          30%  { transform: scale(0.92); }
-          100% { transform: scale(1); }
+          0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(42,42,114,0);   filter: brightness(1); }
+          18%  { transform: scale(0.94); box-shadow: 0 0 0 6px rgba(42,42,114,0.35); filter: brightness(1.35); }
+          40%  { transform: scale(1.06); box-shadow: 0 0 0 10px rgba(42,42,114,0.15); filter: brightness(1.25); }
+          100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(42,42,114,0);   filter: brightness(1); }
         }
       `}</style>
     </div>
@@ -715,8 +761,13 @@ function MainView({
   tapRing: boolean;
 }) {
   const sweeping = phase === "sweep";
-  const bg = sweeping ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 22)}%, transparent)` : undefined;
+  // Sweep fill 加强到 36%（原 22% 太浅），让"选中范围"在手机上也一眼可见
+  // Boost sweep fill to 36% (was 22%) so the selection wash reads clearly.
+  const bg = sweeping ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 36)}%, transparent)` : undefined;
   const bb = anchorVisible ? `${breathing ? 3 : 1}px solid var(--pig-1)` : sweeping ? "1px solid transparent" : "none";
+  // 锚点下划线被按下（unread-breathing 末尾 → 过渡到 popover）
+  // Anchor underline being tapped (near end of unread-breathing → popover)
+  const tapOnAnchor = phase === "unread-breathing" && tapRing;
   return (
     <div className="h-full p-3 overflow-hidden">
       {/* breadcrumb */}
@@ -761,7 +812,7 @@ function MainView({
         >
           {c.aiPre}
           <span
-            className="relative inline-block"
+            className={`relative inline-block ${tapOnAnchor ? "demo-tap-press" : ""}`}
             style={{
               background: bg,
               borderBottom: bb,
@@ -771,6 +822,12 @@ function MainView({
             }}
           >
             {c.anchor}
+            {tapOnAnchor && (
+              <>
+                <span key="tap-anchor-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
+                <span key="tap-anchor-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+              </>
+            )}
             {showSelpop && (
               <span
                 className="absolute left-0 -top-9 z-20 inline-flex items-center gap-[2px] rounded-md shadow-[0_4px_14px_rgba(27,26,23,0.18)]"
@@ -785,7 +842,10 @@ function MainView({
                 >
                   {c.pinLabel}
                   {phase === "selpop" && tapRing && (
-                    <span key="tap-pin" className="demo-tap-ripple demo-tap-ripple-sm" aria-hidden />
+                    <>
+                      <span key="tap-pin-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
+                      <span key="tap-pin-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+                    </>
                   )}
                 </span>
                 <span aria-hidden className="absolute left-3 -bottom-1 w-1.5 h-1.5 rotate-45" style={{ background: "var(--ink)" }} />
@@ -819,7 +879,10 @@ function MainView({
                   >
                     {c.enterLabel} →
                     {phase === "popover" && tapRing && (
-                      <span key="tap-enter" className="demo-tap-ripple demo-tap-ripple-sm" aria-hidden />
+                      <>
+                        <span key="tap-enter-print" className="demo-tap-print demo-tap-print-sm" aria-hidden />
+                        <span key="tap-enter-ring" className="demo-tap-ring demo-tap-ring-sm" aria-hidden />
+                      </>
                     )}
                   </span>
                 </div>
@@ -933,7 +996,10 @@ function Dialog({ c, picked, tapRing }: { c: Copy; picked: boolean; tapRing: boo
           >
             {c.threadReply.slice(0, 38)}…
             {tapRing && (
-              <span key="tap-pick" className="demo-tap-ripple" aria-hidden />
+              <>
+                <span key="tap-pick-print" className="demo-tap-print" aria-hidden />
+                <span key="tap-pick-ring" className="demo-tap-ring" aria-hidden />
+              </>
             )}
           </div>
         </div>
