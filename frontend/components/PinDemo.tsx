@@ -5,20 +5,22 @@ import { useEffect, useRef, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
 import type { Lang } from "@/lib/i18n";
 
-// ── 颜色常量 ──────────────────────────────────────────────────────────────────
+// ── 颜色常量 — 使用新 brand: warm paper + deep-ink indigo ──────────────────
+// Colors — new brand palette (warm paper + deep-ink indigo).
 const C = {
-  bg:          "#0d0e18",
-  surface:     "#141626",
-  border:      "rgba(255,255,255,0.08)",
-  borderSub:   "rgba(255,255,255,0.05)",
-  textHi:      "rgb(226,232,240)",
-  textMd:      "rgb(148,163,184)",
-  textLo:      "rgb(100,116,139)",
-  textFaint:   "rgb(71,85,105)",
-  indigo:      "rgba(99,102,241,",
-  indigoSolid: "rgb(99,102,241)",
-  indigoText:  "rgb(165,180,252)",
-  indigoLight: "rgb(199,210,254)",
+  bg:          "#f5f1ea",             // paper
+  surface:     "#fbf8f2",             // card
+  border:      "rgba(27,26,23,0.10)", // ink-10% (rule)
+  borderSub:   "rgba(27,26,23,0.06)", // ink-6% (rule-soft)
+  textHi:      "rgb(27,26,23)",       // ink
+  textMd:      "rgb(68,65,60)",       // ink-2
+  textLo:      "rgb(113,108,99)",     // ink-3
+  textFaint:   "rgb(154,147,138)",    // ink-4
+  // Deep-ink indigo (#2a2a72)
+  indigo:      "rgba(42,42,114,",
+  indigoSolid: "rgb(42,42,114)",
+  indigoText:  "rgb(63,61,153)",      // accent-2 #3f3d99
+  indigoLight: "rgb(224,220,241)",    // accent-soft #e0dcf1
 };
 const ind = (a: number) => `${C.indigo}${a})`;
 
@@ -782,7 +784,7 @@ export default function PinDemo() {
                     )}
                     {showUnread && (
                       <span className="w-4 h-4 rounded-full text-white text-[8px] flex items-center justify-center font-bold"
-                        style={{ background: "#ef4444", boxShadow: "0 0 6px rgba(239,68,68,0.6)", animation: "ping 1s ease-in-out" }}>
+                        style={{ background: "#2a2a72", boxShadow: "0 0 6px rgba(42,42,114,0.6)", animation: "ping 1s ease-in-out" }}>
                         1
                       </span>
                     )}
@@ -883,7 +885,7 @@ export default function PinDemo() {
                           transition: "all 0.15s",
                         }}>
                           <StarIcon className="w-3.5 h-3.5" style={{ color: C.indigoText }} />
-                          <span className="text-xs font-medium" style={{ color: "rgb(165,180,252)" }}>{content.pinLabel}</span>
+                          <span className="text-xs font-medium" style={{ color: "rgb(63,61,153)" }}>{content.pinLabel}</span>
                         </span>
                       </span>
                     </span>
@@ -1109,7 +1111,7 @@ export default function PinDemo() {
                   fill={showCap ? C.indigoLight : "rgba(99,102,241,0.15)"}
                   fontFamily="sans-serif" fontWeight={showCap ? "600" : "400"}
                   style={{ transition: "fill 0.45s" }}>{content.nodeCap[1]}</text>
-                {showUnread && <circle cx="152" cy="52" r="4" fill="#ef4444" opacity="0.9"/>}
+                {showUnread && <circle cx="152" cy="52" r="4" fill="#2a2a72" opacity="0.9"/>}
               </svg>
             </div>
 
@@ -1195,7 +1197,7 @@ function AIAvatar() {
   return (
     <div className="w-6 h-6 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5"
       style={{ background: "rgba(99,102,241,0.1)", borderColor: "rgba(255,255,255,0.08)" }}>
-      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="rgb(165,180,252)">
+      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="rgb(63,61,153)">
         <path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z" />
       </svg>
     </div>

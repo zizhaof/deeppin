@@ -20,6 +20,7 @@ import type { PinDialogInfo } from "@/components/PinStartDialog";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import { clearActiveHighlight } from "@/components/MainThread/MessageBubble";
 import AnchorPreviewPopover from "@/components/MainThread/AnchorPreviewPopover";
+import FlattenPreview from "@/components/FlattenPreview";
 import type { ThreadCardItem } from "@/components/SubThread/types";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
@@ -911,38 +912,62 @@ export default function ChatPage() {
         />
       )}
 
-      {/* 扁平化确认弹窗 — 破坏性操作，必须二次确认 */}
-      {/* Flatten confirmation — destructive, requires second-step confirmation */}
+      {/* 扁平化确认弹窗 — 破坏性操作，带 before / after 可视化预览
+          Flatten confirmation — destructive, with before/after preview */}
       {showFlattenConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
+          style={{ background: "rgba(27,26,23,0.45)" }}
           onClick={() => !flattening && setShowFlattenConfirm(false)}
         >
           <div
-            className="max-w-md w-[90vw] rounded-lg border border-amber-500/40 bg-surface-95 shadow-xl p-5"
+            className="max-w-xl w-[90vw] rounded-lg shadow-2xl overflow-hidden"
+            style={{
+              background: "var(--card)",
+              border: "1px solid var(--rule)",
+              boxShadow: "0 24px 64px rgba(27,26,23,0.18)",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM9.75 3.75L1.5 18a1.5 1.5 0 001.31 2.25h18.38A1.5 1.5 0 0022.5 18L14.25 3.75a1.5 1.5 0 00-2.5 0z" />
-              </svg>
+            <div className="px-6 pt-5 pb-4 flex items-start gap-3" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
+              <span
+                className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full grid place-items-center font-mono text-[13px] font-medium"
+                style={{ background: "var(--accent)", color: "var(--paper)" }}
+              >
+                !
+              </span>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-md">{t.flattenConfirmTitle}</h3>
-                <p className="mt-2 text-xs text-dim whitespace-pre-line leading-relaxed">{t.flattenConfirmBody}</p>
+                <h3 className="font-serif text-[17px] font-medium text-ink leading-tight">{t.flattenConfirmTitle}</h3>
+                <p className="mt-1 text-[12.5px] whitespace-pre-line leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                  {t.flattenConfirmBody}
+                </p>
               </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+
+            {/* Before / After 可视化 / preview */}
+            <div className="px-6 py-5" style={{ background: "var(--paper-2)" }}>
+              <FlattenPreview threads={threads} />
+            </div>
+
+            <div className="px-6 py-3 flex justify-end gap-2" style={{ borderTop: "1px solid var(--rule-soft)" }}>
               <button
                 onClick={() => setShowFlattenConfirm(false)}
                 disabled={flattening}
-                className="px-3 py-1.5 text-xs rounded-md text-dim hover:text-md hover:bg-glass-md transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50"
+                style={{ color: "var(--ink-3)" }}
               >
                 {t.flattenCancel}
               </button>
               <button
                 onClick={handleFlatten}
                 disabled={flattening}
-                className="px-3 py-1.5 text-xs rounded-md font-medium text-white bg-amber-600 hover:bg-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3.5 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: flattening ? "var(--accent-ink)" : "var(--ink)",
+                  color: "var(--paper)",
+                }}
+                onMouseEnter={(e) => { if (!flattening) (e.currentTarget as HTMLElement).style.background = "var(--accent)"; }}
+                onMouseLeave={(e) => { if (!flattening) (e.currentTarget as HTMLElement).style.background = "var(--ink)"; }}
               >
                 {flattening ? t.flattening : t.flattenConfirmCta}
               </button>

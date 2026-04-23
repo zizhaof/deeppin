@@ -238,7 +238,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           {isSelecting && (
             <div className="h-full flex flex-col">
               <div className="px-5 pt-3 pb-1 flex-shrink-0">
-                <span className="text-[9px] text-faint uppercase tracking-wider">选择要合并的子问题 · 点击节点反选</span>
+                <span className="text-[9px] text-faint uppercase tracking-wider">{t.mergeHintSelect}</span>
               </div>
               <div className="flex-1 min-h-0 relative">
                 <MergeTreeCanvas
@@ -249,21 +249,23 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
               </div>
               <div className="px-5 py-1.5 flex-shrink-0 flex items-center justify-between border-t border-subtle">
                 <span className="text-[10px] text-faint">
-                  已选 {selCount} / {subThreads.length} 个子问题
+                  {t.mergeSelectedOf
+                    .replace("{selected}", String(selCount))
+                    .replace("{total}", String(subThreads.length))}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-ph">滚轮平移 · 拖拽移动</span>
+                  <span className="text-[9px] text-ph">{t.mergeHintDrag}</span>
                   <button
                     onClick={() => setSelected(new Set(subThreads.map(t => t.id)))}
                     className="text-[9px] text-indigo-400/70 hover:text-indigo-300 transition-colors"
                   >
-                    全选
+                    {t.mergeSelectAll}
                   </button>
                   <button
                     onClick={() => setSelected(new Set())}
                     className="text-[9px] text-faint hover:text-lo transition-colors"
                   >
-                    全不选
+                    {t.mergeSelectNone}
                   </button>
                 </div>
               </div>
@@ -277,7 +279,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                 <span key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500/70 animate-bounce"
                   style={{ animationDelay: `${i*150}ms`, animationDuration: "900ms" }} />
               ))}
-              <span className="ml-1 text-faint">{status || "正在生成合并报告…"}</span>
+              <span className="ml-1 text-faint">{status || t.mergeGeneratingReport}</span>
             </div>
           )}
 
@@ -350,7 +352,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                 disabled={!mainThread || saving || saved}
                 className="text-xs text-dim hover:text-md disabled:opacity-40 px-2.5 py-1.5 rounded-lg border border-base hover:border-strong transition-all"
               >
-                {saved ? "已保存" : saving ? "保存中…" : "保存到对话"}
+                {saved ? t.mergeSavedToChat : saving ? t.mergeSaving : t.mergeSaveToChat}
               </button>
             )}
             {isSelecting && (
@@ -359,13 +361,15 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                 disabled={selCount === 0 || (format === "custom" && !customPrompt.trim())}
                 className="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:bg-disabled disabled:text-disabled text-white px-4 py-1.5 rounded-lg transition-colors"
               >
-                合并 {selCount} 个子问题
+                {t.mergeCta
+                  .replace("{n}", String(selCount))
+                  .replace("{s}", selCount === 1 ? "" : "s")}
               </button>
             )}
             {(state === "done" || state === "error") && (
               <button onClick={() => setState("selecting")}
                 className="text-xs font-semibold bg-elevated hover:bg-glass-lg text-md px-4 py-1.5 rounded-lg transition-colors border border-subtle">
-                重新选择
+                {t.mergeReselect}
               </button>
             )}
             {isGenerating && (

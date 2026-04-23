@@ -371,8 +371,10 @@ body {
   50%      { filter: brightness(1.15); }
 }
 @keyframes anchor-wash-pulse {
+  /* wash 在 paper 底色上压太深会让字看不清；降到 12% peak
+     22% on warm-paper bled into the text; dialing peak down to 12%. */
   0%, 100% { opacity: 0; }
-  50%      { opacity: 0.22; }
+  50%      { opacity: 0.12; }
 }
 
 /* ── Tree node 未读章脉动 / Tree-node unread badge pulse ───────────────

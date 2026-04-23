@@ -27,8 +27,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Deeppin — 深度思考工具",
-  description: "AI 辅助的结构化深度思考，支持子问题追问",
+  title: "Deeppin — structured deep thinking with AI",
+  description: "AI-assisted structured deep thinking. Pin anything in a reply to branch a sub-question without losing the main thread.",
 };
 
 export default function RootLayout({

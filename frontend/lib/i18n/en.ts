@@ -145,6 +145,22 @@ export const en = {
   // 消息气泡 WHO 标签 / Message bubble WHO labels
   you: "YOU",
   ai: "AI",
+  // 扁平化 before/after 预览 / Flatten before-after preview
+  flattenPreviewBefore: "Before",
+  flattenPreviewAfter: "After",
+  flattenPreviewEmpty: "Only the main thread — nothing to flatten.",
+  // Merge 模态框 / Merge modal
+  mergeHintSelect: "Select sub-questions to merge · click a node to toggle",
+  mergeHintDrag: "Scroll to pan · drag to move",
+  mergeSelectAll: "Select all",
+  mergeSelectNone: "Clear all",
+  mergeCta: "Merge {n} sub-question{s}",
+  mergeSelectedOf: "{selected} / {total} selected",
+  mergeGeneratingReport: "Generating merged report…",
+  mergeSavedToChat: "Saved",
+  mergeSaving: "Saving…",
+  mergeSaveToChat: "Save to chat",
+  mergeReselect: "Reselect",
 } as const;
 
 // T 是 en 的 key 集合 + 全部 string 值类型。
