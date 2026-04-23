@@ -100,14 +100,15 @@ export default function AnchorPreviewPopover({
   if (!hover || !thread || !pos) return null;
 
   const msgs = messagesByThread[thread.id] ?? [];
+  const firstUser = msgs.find((m) => m.role === "user");
   const lastAi = [...msgs].reverse().find((m) => m.role === "assistant");
   const unread = (unreadCounts[thread.id] ?? 0) > 0;
   const title = thread.title ?? thread.anchor_text?.slice(0, 40) ?? t.subQuestions;
 
-  const preview = lastAi?.content.trim();
-  const previewText = preview
-    ? preview.slice(0, 160) + (preview.length > 160 ? "…" : "")
-    : t.generatingSuggestions;
+  const questionText = firstUser?.content.trim();
+  const replyText = lastAi?.content.trim();
+
+  const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
 
   return (
     <div
@@ -122,49 +123,82 @@ export default function AnchorPreviewPopover({
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="rounded-xl border border-base bg-surface-95 backdrop-blur-md shadow-lg overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+      className="rounded-xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
     >
-      {/* 标题条 */}
-      <div className="flex items-center gap-2 px-3.5 py-2.5">
-        <span
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ background: color }}
-          aria-hidden
-        />
-        <span className="flex-1 font-serif text-[15px] font-medium text-md truncate">{title}</span>
-        {unread && (
-          <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-indigo-300 bg-indigo-500/15 px-1.5 py-0.5 rounded-sm">
-            {t.newReply}
+      <div
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--rule)",
+          boxShadow: "0 10px 32px rgba(27,26,23,0.12), 0 2px 6px rgba(27,26,23,0.06)",
+          borderRadius: 12,
+        }}
+      >
+        {/* 标题条 — 颜料色点 + 序号 + 标题 + 未读 chip */}
+        <div className="flex items-center gap-2 px-3.5 py-2.5">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} aria-hidden />
+          <span className="flex-1 font-serif text-[14px] font-medium truncate" style={{ color: "var(--ink)" }}>
+            {title}
           </span>
-        )}
-      </div>
-
-      {/* 锚点原文 */}
-      {thread.anchor_text && (
-        <div className="px-3.5 pb-2 text-[11px] text-dim italic leading-relaxed line-clamp-2 border-t border-subtle pt-2">
-          “{thread.anchor_text}”
+          {unread && (
+            <span
+              className="font-mono text-[9px] uppercase tracking-[0.08em] px-1.5 py-[1px] rounded-sm"
+              style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+            >
+              {t.newReply}
+            </span>
+          )}
         </div>
-      )}
 
-      {/* AI 最新回复预览 */}
-      <div className="px-3.5 py-2.5 text-xs text-lo leading-relaxed line-clamp-4 border-t border-subtle">
-        {previewText}
-      </div>
+        {/* Question — 用户实际问的问题
+            The actual question the user asked in this sub-thread */}
+        <div className="px-3.5 py-2.5" style={{ borderTop: "1px solid var(--rule-soft)" }}>
+          <div
+            className="font-mono text-[9px] uppercase tracking-[0.12em] mb-1.5"
+            style={{ color: "var(--ink-4)" }}
+          >
+            <span className="inline-block w-[5px] h-[5px] rounded-full mr-1.5 align-middle" style={{ background: "var(--ink-3)" }} />
+            {t.you}
+          </div>
+          <p className="text-[12.5px] leading-snug line-clamp-3" style={{ color: "var(--ink-2)" }}>
+            {questionText ? truncate(questionText, 180) : <span style={{ color: "var(--ink-4)", fontStyle: "italic" }}>{t.generatingSuggestions}</span>}
+          </p>
+        </div>
 
-      {/* 操作栏 */}
-      <div className="flex items-center justify-between px-3.5 py-2 bg-elevated-80 border-t border-subtle">
-        <span className="text-[10px] font-mono text-ph tracking-wider">
-          depth {thread.depth}
-        </span>
-        <button
-          onClick={() => onEnter(thread.id)}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-300 hover:text-indigo-200 transition-colors"
+        {/* Answer — Deeppin 的最新回复 / Latest Deeppin reply */}
+        <div className="px-3.5 py-2.5" style={{ borderTop: "1px solid var(--rule-soft)" }}>
+          <div
+            className="font-mono text-[9px] uppercase tracking-[0.12em] mb-1.5"
+            style={{ color: "var(--ink-4)" }}
+          >
+            <span className="inline-block w-[5px] h-[5px] rounded-full mr-1.5 align-middle" style={{ background: "var(--accent)" }} />
+            <span style={{ fontFamily: "var(--font-serif)", textTransform: "none", letterSpacing: 0, fontSize: 11, color: "var(--ink-3)" }}>{t.ai}</span>
+          </div>
+          <p className="text-[12.5px] leading-snug line-clamp-4" style={{ color: "var(--ink-2)" }}>
+            {replyText ? truncate(replyText, 200) : <span style={{ color: "var(--ink-4)", fontStyle: "italic" }}>{t.generatingSuggestions}</span>}
+          </p>
+        </div>
+
+        {/* 操作栏 */}
+        <div
+          className="flex items-center justify-between px-3.5 py-2"
+          style={{ background: "var(--paper-2)", borderTop: "1px solid var(--rule-soft)" }}
         >
-          {t.enterThread}
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </button>
+          <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--ink-4)" }}>
+            depth {thread.depth}
+          </span>
+          <button
+            onClick={() => onEnter(thread.id)}
+            className="inline-flex items-center gap-1 font-medium text-[12px] transition-colors"
+            style={{ color: "var(--accent)" }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--accent-ink)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--accent)")}
+          >
+            {t.enterThread}
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
