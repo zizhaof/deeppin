@@ -113,6 +113,15 @@ export const en = {
   deleteError: "Delete failed: ",
   unknownError: "Unknown error",
   confirmDelete: "Delete this session? This cannot be undone.",
+  // 删除线程弹窗 / Delete-thread dialog
+  deleteThread: "Delete thread",
+  deleteThreadTitle: "Delete this thread and all its sub-threads?",
+  deleteSessionTitle: "Delete this entire conversation?",
+  deleteThreadBody: "Highlighted threads will be permanently deleted along with all their messages. This cannot be undone.",
+  deleteCount: "{n} thread(s) to delete",
+  deleteCta: "Delete",
+  deleting: "Deleting…",
+  deleteResetView: "Fit",
   // MergeDemo
   pinsReady: "pins ready",
   mergeOutput: "Merge Output",

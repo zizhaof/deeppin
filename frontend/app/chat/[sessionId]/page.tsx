@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession, flattenSession, ApiError } from "@/lib/api";
+import { getSession, getMessages, getAllMessages, createSession, createThread, getSuggestions, listSessions, deleteSession, deleteThread, flattenSession, ApiError } from "@/lib/api";
 import type { Session } from "@/lib/api";
 import { sendMessageStream } from "@/lib/sse";
 import type { SseErrorInfo } from "@/lib/sse";
@@ -29,6 +29,7 @@ import ThreadGraph from "@/components/Layout/ThreadGraph";
 import MergeOutput from "@/components/MergeOutput";
 import SessionDrawer from "@/components/SessionDrawer";
 import MobileChatLayout from "@/components/Mobile/MobileChatLayout";
+import DeleteThreadDialog from "@/components/DeleteThreadDialog";
 
 /**
  * 检测用户输入是否需要实时联网搜索。
@@ -90,6 +91,7 @@ export default function ChatPage() {
     updateThreadTitle,
     statusByThread,
     setStreamStatus,
+    removeThreadAndDescendants,
   } = useThreadStore();
 
   const [loading, setLoading] = useState(true);
@@ -478,6 +480,61 @@ export default function ChatPage() {
       alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
     }
   }, [sessionId, t]);
+
+  // ── 删除线程弹窗：带 graph 预览，主线命中 → 删 session ─────────────
+  // Delete-thread dialog: graph-preview confirm; hitting the main thread wipes
+  // the entire session.
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const openDeleteDialog = useCallback((threadId: string) => {
+    setAnchorHover(null); // hover popover 关闭，避免遮弹窗
+    setDeleteTargetId(threadId);
+  }, []);
+
+  const closeDeleteDialog = useCallback(() => {
+    if (deleting) return;
+    setDeleteTargetId(null);
+  }, [deleting]);
+
+  const confirmDeleteThread = useCallback(async () => {
+    if (!deleteTargetId) return;
+    const target = threads.find((th) => th.id === deleteTargetId);
+    if (!target) { setDeleteTargetId(null); return; }
+    const isMainTarget = target.parent_thread_id === null;
+    setDeleting(true);
+    try {
+      if (isMainTarget) {
+        // 删主线 = 删 session，后端 CASCADE；跳首页
+        // Deleting the main thread = deleting the session (backend CASCADE).
+        await deleteSession(sessionId);
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        router.push("/");
+        return;
+      }
+      await deleteThread(deleteTargetId);
+      const parentId = target.parent_thread_id;
+      // 如果激活线程在被删子树里，先跳到 parent；再从 store 里剔除
+      // If the active thread lives in the doomed subtree, hop to the parent
+      // before we strip it from the store.
+      const doomed = new Set<string>();
+      const collect = (id: string) => {
+        doomed.add(id);
+        for (const th of threads) if (th.parent_thread_id === id) collect(th.id);
+      };
+      collect(deleteTargetId);
+      if (activeThreadId && doomed.has(activeThreadId)) {
+        const jumpTo = parentId ?? threads.find((th) => th.parent_thread_id === null)?.id;
+        if (jumpTo) handleNavigateTo(jumpTo);
+      }
+      removeThreadAndDescendants(deleteTargetId);
+      setDeleteTargetId(null);
+    } catch (err) {
+      alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTargetId, threads, sessionId, activeThreadId, removeThreadAndDescendants, handleNavigateTo, router, t]);
 
   // ── 切换线程时清除残留 hover popover ─────────────────────────────
   useEffect(() => {
@@ -881,6 +938,7 @@ export default function ChatPage() {
             setAnchorHover(null);
             handleNavigateTo(threadId);
           }}
+          onDelete={(threadId) => openDeleteDialog(threadId)}
           onMouseEnter={() => {
             if (anchorHoverTimer.current) clearTimeout(anchorHoverTimer.current);
           }}
@@ -960,6 +1018,7 @@ export default function ChatPage() {
           // Account
           isAnon={isAnon}
           onSignIn={handleSignIn}
+          onDeleteActive={(threadId) => openDeleteDialog(threadId)}
         />
       </div>
 
@@ -986,6 +1045,18 @@ export default function ChatPage() {
           handleSendSuggestion(threadId, question);
         }}
         onClose={() => setPinDialog(null)}
+      />
+
+      {/* 删除线程确认弹窗（带 graph 预览；主线命中 = 删 session）
+          Delete-thread confirm (graph preview; main-thread target wipes session) */}
+      <DeleteThreadDialog
+        open={deleteTargetId !== null}
+        targetThreadId={deleteTargetId}
+        threads={threads}
+        messagesByThread={messagesByThread}
+        busy={deleting}
+        onCancel={closeDeleteDialog}
+        onConfirm={confirmDeleteThread}
       />
 
       {showMerge && (

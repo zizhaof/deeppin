@@ -72,6 +72,12 @@ export interface MobileChatLayoutProps {
   isAnon?: boolean;
   onSignIn?: () => void;
   onDeleteAccount?: () => void;
+
+  /** 请求删除当前激活线程（连同所有后代）——由父层弹 DeleteThreadDialog 确认。
+   *  主线被删 = 删除整个 session。
+   *  Request to delete the active thread and its entire subtree — parent opens
+   *  DeleteThreadDialog to confirm. Deleting the main thread wipes the session. */
+  onDeleteActive?: (threadId: string) => void;
 }
 
 // ── Brand mark — 跟桌面顶栏一套（paper 方块 + 深墨蓝星 + Fraunces）
@@ -211,6 +217,7 @@ export default function MobileChatLayout({
   isAnon = false,
   onSignIn,
   onDeleteAccount,
+  onDeleteActive,
 }: MobileChatLayoutProps) {
   const t = useT();
   const router = useRouter();
@@ -296,6 +303,23 @@ export default function MobileChatLayout({
             </p>
           )}
         </div>
+
+        {/* 删除当前线程按钮（主线 = 删 session）——放在 overview 按钮前。
+            Delete-current-thread button (main thread = wipe session) — sits
+            before the overview trigger. */}
+        {onDeleteActive && activeThreadId && (
+          <button
+            onClick={() => onDeleteActive(activeThreadId)}
+            aria-label={t.deleteThread}
+            title={t.deleteThread}
+            className="w-9 h-9 flex items-center justify-center rounded-md active:scale-95 transition-colors"
+            style={{ color: "var(--danger, #dc2626)" }}
+          >
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" />
+            </svg>
+          </button>
+        )}
 
         {/* 右上角：overview drawer 触发按钮，带未读 badge */}
         <button

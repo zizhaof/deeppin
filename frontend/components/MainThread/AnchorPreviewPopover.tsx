@@ -16,6 +16,10 @@ interface Props {
   messagesByThread: Record<string, Message[] | undefined>;
   unreadCounts: Record<string, number>;
   onEnter: (threadId: string) => void;
+  /** 请求删除该线程（连同所有后代）——由父层弹 DeleteThreadDialog 确认
+   *  Request to delete this thread (and its entire subtree) — parent opens the
+   *  DeleteThreadDialog to confirm. */
+  onDelete?: (threadId: string) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
@@ -48,6 +52,7 @@ export default function AnchorPreviewPopover({
   messagesByThread,
   unreadCounts,
   onEnter,
+  onDelete,
   onMouseEnter,
   onMouseLeave,
 }: Props) {
@@ -180,12 +185,35 @@ export default function AnchorPreviewPopover({
 
         {/* 操作栏 */}
         <div
-          className="flex items-center justify-between px-3.5 py-2"
+          className="flex items-center justify-between gap-2 px-3.5 py-2"
           style={{ background: "var(--paper-2)", borderTop: "1px solid var(--rule-soft)" }}
         >
-          <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--ink-4)" }}>
-            depth {thread.depth}
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--ink-4)" }}>
+              depth {thread.depth}
+            </span>
+            {onDelete && (
+              <button
+                onClick={() => onDelete(thread.id)}
+                aria-label={t.deleteThread}
+                title={t.deleteThread}
+                className="inline-flex items-center justify-center w-6 h-6 rounded-md transition-colors"
+                style={{ color: "var(--ink-4)" }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--danger, #dc2626)";
+                  (e.currentTarget as HTMLElement).style.background = "color-mix(in oklch, var(--danger, #dc2626) 10%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--ink-4)";
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                }}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" />
+                </svg>
+              </button>
+            )}
+          </div>
           <button
             onClick={() => onEnter(thread.id)}
             className="inline-flex items-center gap-1 font-medium text-[12px] transition-colors"

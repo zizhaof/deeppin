@@ -112,6 +112,15 @@ export const es: T = {
   deleteError: "Error al eliminar: ",
   unknownError: "Error desconocido",
   confirmDelete: "¿Eliminar esta sesión? No se puede deshacer.",
+  // Diálogo de eliminar hilo
+  deleteThread: "Eliminar hilo",
+  deleteThreadTitle: "¿Eliminar este hilo y todos sus sub-hilos?",
+  deleteSessionTitle: "¿Eliminar toda esta conversación?",
+  deleteThreadBody: "Los hilos resaltados y todos sus mensajes se eliminarán permanentemente. No se puede deshacer.",
+  deleteCount: "{n} hilo(s) a eliminar",
+  deleteCta: "Eliminar",
+  deleting: "Eliminando…",
+  deleteResetView: "Ajustar",
   // MergeDemo
   pinsReady: "pins listos",
   mergeOutput: "Salida fusionada",

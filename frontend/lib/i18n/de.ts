@@ -112,6 +112,15 @@ export const de: T = {
   deleteError: "Löschen fehlgeschlagen: ",
   unknownError: "Unbekannter Fehler",
   confirmDelete: "Diese Sitzung löschen? Kann nicht rückgängig gemacht werden.",
+  // Thread-Löschdialog
+  deleteThread: "Thread löschen",
+  deleteThreadTitle: "Diesen Thread und alle Unter-Threads löschen?",
+  deleteSessionTitle: "Dieses gesamte Gespräch löschen?",
+  deleteThreadBody: "Hervorgehobene Threads werden mit allen Nachrichten dauerhaft gelöscht. Kann nicht rückgängig gemacht werden.",
+  deleteCount: "{n} Thread(s) werden gelöscht",
+  deleteCta: "Löschen",
+  deleting: "Löschen…",
+  deleteResetView: "Anpassen",
   // MergeDemo
   pinsReady: "Pins bereit",
   mergeOutput: "Zusammengeführte Ausgabe",

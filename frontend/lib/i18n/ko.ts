@@ -112,6 +112,15 @@ export const ko: T = {
   deleteError: "삭제 실패: ",
   unknownError: "알 수 없는 오류",
   confirmDelete: "이 세션을 삭제할까요? 되돌릴 수 없습니다.",
+  // 스레드 삭제 대화상자
+  deleteThread: "스레드 삭제",
+  deleteThreadTitle: "이 스레드와 모든 하위 스레드를 삭제할까요?",
+  deleteSessionTitle: "이 대화 전체를 삭제할까요?",
+  deleteThreadBody: "강조 표시된 스레드와 모든 메시지가 영구적으로 삭제됩니다. 되돌릴 수 없습니다.",
+  deleteCount: "스레드 {n}개 삭제 예정",
+  deleteCta: "삭제",
+  deleting: "삭제 중…",
+  deleteResetView: "맞춤",
   // MergeDemo
   pinsReady: "개의 핀 준비 완료",
   mergeOutput: "병합 출력",

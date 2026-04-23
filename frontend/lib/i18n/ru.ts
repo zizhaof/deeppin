@@ -112,6 +112,15 @@ export const ru: T = {
   deleteError: "Ошибка удаления: ",
   unknownError: "Неизвестная ошибка",
   confirmDelete: "Удалить эту сессию? Это нельзя отменить.",
+  // Диалог удаления ветки
+  deleteThread: "Удалить ветку",
+  deleteThreadTitle: "Удалить эту ветку и все её под-ветки?",
+  deleteSessionTitle: "Удалить весь этот разговор?",
+  deleteThreadBody: "Выделенные ветки и все их сообщения будут удалены безвозвратно. Это нельзя отменить.",
+  deleteCount: "К удалению: {n} ветк(а/и)",
+  deleteCta: "Удалить",
+  deleting: "Удаление…",
+  deleteResetView: "По размеру",
   // MergeDemo
   pinsReady: "пинов готово",
   mergeOutput: "Объединённый вывод",

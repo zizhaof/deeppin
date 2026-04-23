@@ -112,6 +112,15 @@ export const fr: T = {
   deleteError: "Échec de la suppression : ",
   unknownError: "Erreur inconnue",
   confirmDelete: "Supprimer cette session ? C'est irréversible.",
+  // Boîte de dialogue de suppression de fil
+  deleteThread: "Supprimer le fil",
+  deleteThreadTitle: "Supprimer ce fil et tous ses sous-fils ?",
+  deleteSessionTitle: "Supprimer toute cette conversation ?",
+  deleteThreadBody: "Les fils en surbrillance seront définitivement supprimés avec tous leurs messages. C'est irréversible.",
+  deleteCount: "{n} fil(s) à supprimer",
+  deleteCta: "Supprimer",
+  deleting: "Suppression…",
+  deleteResetView: "Ajuster",
   // MergeDemo
   pinsReady: "pins prêts",
   mergeOutput: "Sortie fusionnée",

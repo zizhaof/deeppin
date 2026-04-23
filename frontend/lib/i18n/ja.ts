@@ -114,6 +114,15 @@ export const ja: T = {
   deleteError: "削除に失敗: ",
   unknownError: "不明なエラー",
   confirmDelete: "このセッションを削除しますか？元に戻せません。",
+  // スレッド削除ダイアログ
+  deleteThread: "スレッドを削除",
+  deleteThreadTitle: "このスレッドとすべてのサブスレッドを削除しますか？",
+  deleteSessionTitle: "この会話全体を削除しますか？",
+  deleteThreadBody: "ハイライトされたスレッドとすべてのメッセージが完全に削除されます。元に戻せません。",
+  deleteCount: "{n} 件のスレッドを削除",
+  deleteCta: "削除",
+  deleting: "削除中…",
+  deleteResetView: "全体表示",
   // MergeDemo
   pinsReady: "本のピン準備完了",
   mergeOutput: "マージ出力",

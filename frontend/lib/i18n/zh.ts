@@ -113,6 +113,15 @@ export const zh: T = {
   deleteError: "删除失败：",
   unknownError: "未知错误",
   confirmDelete: "确定删除这个会话吗？删除后无法恢复。",
+  // 删除线程弹窗
+  deleteThread: "删除线程",
+  deleteThreadTitle: "删除此线程及其所有子线程？",
+  deleteSessionTitle: "删除整个对话？",
+  deleteThreadBody: "高亮的线程及其所有消息将被永久删除，无法恢复。",
+  deleteCount: "将删除 {n} 个线程",
+  deleteCta: "删除",
+  deleting: "删除中…",
+  deleteResetView: "自适应",
   // MergeDemo
   pinsReady: "根针已就绪",
   mergeOutput: "合并输出",

@@ -112,6 +112,15 @@ export const pt: T = {
   deleteError: "Falha ao excluir: ",
   unknownError: "Erro desconhecido",
   confirmDelete: "Excluir esta sessão? Não pode ser desfeito.",
+  // Diálogo de exclusão de thread
+  deleteThread: "Excluir thread",
+  deleteThreadTitle: "Excluir este thread e todos os sub-threads?",
+  deleteSessionTitle: "Excluir toda esta conversa?",
+  deleteThreadBody: "Os threads destacados serão excluídos permanentemente junto com todas as mensagens. Não pode ser desfeito.",
+  deleteCount: "{n} thread(s) a excluir",
+  deleteCta: "Excluir",
+  deleting: "Excluindo…",
+  deleteResetView: "Ajustar",
   // MergeDemo
   pinsReady: "pins prontos",
   mergeOutput: "Saída mesclada",
