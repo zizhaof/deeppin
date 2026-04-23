@@ -507,6 +507,24 @@ export default function ChatPage() {
     []
   );
 
+  // 手机端专用:用户在 inline action sheet 上点 Pin 时直接走 handlePin
+  // (动作语义已经是「我要插针」,不再需要 PinMenu 中转)。
+  // Mobile-only bridge — tapping Pin in MessageBubble's inline action sheet
+  // skips PinMenu and creates the sub-thread directly. PinMenu's mobile
+  // branch was removed when the inline sheet replaced it.
+  const handleMobileSelectionPin = useCallback(
+    (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
+      const container = scrollContainerRef.current;
+      const centerY = rect.top + rect.height / 2;
+      const anchorContentY = container
+        ? centerY - container.getBoundingClientRect().top + container.scrollTop
+        : centerY;
+      handlePin({ text, messageId, rect, anchorContentY, startOffset, endOffset });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   const handlePin = async (info: SelectionInfo) => {
     clearActiveHighlight();
     setSelection(null);
@@ -896,7 +914,10 @@ export default function ChatPage() {
           activeThread={activeThread ?? null}
           userAvatarUrl={userAvatarUrl}
           onMessageRef={handleMessageRef}
-          onTextSelect={handleTextSelect}
+          // 手机端 Pin tap 直接创建子线程,跳过 PinMenu(其 mobile 分支已被
+          // inline action sheet 取代)。Mobile inline Pin tap creates the
+          // sub-thread directly — bypasses PinMenu's removed mobile branch.
+          onTextSelect={handleMobileSelectionPin}
           onAnchorClick={handleAnchorClick}
           onAnchorHover={handleAnchorHover}
           onSendSuggestion={(q) => { if (activeThreadId) handleSendSuggestion(activeThreadId, q); }}
