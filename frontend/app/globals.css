@@ -215,15 +215,32 @@ html, body {
 }
 
 /* ── 锚点状态：已读 / 未读 ──────────────────────────────────────────────
-   锚点只用下划线粗细区分状态（已读 1px、未读 3px）。React 组件直接在 inline
-   style 里画 border-bottom，不需要 CSS 层动画或背景 wash。保留 .anchor-span
-   作为位置锚点（popover 定位用）和 .anchor-unread 作为 data-driven class
-   (遗留代码挂 class 用)。
-   Anchor state is expressed via underline thickness only — 1px read / 3px
-   unread, drawn inline by the React component. No CSS animation, no wash,
-   no background highlight. Class names kept as position-anchors / data hooks. */
+   已读：1px 静态细线（React 组件 inline border-bottom 画）
+   未读：CSS 呼吸动画 —— 底线粗细 2↔4 + 透明度 0.75↔1 循环；用 box-shadow
+         画底线避免 border-width animation 的 layout shift。颜色从 inline
+         style 的 --anchor-color CSS var 来。
+   Read anchors → static 1px border-bottom (inline). Unread anchors →
+   breathing underline animated via box-shadow (no layout shift). Color
+   comes from the --anchor-color custom property set inline per-span. */
 .anchor-span { position: relative; }
 .anchor-unread { position: relative; }
+
+.anchor-breathing {
+  position: relative;
+  padding-bottom: 1px;
+  box-shadow: inset 0 -3px 0 var(--anchor-color);
+  animation: anchor-breath 1.6s ease-in-out infinite;
+}
+@keyframes anchor-breath {
+  0%, 100% {
+    box-shadow: inset 0 -3px 0 var(--anchor-color);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: inset 0 -4px 0 var(--anchor-color);
+    opacity: 0.78;
+  }
+}
 
 /* ── Tree node 未读章脉动 / Tree-node unread badge pulse ───────────────
    右栏 list 视图里未读子线程的小圆章，box-shadow 一圈圈外扩然后散开。

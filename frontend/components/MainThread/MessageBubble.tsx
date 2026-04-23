@@ -178,18 +178,24 @@ function renderWithHighlights(
     const allThreadIds = covering.map(c => c.threadId);
     const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
 
-    // 锚点视觉只用下划线粗细区分：未读 3px 粗，已读 1px 细。
-    // 不再做背景高亮。多锚点叠加时按颜料色画多条嵌套下划线。
-    // Anchors signal state via underline thickness only — 3px when unread,
-    // 1px when read. No background highlight. Stacked anchors get nested
-    // pigment underlines.
+    // 锚点视觉：已读 1px 静态细线；未读走 CSS `.anchor-breathing` 呼吸动画
+    // （box-shadow 画底线 + opacity 循环，颜色通过 --anchor-color CSS var 传）。
+    // 多锚点叠加时按颜料色画多条嵌套下划线。
+    // Read = static 1px border-bottom. Unread = breathing underline driven by
+    // the .anchor-breathing CSS class (box-shadow + opacity loop), with the
+    // pigment color piped in via the --anchor-color custom property.
     let inner: React.ReactNode = segText;
     for (let j = covering.length - 1; j >= 0; j--) {
       const color = colorMap.get(covering[j].threadId)!;
       inner = (
         <span
           key={covering[j].threadId}
-          style={{ borderBottom: `${isUnread ? 3 : 1}px solid ${color}`, paddingBottom: "1px" }}
+          className={isUnread ? "anchor-breathing" : undefined}
+          style={
+            isUnread
+              ? ({ "--anchor-color": color } as React.CSSProperties)
+              : { borderBottom: `1px solid ${color}`, paddingBottom: "1px" }
+          }
         >
           {inner}
         </span>

@@ -55,22 +55,24 @@ const NEXT: Record<Phase, Phase> = {
 };
 
 const DELAYS: Record<Phase, number> = {
-  idle: 1400,
-  "tap-select": 1700,
-  sweep: 1600,
-  selpop: 2000,
-  dialog: 2400,
-  pick: 700,
-  "underline-appear": 1300,
-  "ai-replying": 2800,
-  "unread-breathing": 2400,
-  popover: 2800,
-  enter: 700,
-  "sub-thread": 2600,
-  back: 1800,
-  "tap-overview": 1800,
-  "drawer-shown": 3600,
-  "drawer-hidden": 700,
+  // 整体放慢 —— 第一次看 demo 的人要有时间读每一步 caption + 看清 tap 反馈
+  // Paced so first-time viewers have time to read each step + see the tap ring.
+  idle: 1800,
+  "tap-select": 2100,
+  sweep: 2100,
+  selpop: 2400,
+  dialog: 2800,
+  pick: 1400,
+  "underline-appear": 1900,
+  "ai-replying": 3000,
+  "unread-breathing": 2800,
+  popover: 3000,
+  enter: 1400,
+  "sub-thread": 2800,
+  back: 2400,
+  "tap-overview": 2200,
+  "drawer-shown": 3800,
+  "drawer-hidden": 900,
 };
 
 // ── 桌面同款 9 语种 copy（手机文案略简）─────────────────────────────────
