@@ -62,19 +62,21 @@ const NEXT: Record<Phase, Phase> = {
 };
 
 const DELAYS: Record<Phase, number> = {
-  idle: 1400,
-  sweep: 1300,
-  selpop: 1400,
-  dialog: 1800,
-  pick: 500,
-  "underline-appear": 1100,
-  "ai-replying": 2600,
-  "unread-breathing": 2200,
-  popover: 2800,
-  enter: 500,
-  "sub-thread": 2800,
-  "sub-depth": 2600,
-  back: 1700,
+  // 整体节奏放慢 ~1.5× —— 用户在欢迎页第一次看 demo 要有时间读每一步。
+  // Paced 1.5× slower so first-time viewers have time to read each step.
+  idle: 2000,
+  sweep: 1800,
+  selpop: 2200,
+  dialog: 2800,
+  pick: 800,
+  "underline-appear": 1500,
+  "ai-replying": 3600,
+  "unread-breathing": 3200,
+  popover: 3600,
+  enter: 800,
+  "sub-thread": 3800,
+  "sub-depth": 3600,
+  back: 2200,
 };
 
 // ── Copy type + 9 locales ───────────────────────────────────────────────
@@ -834,60 +836,33 @@ function AnchorSpan({
   children?: React.ReactNode;
 }) {
   const sweeping = phase === "sweep";
+  // 扫过时半透明的 accent 光标痕；其它阶段不画背景高亮
+  // Only the sweep phase renders a transient accent wash; other phases keep
+  // the text clean (no background highlight).
   const bg = sweeping
     ? `color-mix(in oklch, var(--accent) ${Math.round(sweepPct * 22)}%, transparent)`
     : undefined;
-  const bb = visible && !breathing
-    ? `2px solid var(--pig-1)`
+  // 下划线粗细区分状态：sweeping 没落笔；visible 时按 breathing（未读 3px）or 1px 细
+  // Underline thickness encodes state — 3px unread, 1px read, none while
+  // sweeping (the accent wash is the sweep's visual instead).
+  const bb = visible
+    ? `${breathing ? 3 : 1}px solid var(--pig-1)`
     : sweeping
-      ? "2px solid transparent"
+      ? "1px solid transparent"
       : "none";
   return (
     <span
-      className={`relative inline-block ${breathing ? "pin-demo-anchor-unread" : ""}`}
+      className="relative inline-block"
       style={{
         background: bg,
         borderBottom: bb,
         paddingBottom: 1,
         color: "var(--ink)",
-        transition: "background 120ms ease-out",
+        transition: "background 120ms ease-out, border-bottom 220ms ease-out",
       }}
     >
       {text}
       {children}
-      <style jsx>{`
-        /* 只让 underline 和背后 wash 脉动，字体颜色保持 var(--ink)
-           Underline (::after) + wash (::before) pulse — text color stays ink. */
-        .pin-demo-anchor-unread::after {
-          content: "";
-          position: absolute;
-          left: 0; right: 0; bottom: -2px;
-          height: 2px;
-          background: var(--pig-1);
-          border-radius: 1px;
-          animation: pin-demo-underline 0.95s ease-in-out infinite;
-          pointer-events: none;
-        }
-        .pin-demo-anchor-unread::before {
-          content: "";
-          position: absolute;
-          inset: 0 -2px -2px -2px;
-          border-radius: 3px;
-          background: var(--accent);
-          opacity: 0;
-          z-index: -1;
-          animation: pin-demo-wash 0.95s ease-in-out infinite;
-          pointer-events: none;
-        }
-        @keyframes pin-demo-underline {
-          0%, 100% { opacity: 0.4; }
-          50% { opacity: 1; }
-        }
-        @keyframes pin-demo-wash {
-          0%, 100% { opacity: 0; }
-          50% { opacity: 0.10; }
-        }
-      `}</style>
     </span>
   );
 }
@@ -1084,11 +1059,11 @@ function SubThreadView({ c, streamLen, phase }: { c: Copy; streamLen: number; ph
                   className="relative inline-block"
                   style={{
                     color: "var(--ink)",
-                    borderBottom: "2px solid var(--pig-2)",
+                    // sub-depth 阶段展示刚插的针 = 未读粗线（3px）
+                    // At sub-depth, the freshly-pinned deeper anchor shows as
+                    // unread = 3px pigment-2 underline. No bg highlight.
+                    borderBottom: "3px solid var(--pig-2)",
                     paddingBottom: 1,
-                    background: "color-mix(in oklch, var(--pig-2) 14%, transparent)",
-                    borderRadius: 2,
-                    padding: "0 2px",
                   }}
                 >
                   {c.deeperAnchor}

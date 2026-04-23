@@ -96,27 +96,30 @@ function highlightStr(
       continue;
     }
 
-    // 嵌套彩色下划线 / Nested colored underlines
+    const allThreadIds = covering.map(c => c.threadId);
+    const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
+
+    // 只用下划线粗细区分状态：未读 3px 粗，已读 1px 细；不再有背景高亮。
+    // State via underline thickness only — 3px unread, 1px read, no bg wash.
     let inner: React.ReactNode = segText;
     for (let j = covering.length - 1; j >= 0; j--) {
       const color = colorMap.get(covering[j].threadId)!;
       inner = (
-        <span key={covering[j].threadId} style={{ borderBottom: `2px solid ${color}`, paddingBottom: "3px" }}>
+        <span
+          key={covering[j].threadId}
+          style={{ borderBottom: `${isUnread ? 3 : 1}px solid ${color}`, paddingBottom: "2px" }}
+        >
           {inner}
         </span>
       );
     }
 
-    const allThreadIds = covering.map(c => c.threadId);
-    const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
     nodes.push(
       <span
         key={segStart}
         data-anchor-thread-ids={allThreadIds.join(" ")}
         data-unread={isUnread ? "1" : undefined}
-        className={`anchor-span text-indigo-200 rounded-sm px-0.5 cursor-pointer transition-colors ${
-          isUnread ? "anchor-unread" : "bg-indigo-900/30 hover:bg-indigo-800/50"
-        }`}
+        className="anchor-span cursor-pointer"
         onClick={(e) => {
           e.stopPropagation();
           const sel = window.getSelection();

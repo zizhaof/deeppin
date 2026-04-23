@@ -1,4 +1,7 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="#fbf8f2" stroke="#d9d2c3"/>
-  <path d="M16 6 L21.02 10.98 L26 16 L21.02 21.02 L16 26 L10.98 21.02 L6 16 L10.98 10.98 Z" fill="#2a2a72"/>
+  <!-- 只渲染 8 芒星本身，不画外框 —— 在 favicon 小尺寸下，外框会糊成一个方块，星形反而看不清。
+       Render just the 8-point star — the outer box bleeds into the tab
+       background at favicon size and the mark reads as a square. The bare
+       star matches the welcome-page brand's star shape directly. -->
+  <path d="M16 1 L19.75 12.25 L31 16 L19.75 19.75 L16 31 L12.25 19.75 L1 16 L12.25 12.25 Z" fill="#2a2a72"/>
 </svg>

@@ -163,26 +163,33 @@ function renderWithHighlights(
       continue;
     }
 
+    const allThreadIds = covering.map(c => c.threadId);
+    const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
+
+    // 锚点视觉只用下划线粗细区分：未读 3px 粗，已读 1px 细。
+    // 不再做背景高亮。多锚点叠加时按颜料色画多条嵌套下划线。
+    // Anchors signal state via underline thickness only — 3px when unread,
+    // 1px when read. No background highlight. Stacked anchors get nested
+    // pigment underlines.
     let inner: React.ReactNode = segText;
     for (let j = covering.length - 1; j >= 0; j--) {
       const color = colorMap.get(covering[j].threadId)!;
       inner = (
-        <span key={covering[j].threadId} style={{ borderBottom: `2px solid ${color}`, paddingBottom: "2px" }}>
+        <span
+          key={covering[j].threadId}
+          style={{ borderBottom: `${isUnread ? 3 : 1}px solid ${color}`, paddingBottom: "1px" }}
+        >
           {inner}
         </span>
       );
     }
 
-    const allThreadIds = covering.map(c => c.threadId);
-    const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
     nodes.push(
       <span
         key={segStart}
         data-anchor-thread-ids={allThreadIds.join(" ")}
         data-unread={isUnread ? "1" : undefined}
-        className={`anchor-span rounded-sm px-0.5 cursor-pointer transition-colors text-indigo-200 ${
-          isUnread ? "anchor-unread" : "bg-indigo-500/10 hover:bg-indigo-500/25"
-        }`}
+        className="anchor-span cursor-pointer"
         onClick={(e) => {
           e.stopPropagation();
           const sel = window.getSelection();

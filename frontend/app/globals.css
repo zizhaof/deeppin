@@ -193,70 +193,16 @@ body {
   background: var(--t-dim);
 }
 
-/* ── 新插针 flash 动画 / "Just pinned" flash ─────────────────────────
-   新创建锚点时给 span 贴 .anchor-just-pinned，播一次 1.4s 的 accent-soft
-   背景淡出 —— 让用户看到「我刚插的针在这里」。动画跑完自然消失。
-   When a fresh anchor is created, attach .anchor-just-pinned to the span;
-   a 1.4s one-shot fades an accent-soft wash out, confirming where the
-   pin landed. No lingering state — the class can stay on the element. */
-.anchor-just-pinned {
-  animation: anchor-just-pinned-flash 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-@keyframes anchor-just-pinned-flash {
-  0%   { background: var(--accent-soft); }
-  100% { background: transparent; }
-}
-
-/* ── 锚点呼吸下划线（未读状态）/ Anchor breathing underline — unread state ─────
-   原来的 filter: brightness 会把字本身调暗，读不清；改成只动 underline 透明度
-   + 背后 wash 透明度，字体颜色始终 var(--ink)（黑）。Wash 保持淡一点避免压糊字。
-   Old implementation used filter: brightness on the whole span — that dimmed
-   the text too. Now only the underline opacity and the wash opacity pulse;
-   text color stays var(--ink) (black). Wash kept low so text stays legible.
-   ────────────────────────────────────────────────────────────────────── */
+/* ── 锚点状态：已读 / 未读 ──────────────────────────────────────────────
+   锚点只用下划线粗细区分状态（已读 1px、未读 3px）。React 组件直接在 inline
+   style 里画 border-bottom，不需要 CSS 层动画或背景 wash。保留 .anchor-span
+   作为位置锚点（popover 定位用）和 .anchor-unread 作为 data-driven class
+   (遗留代码挂 class 用)。
+   Anchor state is expressed via underline thickness only — 1px read / 3px
+   unread, drawn inline by the React component. No CSS animation, no wash,
+   no background highlight. Class names kept as position-anchors / data hooks. */
 .anchor-span { position: relative; }
-.anchor-unread {
-  position: relative;
-  color: var(--ink); /* 强制黑色文字，不随 pulse 变灰 */
-}
-.anchor-unread::after {
-  /* 下划线用 ::after 做一层独立动画的彩色线（替代 border-bottom 的 opacity 动画）
-     Separate underline drawn via ::after so its opacity can pulse
-     independently of the text color. */
-  content: "";
-  position: absolute;
-  left: 0; right: 0;
-  bottom: -2px;
-  height: 2px;
-  background: var(--pig-1);
-  border-radius: 1px;
-  animation: anchor-underline-pulse 0.95s ease-in-out infinite;
-  pointer-events: none;
-}
-.anchor-unread::before {
-  content: "";
-  position: absolute;
-  inset: 0 -2px -2px -2px;
-  border-radius: 3px;
-  background: var(--accent);
-  opacity: 0;
-  z-index: -1;
-  animation: anchor-wash-pulse 0.95s ease-in-out infinite;
-  pointer-events: none;
-}
-.anchor-unread:hover,
-.anchor-unread:hover::before,
-.anchor-unread:hover::after { animation-play-state: paused; }
-@keyframes anchor-underline-pulse {
-  /* 只让下划线的亮度在 40%↔100% 之间呼吸；字不受影响 */
-  0%, 100% { opacity: 0.4; }
-  50%      { opacity: 1; }
-}
-@keyframes anchor-wash-pulse {
-  /* wash 峰值 10% — 在暖纸底上若有若无，字还能看清 */
-  0%, 100% { opacity: 0; }
-  50%      { opacity: 0.10; }
-}
+.anchor-unread { position: relative; }
 
 /* ── Tree node 未读章脉动 / Tree-node unread badge pulse ───────────────
    右栏 list 视图里未读子线程的小圆章，box-shadow 一圈圈外扩然后散开。
