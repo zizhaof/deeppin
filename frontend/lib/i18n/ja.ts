@@ -160,4 +160,5 @@ export const ja: T = {
   mergeSaving: "保存中…",
   mergeSaveToChat: "チャットに保存",
   mergeReselect: "再選択",
+  signInTerms: "サインインすることで、Deeppin の利用規約とプライバシーポリシーに同意します。",
 };

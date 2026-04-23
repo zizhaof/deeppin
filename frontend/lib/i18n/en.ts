@@ -162,6 +162,8 @@ export const en = {
   mergeSaving: "Saving…",
   mergeSaveToChat: "Save to chat",
   mergeReselect: "Reselect",
+  // 登录页底部免责声明 / Sign-in page footer disclaimer
+  signInTerms: "Signing in means you agree to Deeppin's Terms and Privacy Policy.",
 } as const;
 
 // T 是 en 的 key 集合 + 全部 string 值类型。

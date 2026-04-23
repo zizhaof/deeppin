@@ -25,7 +25,6 @@ import type { ThreadCardItem } from "@/components/SubThread/types";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import ThreadGraph from "@/components/Layout/ThreadGraph";
-import MergeTreeCanvas from "@/components/MergeTreeCanvas";
 import MergeOutput from "@/components/MergeOutput";
 import SessionDrawer from "@/components/SessionDrawer";
 import MobileChatLayout from "@/components/Mobile/MobileChatLayout";
@@ -527,6 +526,20 @@ export default function ChatPage() {
       pinThread(newThread, anchorTextTop);
 
       const threadId = newThread.id;
+
+      // "Just pinned" 闪一下 —— 给锚点 span 挂 .anchor-just-pinned，1.4s 播完
+      // 自动停。等一帧让渲染把 span 挂上 data-anchor-thread-ids。
+      // One-shot flash on the newly-created anchor so the user sees where the
+      // pin landed. Wait one frame for the span to mount with the new threadId.
+      requestAnimationFrame(() => {
+        const spans = document.querySelectorAll(
+          `[data-anchor-thread-ids~="${threadId}"]`,
+        );
+        spans.forEach((el) => el.classList.add("anchor-just-pinned"));
+        setTimeout(() => {
+          spans.forEach((el) => el.classList.remove("anchor-just-pinned"));
+        }, 1500);
+      });
 
       // 立刻用占位符展示弹窗，用户无需等待 LLM
       const placeholders = makePlaceholders(info.text);

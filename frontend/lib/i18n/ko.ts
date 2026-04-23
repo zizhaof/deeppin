@@ -158,4 +158,5 @@ export const ko: T = {
   mergeSaving: "저장 중…",
   mergeSaveToChat: "대화에 저장",
   mergeReselect: "다시 선택",
+  signInTerms: "로그인하면 Deeppin의 이용약관과 개인정보처리방침에 동의하는 것입니다.",
 };

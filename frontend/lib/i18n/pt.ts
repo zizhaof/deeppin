@@ -158,4 +158,5 @@ export const pt: T = {
   mergeSaving: "Salvando…",
   mergeSaveToChat: "Salvar no chat",
   mergeReselect: "Selecionar novamente",
+  signInTerms: "Ao entrar, você concorda com os Termos e a Política de Privacidade do Deeppin.",
 };

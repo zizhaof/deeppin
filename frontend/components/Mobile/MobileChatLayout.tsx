@@ -7,7 +7,7 @@ import type { Thread, Message } from "@/lib/api";
 import type { ThreadCardItem } from "@/components/SubThread/types";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import ThreadTree from "@/components/Layout/ThreadTree";
-import MergeTreeCanvas from "@/components/MergeTreeCanvas";
+import ThreadGraph from "@/components/Layout/ThreadGraph";
 import MessageList from "@/components/MainThread/MessageList";
 import InputBar from "@/components/MainThread/InputBar";
 import { useT } from "@/stores/useLangStore";
@@ -163,8 +163,6 @@ export default function MobileChatLayout({
   /** 右面板视图：列表（dots）或节点图（canvas） */
   const [treeView, setTreeView] = useState<"dots" | "canvas">("dots");
 
-  /** MergeTreeCanvas 需要的 selected set（全选） */
-  const allSelected = useMemo(() => new Set(threads.map((t) => t.id)), [threads]);
 
   /** 有未读回复的 thread id 集合；传给 MessageList 驱动锚点呼吸动画
    *  Thread IDs with unread replies — drives anchor breathing animation in MessageList. */
@@ -381,12 +379,12 @@ export default function MobileChatLayout({
                   onSelect={(threadId) => navigateAndReturnToChat(threadId)}
                 />
               ) : (
-                <MergeTreeCanvas
+                <ThreadGraph
                   threads={threads}
-                  selected={allSelected}
                   activeThreadId={activeThreadId}
-                  onToggle={(threadId) => navigateAndReturnToChat(threadId)}
-                  compact
+                  unreadCounts={unreadCounts}
+                  messagesByThread={messagesByThread}
+                  onSelect={(threadId) => navigateAndReturnToChat(threadId)}
                 />
               )}
             </div>

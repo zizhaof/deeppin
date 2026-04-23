@@ -158,4 +158,5 @@ export const de: T = {
   mergeSaving: "Speichern…",
   mergeSaveToChat: "In Chat speichern",
   mergeReselect: "Erneut wählen",
+  signInTerms: "Mit der Anmeldung stimmst du den AGB und der Datenschutzerklärung von Deeppin zu.",
 };

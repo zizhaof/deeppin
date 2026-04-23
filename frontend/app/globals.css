@@ -193,6 +193,20 @@ body {
   background: var(--t-dim);
 }
 
+/* ── 新插针 flash 动画 / "Just pinned" flash ─────────────────────────
+   新创建锚点时给 span 贴 .anchor-just-pinned，播一次 1.4s 的 accent-soft
+   背景淡出 —— 让用户看到「我刚插的针在这里」。动画跑完自然消失。
+   When a fresh anchor is created, attach .anchor-just-pinned to the span;
+   a 1.4s one-shot fades an accent-soft wash out, confirming where the
+   pin landed. No lingering state — the class can stay on the element. */
+.anchor-just-pinned {
+  animation: anchor-just-pinned-flash 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes anchor-just-pinned-flash {
+  0%   { background: var(--accent-soft); }
+  100% { background: transparent; }
+}
+
 /* ── 锚点呼吸下划线（未读状态）/ Anchor breathing underline — unread state ─────
    原来的 filter: brightness 会把字本身调暗，读不清；改成只动 underline 透明度
    + 背后 wash 透明度，字体颜色始终 var(--ink)（黑）。Wash 保持淡一点避免压糊字。
