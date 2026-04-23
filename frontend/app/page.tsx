@@ -309,9 +309,12 @@ export default function HomePage() {
 
         {/* ── 插针演示 —— 演示已自带「两个坏选项」的文案 + pin 的解法，
              所以 Why / How sections 删掉，避免重复。
-             PinDemo now carries the "two bad options" framing + the pin fix
-             inside its AI reply — the separate Why / How sections are redundant. ── */}
-        <div style={fadeUp(60)}>
+             包一层 w-full：父 main 用 items-center，这里需要显式 w-full 才能
+             让 demo 拿到容器宽度。
+             Wrapper sets w-full because the parent main has items-center,
+             which otherwise shrinks the child to its intrinsic content width
+             and the demo collapses. ── */}
+        <div style={fadeUp(60)} className="w-full max-w-[1100px]">
           <PinDemo />
         </div>
 

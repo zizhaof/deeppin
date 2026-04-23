@@ -550,11 +550,29 @@ export default function PinDemo() {
 
   const goToSubThread = useCallback(() => setPhase("sub-thread"), []);
 
+  // 整个 demo 的固定盒子尺寸 —— 在动画过程中保持不变。
+  // 标题栏 38px + 主区 GRID_H + caption 40px = 总高度
+  // The demo's fixed dimensions — stable across the entire animation.
+  const GRID_H = 420;
+  const RIGHT_W = 320;
+  const TOTAL_H = 38 + GRID_H + 40;
+
   return (
-    <div className="w-full max-w-[1080px] select-none">
+    <div className="w-full select-none mx-auto" style={{ maxWidth: 1080 }}>
+      {/* 横向滚动兜底：viewport 比 demo 窄时允许左右滑而不是塌缩
+          Horizontal scroll fallback so narrow viewports show the full demo
+          rather than collapsing the inner grid. */}
+      <div className="overflow-x-auto" style={{ minHeight: TOTAL_H }}>
       <div
-        className="relative rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(27,26,23,0.12)]"
-        style={{ background: "var(--paper)", border: "1px solid var(--rule)" }}
+        className="relative rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(27,26,23,0.12)] mx-auto"
+        style={{
+          background: "var(--paper)",
+          border: "1px solid var(--rule)",
+          // 最小宽度兜底，保证 1fr 那一栏永远 ≥ 480px、不会塌缩
+          minWidth: 880,
+          maxWidth: 1080,
+          height: TOTAL_H,
+        }}
       >
         {/* Mac 窗口标题栏 / Mac window chrome — 固定 38px 高 */}
         <div
@@ -575,10 +593,12 @@ export default function PinDemo() {
           </span>
         </div>
 
-        {/* ── 两栏：main + 更宽 right overview，固定高度 / 2-col, fixed height ── */}
+        {/* ── 两栏：main + 更宽 right overview，固定高度 / 2-col, fixed height ──
+             用 minmax(480px, 1fr) 防止主栏在窄容器里塌缩。
+             minmax(480, 1fr) for the main column so it can't collapse below 480px. */}
         <div
           className="grid"
-          style={{ gridTemplateColumns: "1fr 300px", height: 420 }}
+          style={{ gridTemplateColumns: `minmax(480px, 1fr) ${RIGHT_W}px`, height: GRID_H }}
         >
           {/* Main 栏 — relative 容器，两个视图绝对定位叠加，不影响外层高度
               Relative container; main + sub views are absolutely layered so
@@ -623,6 +643,7 @@ export default function PinDemo() {
         >
           <span className="truncate">{c.caption[phase]}</span>
         </div>
+      </div>
       </div>
     </div>
   );
