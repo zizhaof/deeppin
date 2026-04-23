@@ -13,6 +13,7 @@ import { useT } from "@/stores/useLangStore";
 import SessionDrawer from "@/components/SessionDrawer";
 import LangSelector from "@/components/LangSelector";
 import PinDemo from "@/components/PinDemo";
+import MobilePinDemo from "@/components/MobilePinDemo";
 
 // ── 主页 ─────────────────────────────────────────────────────────────
 
@@ -315,7 +316,15 @@ export default function HomePage() {
              which otherwise shrinks the child to its intrinsic content width
              and the demo collapses. ── */}
         <div style={fadeUp(60)} className="w-full max-w-[1100px]">
-          <PinDemo />
+          {/* 桌面（md+）= 完整 PinDemo（2 栏 + 右侧 graph）；移动端 = 紧凑垂直版
+              Desktop ≥md uses full PinDemo (2-col + right graph); mobile gets a
+              compact vertical version that fits 380px-wide phone viewports. */}
+          <div className="hidden md:block">
+            <PinDemo />
+          </div>
+          <div className="md:hidden flex justify-center">
+            <MobilePinDemo />
+          </div>
         </div>
 
         <div className="h-16" />
