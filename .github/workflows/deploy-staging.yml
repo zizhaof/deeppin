@@ -71,6 +71,12 @@ jobs:
             fi
 
             cd "$STAGING_DIR"
+            # The searxng container chowns its mounted config dir to its
+            # internal UID (977), which then blocks ubuntu from unlinking
+            # files inside it during a checkout. Reclaim ownership before
+            # any git operation that touches the working tree. Same root
+            # cause as the prod chain failure on 2026-04-24.
+            sudo chown -R ubuntu:ubuntu searxng/
             git fetch origin
             git checkout "$BRANCH"
             git reset --hard "origin/$BRANCH"
