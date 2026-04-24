@@ -1,12 +1,4 @@
 "use client";
-// components/DeleteThreadDialog.tsx
-//
-// 删除线程 / session 的确认弹窗。
-// 中心画 thread graph：即将被删的节点（目标 + 所有后代）用红色实心 + × 叉
-// 标记，其他节点和连线灰掉。Graph 支持鼠标滚轮缩放（以光标为焦点）+
-// 拖拽平移；首次挂载自适应 fit-to-viewport。
-// 主线（parent_thread_id === null）被删 = 删除整个 session。
-//
 // Delete-thread / session confirmation modal.
 // Renders a mini thread graph with the doomed subtree (target + descendants)
 // highlighted red with an ✕ glyph; surviving nodes + edges are dimmed.
@@ -19,7 +11,7 @@ import type { Thread, Message } from "@/lib/api";
 import { useT } from "@/stores/useLangStore";
 import { useGraphZoomPan } from "@/lib/useGraphZoomPan";
 
-// ── 与 ThreadGraph 对齐的 pigment 色板 ─────────────────────────────
+// ── Pigment palette aligned with ThreadGraph ─────────────────────────
 const PIG_VAR = ["var(--pig-1)", "var(--pig-2)", "var(--pig-3)", "var(--pig-4)", "var(--pig-5)"];
 const ROW_H = 96;
 const PAD = 46;
@@ -31,7 +23,7 @@ interface Positioned {
   pigmentIdx: number;
 }
 
-/** 按 anchor 顺序排兄弟 sub-thread —— 与 ThreadGraph / ThreadTree 保持一致 */
+/** Sort sibling sub-threads by anchor order — matches ThreadGraph / ThreadTree. */
 function sortSiblings(siblings: Thread[], parentMessages: Message[]): Thread[] {
   const msgOrder: Record<string, number> = {};
   parentMessages.forEach((m, i) => { msgOrder[m.id.toLowerCase()] = i; });
@@ -48,7 +40,7 @@ function sortSiblings(siblings: Thread[], parentMessages: Message[]): Thread[] {
   });
 }
 
-/** leaf-count 加权布局（复刻 ThreadGraph.layoutNodes） */
+/** Leaf-count-weighted layout (mirrors ThreadGraph.layoutNodes). */
 function layoutNodes(
   threads: Thread[],
   messagesByThread: Record<string, Message[] | undefined>,
@@ -109,7 +101,7 @@ function layoutNodes(
   return { nodes, height };
 }
 
-/** 收集 target + 所有后代 id */
+/** Collect the target id + all descendant ids. */
 function collectSubtree(threads: Thread[], targetId: string): Set<string> {
   const out = new Set<string>();
   const walk = (id: string) => {
@@ -146,8 +138,7 @@ function wrapLabel(text: string, maxPx: number): string[] {
 }
 
 interface Props {
-  /** 非 null 才会渲染 —— 调用方条件挂载，这样 hook 每次都在 body 进 DOM 后才测量
-   *  Non-null → render. Caller must conditionally mount so the zoom/pan hook's
+  /** Non-null → render. Caller must conditionally mount so the zoom/pan hook's
    *  initial measurement happens after the body is in the DOM (otherwise the
    *  container ref would be null at mount and viewport would stay {0,0}). */
   targetThreadId: string;
@@ -203,7 +194,6 @@ export default function DeleteThreadDialog({
 
   const posById = useMemo(() => new Map(nodes.map((n) => [n.thread.id, n])), [nodes]);
 
-  // 共享 zoom/pan —— 滚轮缩放 + 拖拽平移 + auto-fit（target 切换时重拟合）
   // Shared zoom/pan — target switch triggers a fresh auto-fit.
   const zp = useGraphZoomPan({
     contentWidth: CANVAS_W,
@@ -211,7 +201,7 @@ export default function DeleteThreadDialog({
     refitOn: targetThreadId,
   });
 
-  // ── ESC 关闭 ─────────────────────────────────────────────────────
+  // ── ESC closes ──────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onCancel();
@@ -240,7 +230,7 @@ export default function DeleteThreadDialog({
           boxShadow: "0 24px 64px rgba(27,26,23,0.18), 0 4px 12px rgba(27,26,23,0.08)",
         }}
       >
-        {/* 标题 */}
+        {/* Title. */}
         <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
           <h2
             className="text-[17px] font-medium"
@@ -253,7 +243,7 @@ export default function DeleteThreadDialog({
           </p>
         </div>
 
-        {/* Graph 视口 */}
+        {/* Graph viewport. */}
         <div
           ref={zp.containerRef}
           {...zp.pointerHandlers}
@@ -277,7 +267,7 @@ export default function DeleteThreadDialog({
                   if (!parent) return null;
                   const dy = n.y - parent.y;
                   const d = `M ${parent.x} ${parent.y} C ${parent.x} ${parent.y + dy * 0.45}, ${n.x} ${n.y - dy * 0.45}, ${n.x} ${n.y}`;
-                  // 任一端将被删 → 边高亮红；否则灰
+                  // If either endpoint is doomed, color the edge red; otherwise gray.
                   const edgeDoomed = doomed.has(n.thread.id) || doomed.has(n.thread.parent_thread_id!);
                   return (
                     <path
@@ -345,7 +335,7 @@ export default function DeleteThreadDialog({
             </g>
           </svg>
 
-          {/* 右下角：缩放控件 + 计数徽章 */}
+          {/* Bottom-right: zoom controls + count badge. */}
           <div
             className="absolute left-3 bottom-3 flex items-center gap-2 px-2.5 py-1.5 rounded-lg font-mono text-[10px]"
             style={{
@@ -384,7 +374,7 @@ export default function DeleteThreadDialog({
           </div>
         </div>
 
-        {/* 操作区 */}
+        {/* Action bar. */}
         <div
           className="flex items-center justify-end gap-2 px-5 py-3"
           style={{ borderTop: "1px solid var(--rule-soft)", background: "var(--card)" }}

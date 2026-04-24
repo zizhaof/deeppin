@@ -1,11 +1,10 @@
-// frontend/stores/useThreadStore.ts
-// 线程树状态 + 激活线程管理
+// Thread-tree state + active-thread management.
 
 import { create } from "zustand";
 import type { Message, Thread } from "@/lib/api";
 
-// ── localStorage 未读持久化 ──────────────────────────────────────
-// 存储格式：JSON 数组，内容为有未读消息的 thread ID 列表
+// ── Unread-state localStorage persistence ────────────────────────
+// Storage format: JSON array of thread IDs with unread messages.
 const UNREAD_LS_KEY = "deeppin:unread";
 
 function loadUnreadIds(): Set<string> {
@@ -30,47 +29,36 @@ function saveUnreadIds(unread: Record<string, number>): void {
 }
 
 export interface ThreadState {
-  /** 当前 session 的所有线程（含主线） */
+  /** All threads in the current session (including the main thread). */
   threads: Thread[];
-  /** 激活线程 ID */
+  /** Active thread ID. */
   activeThreadId: string | null;
-  /** 各线程的消息（thread_id → messages） */
+  /** Per-thread messages (thread_id → messages). */
   messagesByThread: Record<string, Message[]>;
-  /** 各线程当前正在流式生成的文本（thread_id → partial text） */
+  /** Per-thread in-progress streaming text (thread_id → partial text). */
   streamingByThread: Record<string, string>;
-  /** 各线程的后台状态提示（thread_id → status text），首个 chunk 到达后清空 */
+  /** Per-thread background status text (thread_id → status); cleared on first chunk. */
   statusByThread: Record<string, string>;
-  /** 插针时选中文字相对主滚动内容的精确 top（px），用于侧栏精确对齐 */
-  anchorTextTops: Record<string, number>;
-  /** 每个子线程的追问建议（thread_id → questions） */
+  /** Per-sub-thread follow-up suggestions (thread_id → questions). */
   suggestions: Record<string, string[]>;
-  /** 用户手动拖拽后的卡片 Y 坐标（覆盖锚点对齐，thread_id → px） */
-  userCardPositions: Record<string, number>;
-  /** 折叠状态（thread_id → collapsed） */
-  collapsedCards: Record<string, boolean>;
-  /** 未读消息数（thread_id → count），持久化到 localStorage */
+  /** Unread message counts (thread_id → count); persisted to localStorage. */
   unreadCounts: Record<string, number>;
-  /** 导航历史栈（thread_id 列表） */
+  /** Navigation history stack (list of thread_ids). */
   navHistory: string[];
-  /** 当前在历史栈中的位置 */
+  /** Current position within the navigation history stack. */
   navIndex: number;
 
   setThreads: (threads: Thread[]) => void;
-  /** 导航到某线程（写入历史栈，清零未读） */
+  /** Navigate to a thread (push history, clear its unread count). */
   navigateTo: (threadId: string) => void;
   navigateBack: () => void;
   navigateForward: () => void;
-  /** 插针：新增子线程并记录选中文字的精确 Y 坐标 */
-  pinThread: (thread: Thread, anchorTextTop?: number) => void;
-  /** 设置子线程的追问建议 */
+  /** Pin: append a newly created sub-thread to the tree. */
+  pinThread: (thread: Thread) => void;
+  /** Set follow-up suggestions for a sub-thread. */
   setSuggestions: (threadId: string, questions: string[]) => void;
-  /** 消费一条建议（用户点击后移除） */
+  /** Consume one suggestion (remove after user clicks it). */
   consumeSuggestion: (threadId: string, question: string) => void;
-  /** 保存用户拖拽后的卡片位置 */
-  setUserCardPosition: (threadId: string, y: number) => void;
-  /** 切换卡片折叠状态 */
-  toggleCardCollapsed: (threadId: string) => void;
-  addThread: (thread: Thread) => void;
   removeThreadAndDescendants: (threadId: string) => void;
   updateThreadTitle: (threadId: string, title: string) => void;
   setMessages: (threadId: string, messages: Message[]) => void;
@@ -86,22 +74,20 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   messagesByThread: {},
   streamingByThread: {},
   statusByThread: {},
-  anchorTextTops: {},
   suggestions: {},
-  userCardPositions: {},
-  collapsedCards: {},
   unreadCounts: {},
   navHistory: [],
   navIndex: -1,
 
   setThreads: (threads) => {
-    // 为每个线程初始化空消息数组，避免消息加载失败时 msgOrder 为 undefined 导致排序错乱
+    // Initialize an empty message array per thread so that, if message loading fails,
+    // msgOrder doesn't end up undefined and break sort order.
     const initialMessages: Record<string, Message[]> = {};
     for (const t of threads) {
       initialMessages[t.id] = [];
     }
 
-    // 从 localStorage 恢复未读状态（仅保留当前 session 的线程）
+    // Restore unread state from localStorage (keep only threads in the current session).
     const storedIds = loadUnreadIds();
     const threadIdSet = new Set(threads.map((t) => t.id));
     const unread: Record<string, number> = {};
@@ -149,13 +135,10 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       return { activeThreadId: threadId, navIndex: newIndex, unreadCounts: unread };
     }),
 
-  pinThread: (thread, anchorTextTop) =>
+  pinThread: (thread) =>
     set((s) => ({
       threads: [...s.threads, thread],
       messagesByThread: { ...s.messagesByThread, [thread.id]: [] },
-      anchorTextTops: anchorTextTop !== undefined
-        ? { ...s.anchorTextTops, [thread.id]: anchorTextTop }
-        : s.anchorTextTops,
     })),
 
   setSuggestions: (threadId, questions) =>
@@ -169,20 +152,9 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
       },
     })),
 
-  setUserCardPosition: (threadId, y) =>
-    set((s) => ({ userCardPositions: { ...s.userCardPositions, [threadId]: y } })),
-
-  toggleCardCollapsed: (threadId) =>
-    set((s) => ({
-      collapsedCards: { ...s.collapsedCards, [threadId]: !s.collapsedCards[threadId] },
-    })),
-
-  addThread: (thread) =>
-    set((s) => ({ threads: [...s.threads, thread] })),
-
   removeThreadAndDescendants: (threadId) =>
     set((s) => {
-      // 递归收集所有后代 id
+      // Recursively collect all descendant ids.
       const toRemove = new Set<string>();
       const collect = (id: string) => {
         toRemove.add(id);
@@ -204,10 +176,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         messagesByThread: clean(s.messagesByThread),
         streamingByThread: clean(s.streamingByThread),
         statusByThread: clean(s.statusByThread),
-        anchorTextTops: clean(s.anchorTextTops),
         suggestions: clean(s.suggestions),
-        userCardPositions: clean(s.userCardPositions),
-        collapsedCards: clean(s.collapsedCards),
         unreadCounts: clean(s.unreadCounts),
       };
     }),
@@ -225,7 +194,7 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
   appendChunk: (threadId, chunk) =>
     set((s) => {
       const status = { ...s.statusByThread };
-      delete status[threadId]; // 首个 chunk 到达，清除 status
+      delete status[threadId]; // first chunk arrived — clear status
       return {
         streamingByThread: {
           ...s.streamingByThread,
@@ -243,14 +212,13 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         thread_id: threadId,
         role: "assistant",
         content: fullText,
-        token_count: null,
         created_at: new Date().toISOString(),
         model: model ?? null,
       };
       const streaming = { ...s.streamingByThread };
       delete streaming[threadId];
 
-      // 若当前不在该线程，计入未读并持久化
+      // If we're not currently in this thread, count it as unread and persist.
       const isActive = get().activeThreadId === threadId;
       const unread = { ...s.unreadCounts };
       if (!isActive) {
@@ -280,7 +248,6 @@ export const useThreadStore = create<ThreadState>((set, get) => ({
         thread_id: threadId,
         role: "user",
         content,
-        token_count: null,
         created_at: new Date().toISOString(),
       };
       return {

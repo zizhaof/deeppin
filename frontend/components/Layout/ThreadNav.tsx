@@ -19,14 +19,11 @@ interface Props {
   onForward: () => void;
   onSelect: (threadId: string) => void;
   onOpenSessions: () => void;
-  /** 顶栏「新对话」按钮的点击回调；匿名用户在上层弹登录引导，登录用户直接 router.push 新 UUID。
-   *  Handler for the topbar "new chat" button; parent branches on isAnon. */
+  /** Handler for the topbar "new chat" button; parent branches on isAnon. */
   onNewChat: () => void;
-  /** 匿名用户；隐藏个人菜单（删除账号对匿名无意义）+ 顶栏右侧显示「登录」按钮。
-   *  Anon flag — hides account menu (delete-account is meaningless for anon) + shows a top-right "Sign in" button. */
+  /** Anon flag — hides the account menu (delete-account is meaningless for anon) and shows a top-right "Sign in" button. */
   isAnon?: boolean;
-  /** 匿名用户点「登录」时触发 linkIdentity。
-   *  Handler for the anon-only "Sign in" button; triggers linkIdentity. */
+  /** Handler for the anon-only "Sign in" button; triggers linkIdentity. */
   onSignIn?: () => void;
 }
 
@@ -82,8 +79,7 @@ export default function ThreadNav({
       className="h-14 flex items-center gap-3 flex-shrink-0 px-6"
       style={{ borderBottom: "1px solid var(--rule)", background: "var(--paper)" }}
     >
-      {/* 品牌 — 跟欢迎页的左上角一致：paper 小方块 + 深墨蓝 8 角星 + Fraunces Deeppin
-          Brand mark matches the welcome-page top-left exactly:
+      {/* Brand mark matches the welcome-page top-left exactly:
           paper square box + deep-ink 8-point star + Fraunces "Deeppin". */}
       <Link href="/" className="flex items-center gap-2 flex-shrink-0 group" title={t.newChat}>
         <span
@@ -101,8 +97,7 @@ export default function ThreadNav({
 
       <span className="w-px h-5 flex-shrink-0" style={{ background: "var(--rule)" }} />
 
-      {/* 左侧按钮组：session 抽屉 / 新对话 / 前进后退
-          Left cluster: session drawer / new chat / back / forward */}
+      {/* Left cluster: session drawer / new chat / back / forward. */}
       <div className="flex items-center gap-0.5">
         <button
           onClick={onOpenSessions}
@@ -156,7 +151,7 @@ export default function ThreadNav({
         </button>
       </div>
 
-      {/* 面包屑 */}
+      {/* Breadcrumb. */}
       <div className="flex items-center gap-0 text-sm min-w-0 flex-1 overflow-hidden">
         {breadcrumb.map((thr, i) => (
           <span key={thr.id} className="flex items-center gap-0 min-w-0 flex-shrink-0">
@@ -195,13 +190,11 @@ export default function ThreadNav({
         ))}
       </div>
 
-      {/* 语言切换 / Language selector */}
+      {/* Language selector. */}
       <LangSelector />
 
-      {/* 匿名用户：显示「登录」按钮（不显示个人菜单，删除账号对匿名无意义） */}
-      {/* 登录用户：显示个人菜单（含删除账号） */}
-      {/* Anon: "Sign in" button (no account menu — delete-account is meaningless for anon). */}
-      {/* Signed-in: account menu (includes delete-account). */}
+      {/* Anon: "Sign in" button (no account menu — delete-account is meaningless for anon).
+          Signed-in: account menu (includes delete-account). */}
       {isAnon ? (
         <button
           onClick={onSignIn}

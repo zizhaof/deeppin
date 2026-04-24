@@ -1,5 +1,4 @@
-// frontend/lib/sse.ts
-// SSE 客户端 —— 流式接收 AI 回复
+// SSE client — streams AI replies.
 
 import { createClient } from "./supabase";
 
@@ -18,13 +17,11 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
-/** 非 SSE 路径的错误信息（被 onError 附带返回给调用方）。
- *  Structured error info emitted alongside the message (for quota-type 402/403 handling).
- */
+/** Structured error info emitted alongside the message (for quota-type 402/403 handling). */
 export type SseErrorInfo = { status?: number; code?: string };
 
-/** 检查 SSE 响应状态，401 跳登录；402/403 解析结构化 detail 传回调用方。
- *  On non-2xx: parse detail for a `code` so the caller can trigger quota modal etc.
+/** Check SSE response status: 401 → redirect to login; on non-2xx parse `detail.code`
+ *  so the caller can trigger quota modal etc.
  */
 async function assertSseOk(
   res: Response,
@@ -63,7 +60,6 @@ export type SSEEvent =
 export type MergeFormat = "free" | "bullets" | "structured" | "custom" | "transcript";
 
 /**
- * 触发合并生成，通过 SSE 流式接收合并报告。
  * Trigger merge generation and receive the merged report via SSE streaming.
  */
 export async function sendMergeStream(
@@ -115,54 +111,14 @@ export async function sendMergeStream(
 }
 
 /**
- * 向指定线程发送消息，通过 SSE 接收流式回复。
+ * Send a message to the given thread and stream the reply via SSE.
  *
- * @param threadId  目标线程 ID
- * @param content   用户消息
- * @param onChunk   每收到一个 chunk 调用
- * @param onDone    流结束时调用（含完整回复文本）
- * @param onError   出错时调用
+ * @param threadId  target thread ID
+ * @param content   user message
+ * @param onChunk   called for each streamed chunk
+ * @param onDone    called when the stream ends (with the full reply text)
+ * @param onError   called on error
  */
-/** 联网搜索流式请求，SSE 格式与普通对话完全一致。*/
-export async function sendSearchStream(
-  query: string,
-  onChunk: (chunk: string) => void,
-  onDone: (fullText: string) => void,
-  onError: (message: string) => void,
-  onStatus?: (text: string) => void,
-): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/search`, {
-    method: "POST",
-    headers: await getAuthHeaders(),
-    body: JSON.stringify({ query }),
-  });
-
-  if (!(await assertSseOk(res, onError))) return;
-
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let fullText = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      try {
-        const event: SSEEvent = JSON.parse(line.slice(6));
-        if (event.type === "status") onStatus?.(event.text);
-        else if (event.type === "chunk") { fullText += event.content; onChunk(event.content); }
-        else if (event.type === "done") onDone(fullText);
-        else if (event.type === "error") onError(event.message);
-      } catch { /* ignore */ }
-    }
-  }
-}
-
 export async function sendMessageStream(
   threadId: string,
   content: string,
@@ -195,14 +151,14 @@ export async function sendMessageStream(
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
-    buffer = lines.pop() ?? ""; // 保留未完成的行
+    buffer = lines.pop() ?? ""; // keep the trailing partial line
 
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
       try {
         const event: SSEEvent = JSON.parse(line.slice(6));
         if (event.type === "ping") {
-          // 连接确认，忽略
+          // Connection keep-alive — ignore.
         } else if (event.type === "status") {
           onStatus?.(event.text);
         } else if (event.type === "chunk") {
@@ -216,7 +172,7 @@ export async function sendMessageStream(
           onThreadTitle?.(event.thread_id, event.title);
         }
       } catch {
-        // 忽略解析失败的行
+        // Ignore unparseable lines.
       }
     }
   }

@@ -1,9 +1,7 @@
 # backend/main.py
 """
-Deeppin FastAPI 应用入口
 Application entry point for the Deeppin FastAPI backend.
 
-路由注册顺序：sessions → threads → stream → attachments → search
 Router registration order: sessions → threads → stream → attachments → search
 """
 
@@ -19,8 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── 日志配置 / Logging configuration ─────────────────────────────────
-# 同时输出到控制台（Docker logs）和文件（持久化，7 天自动轮转）
+# Logging configuration ─────────────────────────────────
 # Output to both console (docker logs) and file (persistent, auto-rotates every 7 days)
 _log_dir = Path(os.getenv("LOG_DIR", "/app/logs"))
 _log_dir.mkdir(parents=True, exist_ok=True)
@@ -32,8 +29,8 @@ _formatter = logging.Formatter(
 
 _file_handler = logging.handlers.TimedRotatingFileHandler(
     filename=_log_dir / "app.log",
-    when="midnight",       # 每天午夜轮转 / rotate at midnight
-    backupCount=30,        # 保留最近 30 天 / keep last 30 days
+    when="midnight",       # rotate at midnight
+    backupCount=30,        # keep last 30 days
     encoding="utf-8",
 )
 _file_handler.setFormatter(_formatter)
@@ -48,9 +45,8 @@ logging.basicConfig(
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from routers import sessions, threads, stream, attachments, search, merge, relevance, users, health
+from routers import sessions, threads, stream, attachments, merge, users, health
 
-# 从环境变量读取允许的跨域来源，同时支持本地开发和生产环境
 # Read allowed CORS origins from env var; supports both local dev and production
 _raw_origins = os.getenv("ALLOWED_ORIGINS", '["http://localhost:3000"]')
 ALLOWED_ORIGINS: list[str] = json.loads(_raw_origins)
@@ -60,7 +56,6 @@ _logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    应用生命周期管理：启动时无操作，关闭时取消后台任务、关闭连接池。
     App lifespan: no-op on startup; on shutdown cancel background tasks, close connection pools.
     """
     yield
@@ -74,7 +69,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Deeppin API", version="0.1.0", lifespan=lifespan)
 
-# 启动时打印关键外部依赖配置，方便快速定位连接问题
 # Log critical external dependency config on startup for quick connection diagnosis
 from services.search_service import SEARXNG_URL as _SEARXNG_URL
 _logger.info("Config: SEARXNG_URL=%s", _SEARXNG_URL)
@@ -84,7 +78,6 @@ _logger.info("Config: SUPABASE_URL=%s", os.getenv("SUPABASE_URL", "(not set)"))
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
-    全局异常兜底：记录未捕获异常，并将真实错误信息返回给前端。
     Global fallback: log unhandled exceptions and return the real error message to the frontend.
     """
     _logger.exception("未处理异常 / Unhandled exception: %s %s", request.method, request.url)
@@ -105,22 +98,18 @@ app.include_router(sessions.router, prefix="/api")
 app.include_router(threads.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 app.include_router(attachments.router, prefix="/api")
-app.include_router(search.router, prefix="/api")
 app.include_router(merge.router, prefix="/api")
-app.include_router(relevance.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
-app.include_router(health.router)  # /health — 聚合健康检查，无 /api 前缀
+app.include_router(health.router)  # /health
 
-# ── Prometheus 指标 / Prometheus metrics ──────────────────────────────
-# API 层由 instrumentator 自动埋点（method × handler × status × latency）。
-# LLM slot 窗口状态通过自定义 collector 在 scrape 时读 SmartRouter。
+# Prometheus metrics ──────────────────────────────
 # API layer auto-instrumented; LLM window state exposed via a custom collector.
 from prometheus_fastapi_instrumentator import Instrumentator
 from services.metrics import register_llm_collector
 
 Instrumentator(
-    should_group_status_codes=False,        # 保留精确状态码（200/201/404/500）
-    should_ignore_untemplated=True,         # 未匹配路由不记，防 cardinality 爆炸
+    should_group_status_codes=False,        # Keep precise status codes (200/201/404/500)
+    should_ignore_untemplated=True,         # Skip unmatched routes to prevent cardinality explosion
     excluded_handlers=["/metrics", "/health"],
 ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 

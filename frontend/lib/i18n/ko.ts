@@ -7,21 +7,17 @@ export const ko: T = {
   back: "뒤로",
   forward: "앞으로",
   mainThread: "메인",
-  noTitle: "새 대화",
-  switchThread: "전환",
   // 사이드바 제목
   subQuestions: "질문",
   overview: "개요",
   viewList: "목록",
   viewGraph: "그래프",
   // 빈 상태
-  selectToPin: "텍스트를 선택해 질문 열기",
   noThreads: "스레드 없음",
   // Welcome
   welcomeTitle: "깊이 있는 사고의 시작",
   welcomeSub: "Deeppin에게 무엇이든 물어보세요. 답변에서 텍스트를 선택해 하위 질문을 열 수 있습니다.",
   chooseQuestion: "탐색할 질문 선택",
-  tagline: "아무 텍스트나 선택해 파고들기",
   // InputBar
   inputPlaceholder: "메시지 입력… (Enter로 전송, Shift+Enter로 줄바꿈)",
   webSearchPlaceholder: "웹 검색…",
@@ -39,17 +35,14 @@ export const ko: T = {
   daysAgo: "일 전",
   // 상태
   loading: "로딩 중…",
-  creating: "세션 생성 중…",
   errorPrefix: "오류: ",
   processing: "처리 중…",
   streamError: "[오류]",
   // 스레드
-  mainConversation: "메인 대화",
   subThread: "하위 스레드",
   // 핀 메뉴
   pinAction: "질문",
   copy: "복사",
-  goToThread: "질문으로 이동",
   // 추천 질문
   suggestedQuestions: "추천 질문",
   customQuestion: "또는 직접 질문을 작성…",
@@ -68,12 +61,9 @@ export const ko: T = {
   mergeTitle: "병합 출력",
   mergeAngles: "개의 하위 질문",
   mergeHint: "포맷을 선택하고 생성을 눌러 모든 핀 내용을 하나의 보고서로 병합",
-  mergePreparing: "준비 중…",
   mergeCopyMd: "Markdown 복사",
   mergeDownload: ".md 다운로드",
   mergeGenerating: "생성 중…",
-  mergeRegenerate: "다시 생성",
-  mergeGenerate: "생성",
   mergeFormatFree: "자유 요약",
   mergeFormatFreeDesc: "관점을 엮은 자연스러운 서술",
   mergeFormatBullets: "불릿 리스트",
@@ -86,23 +76,7 @@ export const ko: T = {
   mergeFormatTranscriptDesc: "원본 대화를 그대로 출력",
   mergeCustomPromptPlaceholder: "요약 방식을 설명하세요. 예: 팀을 위한 메모 형식으로, 액션 아이템 위주로…",
   // 랜딩 문제 제기
-  problemSetup: "AI 답변을 보다가 어떤 부분을 더 파고들고 싶을 때, 보통 두 가지 안 좋은 선택지만 있습니다:",
-  badChoice1Label: "새 대화 시작",
-  badChoice1Desc: "문맥을 모두 잃고 처음부터 설명해야 함",
-  badChoice2Label: "이 대화에서 묻기",
-  badChoice2Desc: "메인 스레드가 끊기고 주제가 산만해짐",
-  solutionLabel: "Deeppin",
-  solutionDesc: "그 디테일을 핀으로 찍어 원하는 만큼 깊이 파고들기. 메인 스레드는 단 한 마디도 방해받지 않습니다.",
   // 사용법
-  howToUseTitle: "사용 방법",
-  step1Title: "무엇이든 질문",
-  step1Desc: "AI와 대화를 시작하고 상세한 답변을 받기",
-  step2Title: "핀으로 탐색",
-  step2Desc: "답변의 텍스트를 선택하고 '질문' 클릭 — 하위 스레드가 열리고 메인 대화는 그대로",
-  step3Title: "원하는 만큼 깊이",
-  step3Desc: "하위 질문 안에서 또 핀 가능 — 몇 단계든 OK",
-  step4Title: "전체 병합",
-  step4Desc: "탐색이 끝나면? 모든 스레드를 하나의 완전한 보고서로 합쳐 내보내기",
   // 아티클
   articles: "아티클",
   // 계정
@@ -121,9 +95,6 @@ export const ko: T = {
   deleteCta: "삭제",
   deleting: "삭제 중…",
   deleteResetView: "맞춤",
-  // MergeDemo
-  pinsReady: "개의 핀 준비 완료",
-  mergeOutput: "병합 출력",
   // 평탄화
   flattenButton: "평탄화",
   flattenConfirmTitle: "이 세션을 평탄화할까요?",
@@ -157,7 +128,6 @@ export const ko: T = {
   flattenPreviewAfter: "평탄화 후",
   flattenPreviewEmpty: "메인 스레드만 있음 — 평탄화할 것이 없습니다.",
   mergeHintSelect: "병합할 하위 질문을 선택 · 노드를 클릭하여 토글",
-  mergeHintDrag: "스크롤로 이동 · 드래그로 옮김",
   mergeSelectAll: "모두 선택",
   mergeSelectNone: "선택 해제",
   mergeCta: "{n}개의 하위 질문 병합",

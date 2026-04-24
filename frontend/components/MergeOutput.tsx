@@ -1,6 +1,4 @@
 "use client";
-// components/MergeOutput.tsx
-// 合并输出面板 — 先展示线程树选择，再流式生成合并报告
 // Merge output panel — tree selection step, then streaming report generation.
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -16,7 +14,6 @@ import { localizeStatusText } from "@/lib/i18n";
 interface Props {
   sessionId: string;
   threads: Thread[];
-  pinCount: number;
   onClose: () => void;
 }
 
@@ -37,7 +34,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   const [format, setFormat] = useState<MergeFormat>("free");
   const [customPrompt, setCustomPrompt] = useState("");
   const [state, setState] = useState<State>("selecting");
-  // 默认全选所有子线程 / All sub-threads selected by default
+  // All sub-threads selected by default.
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(threads.filter(t => t.parent_thread_id !== null).map(t => t.id))
   );
@@ -54,7 +51,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
 
   const subThreads = threads.filter(th => th.parent_thread_id !== null);
 
-  // ── 弹窗尺寸（可调整大小）──────────────────────────────────────────
+  // ── Modal dimensions (resizable) ─────────────────────────────────────
   const [modalW, setModalW] = useState(() =>
     typeof window !== "undefined" ? Math.max(440, Math.min(720, Math.round(window.innerWidth * 0.65))) : 600
   );
@@ -62,7 +59,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
     typeof window !== "undefined" ? Math.max(420, Math.min(650, Math.round(window.innerHeight * 0.78))) : 530
   );
 
-  // 拖拽调整大小
+  // Drag to resize.
   const resizing = useRef(false);
   const resizeOrigin = useRef({ x: 0, y: 0, w: 0, h: 0 });
 
@@ -82,7 +79,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
   };
   const onResizePointerUp = (_e: React.PointerEvent) => { resizing.current = false; };
 
-  // 构建父→子映射，用于 cascade 选择 / Build parent→children map for cascade selection
+  // Build parent→children map for cascade selection.
   const childrenMap = useMemo(() => {
     const map: Record<string, string[]> = {};
     for (const t of threads) {
@@ -93,7 +90,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
     return map;
   }, [threads]);
 
-  /** 收集某节点的所有后代 id / Collect all descendant ids of a node */
+  /** Collect all descendant ids of a node. */
   const getDescendants = useCallback((id: string): string[] => {
     const result: string[] = [];
     const queue = [id];
@@ -112,11 +109,11 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       const next = new Set(prev);
       const descendants = getDescendants(id);
       if (next.has(id)) {
-        // 取消选中：cascade 取消所有后代 / Deselect: cascade deselect all descendants
+        // Deselect: cascade deselect all descendants.
         next.delete(id);
         for (const d of descendants) next.delete(d);
       } else {
-        // 选中：cascade 选中所有后代 / Select: cascade select all descendants
+        // Select: cascade select all descendants.
         next.add(id);
         for (const d of descendants) next.add(d);
       }
@@ -145,8 +142,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
       },
       (fullText) => { setContent(fullText); setState("done"); },
       (msg) => { setErrorMsg(msg); setState("error"); },
-      // 后端 status 是 "中文 / English" 双语,按 lang 裁掉一半
-      // Backend bilingual status — keep only the locale-matching half.
+      // Backend status is bilingual ("Chinese / English"); keep only the locale-matching half.
       (text) => setStatus(localizeStatusText(text, lang)),
       format === "custom" ? customPrompt : undefined,
       lang,
@@ -193,7 +189,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           boxShadow: "0 24px 64px rgba(27,26,23,0.18)",
         }}
       >
-        {/* ── 顶栏 ── */}
+        {/* ── Top bar ── */}
         <div
           className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
@@ -220,7 +216,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           </button>
         </div>
 
-        {/* ── 格式选择 ── */}
+        {/* ── Format picker ── */}
         <div
           className="flex flex-col gap-2 px-5 py-3 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
@@ -263,10 +259,10 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           )}
         </div>
 
-        {/* ── 内容区 ── */}
+        {/* ── Content area ── */}
         <div className="flex-1 overflow-hidden min-h-0 relative">
 
-          {/* 选择树形图 */}
+          {/* Selection tree graph */}
           {isSelecting && (
             <div className="h-full flex flex-col">
               <div className="px-5 pt-3 pb-1 flex-shrink-0">
@@ -286,8 +282,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                     .replace("{selected}", String(selCount))
                     .replace("{total}", String(subThreads.length))}
                 </span>
-                {/* pan/drag 提示删了 —— 新 MergeGraph 是静态 SVG，不支持 pan/drag
-                    Old "Scroll to pan · drag to move" hint gone — MergeGraph is
+                {/* Old "Scroll to pan · drag to move" hint removed — MergeGraph is
                     a static SVG and doesn't support those interactions. */}
                 <div className="flex items-center gap-3">
                   <button
@@ -313,7 +308,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
             </div>
           )}
 
-          {/* 生成中 */}
+          {/* Generating */}
           {state === "generating" && (
             <div className="flex items-center gap-2.5 text-faint text-sm py-4 px-5">
               {[0,1,2].map(i => (
@@ -324,7 +319,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
             </div>
           )}
 
-          {/* 流式输出 / 完成 */}
+          {/* Streaming / done */}
           {(state === "streaming" || state === "done") && (
             <div ref={scrollRef} className="h-full overflow-y-auto px-5 py-4 scrollbar-thin">
               <div className="text-sm text-hi">
@@ -336,7 +331,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
             </div>
           )}
 
-          {/* 错误 */}
+          {/* Error */}
           {state === "error" && (
             <div className="flex items-start gap-2.5 text-red-400/90 text-sm py-4 px-5">
               <svg className="w-4 h-4 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -347,7 +342,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           )}
         </div>
 
-        {/* ── 调整大小手柄（右下角）── */}
+        {/* ── Resize handle (bottom-right corner) ── */}
         <div
           style={{ position: "absolute", bottom: 4, right: 4, width: 20, height: 20, cursor: "se-resize", zIndex: 10, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", touchAction: "none" }}
           onPointerDown={onResizePointerDown}
@@ -359,7 +354,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
           </svg>
         </div>
 
-        {/* ── 底栏 ── */}
+        {/* ── Footer ── */}
         <div
           className="flex items-center justify-between px-5 py-3 gap-3 flex-shrink-0"
           style={{ borderTop: "1px solid var(--rule-soft)" }}
@@ -399,7 +394,7 @@ export default function MergeOutput({ sessionId, threads, onClose }: Props) {
                     const msg = await saveAssistantMessage(mainThread.id, content);
                     setMessages(mainThread.id, [...(messagesByThread[mainThread.id] ?? []), msg]);
                     setSaved(true);
-                  } catch { /* 静默失败 */ } finally {
+                  } catch { /* silently swallow */ } finally {
                     setSaving(false);
                   }
                 }}

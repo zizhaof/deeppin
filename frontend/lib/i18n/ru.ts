@@ -7,21 +7,17 @@ export const ru: T = {
   back: "Назад",
   forward: "Вперёд",
   mainThread: "Главная",
-  noTitle: "Новый чат",
-  switchThread: "Переключить",
   // Боковая панель
   subQuestions: "Вопросы",
   overview: "Обзор",
   viewList: "Список",
   viewGraph: "Граф",
   // Пустые состояния
-  selectToPin: "Выделите текст, чтобы открыть вопрос",
   noThreads: "Нет тредов",
   // Welcome
   welcomeTitle: "Глубокое мышление начинается здесь",
   welcomeSub: "Спросите Deeppin о чём угодно. Выделите текст в ответе, чтобы открыть подвопрос.",
   chooseQuestion: "Выберите вопрос для исследования",
-  tagline: "Выделите любой текст, чтобы копнуть глубже",
   // InputBar
   inputPlaceholder: "Введите сообщение… (Enter — отправить, Shift+Enter — новая строка)",
   webSearchPlaceholder: "Поиск в сети…",
@@ -39,17 +35,14 @@ export const ru: T = {
   daysAgo: "дн. назад",
   // Статус
   loading: "Загрузка…",
-  creating: "Создание сессии…",
   errorPrefix: "Ошибка: ",
   processing: "Обработка…",
   streamError: "[Ошибка]",
   // Треды
-  mainConversation: "Основная беседа",
   subThread: "Подтред",
   // Меню пина
   pinAction: "Вопрос",
   copy: "Копировать",
-  goToThread: "К вопросу",
   // Рекомендации
   suggestedQuestions: "Предложенные вопросы",
   customQuestion: "Или напишите свой вопрос…",
@@ -68,12 +61,9 @@ export const ru: T = {
   mergeTitle: "Объединённый вывод",
   mergeAngles: "подвопросов",
   mergeHint: "Выберите формат и нажмите «Сгенерировать», чтобы собрать все пины в один отчёт",
-  mergePreparing: "Подготовка…",
   mergeCopyMd: "Копировать Markdown",
   mergeDownload: "Скачать .md",
   mergeGenerating: "Генерация…",
-  mergeRegenerate: "Сгенерировать заново",
-  mergeGenerate: "Сгенерировать",
   mergeFormatFree: "Свободное резюме",
   mergeFormatFreeDesc: "Связный текст, объединяющий все ракурсы",
   mergeFormatBullets: "Список пунктов",
@@ -86,23 +76,7 @@ export const ru: T = {
   mergeFormatTranscriptDesc: "Дословный вывод исходной беседы",
   mergeCustomPromptPlaceholder: "Опишите, как хотите получить резюме, напр.: как памятку для команды, с акцентом на действиях…",
   // Проблема на лендинге
-  problemSetup: "Когда вы читаете ответ ИИ и хотите углубиться в часть, обычно есть только два плохих варианта:",
-  badChoice1Label: "Начать новый чат",
-  badChoice1Desc: "теряете весь контекст и объясняете всё заново",
-  badChoice2Label: "Спросить в этом чате",
-  badChoice2Desc: "прерываете основной тред, тема уходит в сторону",
-  solutionLabel: "Deeppin",
-  solutionDesc: "Закрепите эту деталь и копайте так глубоко, как хотите. Основной тред? Ни слова прерывания.",
   // Как работает
-  howToUseTitle: "Как это работает",
-  step1Title: "Спросите что угодно",
-  step1Desc: "Начните разговор с ИИ и получите развёрнутый ответ",
-  step2Title: "Закрепите, чтобы изучить",
-  step2Desc: "Выделите текст в ответе и нажмите «Вопрос» — откроется отдельный подтред, основной чат останется нетронутым",
-  step3Title: "Так глубоко, как хотите",
-  step3Desc: "Можно закреплять и внутри подвопросов — без ограничения по уровням",
-  step4Title: "Слить всё вместе",
-  step4Desc: "Закончили исследовать? Объедините все треды в один отчёт и экспортируйте",
   // Статьи
   articles: "Статьи",
   // Аккаунт
@@ -121,9 +95,6 @@ export const ru: T = {
   deleteCta: "Удалить",
   deleting: "Удаление…",
   deleteResetView: "По размеру",
-  // MergeDemo
-  pinsReady: "пинов готово",
-  mergeOutput: "Объединённый вывод",
   // Уплощение
   flattenButton: "Уплостить",
   flattenConfirmTitle: "Уплостить эту сессию?",
@@ -157,7 +128,6 @@ export const ru: T = {
   flattenPreviewAfter: "После",
   flattenPreviewEmpty: "Только главная ветка — нечего уплощать.",
   mergeHintSelect: "Выберите подвопросы для объединения · клик по узлу",
-  mergeHintDrag: "Прокрутка — панорама · перетаскивание — перемещение",
   mergeSelectAll: "Выбрать все",
   mergeSelectNone: "Снять выделение",
   mergeCta: "Объединить {n} подвопрос(ов)",

@@ -1,7 +1,4 @@
 "use client";
-// components/Layout/ThreadGraph.tsx
-// 右栏 graph 视图 — 按设计：pigment-colored 圆节点 + 平滑贝塞尔连线
-// + Fraunces 标签 + 未读脉动圆。
 // Right-rail graph view — pigment-filled circle nodes + smooth bezier edges
 // + Fraunces labels + pulsing unread indicator.
 
@@ -28,16 +25,14 @@ interface Props {
   unreadCounts: Record<string, number>;
   messagesByThread: Record<string, Message[]>;
   onSelect: (threadId: string) => void;
-  /** 节点 hover 触发 —— 复用 MessageBubble 的 onAnchorHover 接口，让 chat page
-   *  共用同一个 AnchorPreviewPopover（Q + A 预览）。
-   *  Node hover — reuses the onAnchorHover contract so the chat page's
+  /** Node hover — reuses the onAnchorHover contract so the chat page's
    *  AnchorPreviewPopover (Q + A) handles graph hover too. */
   onNodeHover?: (threadIds: string[], rect: DOMRect | null) => void;
-  /** 渲染宽度，通常是父容器 clientWidth。默认 268。 */
+  /** Render width, usually the parent's clientWidth. Defaults to 268. */
   width?: number;
 }
 
-/** 同 ThreadTree.sortSiblings —— 保持两个视图的 pigment 顺序一致 */
+/** Same as ThreadTree.sortSiblings — keeps the two views' pigment order in sync. */
 function sortSiblings(siblings: Thread[], parentMessages: Message[]): Thread[] {
   const msgOrder: Record<string, number> = {};
   parentMessages.forEach((m, i) => { msgOrder[m.id.toLowerCase()] = i; });
@@ -54,12 +49,7 @@ function sortSiblings(siblings: Thread[], parentMessages: Message[]): Thread[] {
   });
 }
 
-/** 计算每个节点的位置。
- *
- *  旧版按 depth 分层、每层平铺整宽 —— depth 2 只有 2 个节点但被撑到左右两侧，
- *  跟 depth 1 拉开的距离完全不对。新版用「叶子数加权」的递归布局：每棵子树拿到
- *  跟其叶子数成比例的横向空间，每个节点居中于其所属区间内。这样子节点自然聚
- *  拢在父节点下方，深度再多也不会空虚。
+/** Compute each node's position.
  *
  *  Old version laid out each depth across the full width, so 2 depth-2 nodes
  *  got slammed to the edges with no visual relationship to their parent. This
@@ -79,9 +69,9 @@ function layoutNodes(
     byParent.set(thr.parent_thread_id, list);
   }
 
-  // 给每个非主线 thread 分配一个 pigment index（按锚点顺序）
-  // Also pre-sort each parent's children in-place so recursion walks them in
-  // that order — this fixes the visual left-to-right sibling layout too.
+  // Assign each non-main thread a pigment index (by anchor order) and pre-sort
+  // each parent's children in-place so recursion walks them in that order —
+  // this also fixes the visual left-to-right sibling layout.
   const pigIdxMap = new Map<string, number>();
   for (const [parentId, siblings] of byParent) {
     if (parentId === null) continue;
@@ -93,7 +83,6 @@ function layoutNodes(
   const mainThread = threads.find((t) => t.parent_thread_id === null);
   const positions = new Map<string, { x: number; y: number }>();
 
-  // 递归：每个节点落在 [xLeft, xRight] 中心；子节点按 leafCount 占比瓜分区间
   // Recursive: each node sits at the center of [xLeft, xRight]; children split
   // the range proportional to their leaf counts.
   const leafCountCache = new Map<string, number>();
@@ -127,8 +116,7 @@ function layoutNodes(
     place(mainThread.id, 0, PAD, width - PAD);
   }
 
-  // 如果某线程没被 place（坏数据：父 id 指向不存在的 thread），兜底放在中间
-  // Fallback for orphan threads (parent_thread_id points to nothing).
+  // Fallback for orphan threads (parent_thread_id points to a missing thread).
   for (const thr of threads) {
     if (!positions.has(thr.id)) {
       positions.set(thr.id, { x: width / 2, y: 36 + thr.depth * ROW_H });
@@ -150,9 +138,9 @@ function layoutNodes(
   return { nodes, height, pigIdxMap };
 }
 
-/** 把标题裁成最多两行（字符估算，兼顾中日文与英文） */
+/** Wrap the title into at most two lines (char-width estimate; works for CJK and Latin). */
 function wrapLabel(text: string, maxPx: number): string[] {
-  const charPx = 6.6; // ~11px Fraunces 的平均字宽估算
+  const charPx = 6.6; // estimated average glyph width for ~11px Fraunces
   const maxChars = Math.max(6, Math.floor(maxPx / charPx));
   if (text.length <= maxChars) return [text];
 
@@ -201,7 +189,8 @@ export default function ThreadGraph({
     );
   }
 
-  // 计算每个节点的标签可用宽度（跟左右邻居距离的一半，取小值）
+  // Compute each node's available label width (half the distance to its
+  // nearest neighbor on each side, take the smaller).
   const nodesByDepth = new Map<number, Positioned[]>();
   for (const n of nodes) {
     const list = nodesByDepth.get(n.thread.depth) ?? [];
@@ -220,7 +209,6 @@ export default function ThreadGraph({
 
   const posById = new Map(nodes.map((n) => [n.thread.id, n]));
 
-  // 共享 zoom/pan —— 滚轮缩放（以光标为焦点）+ 拖拽平移 + 首次 fit
   // Shared zoom/pan — wheel = cursor-anchored zoom, drag = pan, auto-fit on mount.
   const zp = useGraphZoomPan({
     contentWidth: width,
@@ -242,7 +230,7 @@ export default function ThreadGraph({
         style={{ display: "block" }}
       >
         <g transform={zp.transformString}>
-        {/* edges — 平滑贝塞尔，用 rule 灰作为底色 */}
+        {/* edges — smooth bezier, rule gray as the base color */}
         {nodes
           .filter((n) => n.thread.parent_thread_id)
           .map((n) => {
@@ -283,8 +271,7 @@ export default function ThreadGraph({
               style={{ cursor: "pointer" }}
               onClick={() => onSelect(n.thread.id)}
               onMouseEnter={(e) => {
-                // 取 circle 的 bbox（node label + 圆）——位置给 popover 用
-                // Use the <g>'s bbox so the popover sits right under the node.
+                // Use the <g>'s bbox (node label + circle) so the popover sits right under the node.
                 const rect = (e.currentTarget as SVGGElement).getBoundingClientRect();
                 onNodeHover?.([n.thread.id], rect);
               }}

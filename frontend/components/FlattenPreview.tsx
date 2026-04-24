@@ -1,10 +1,4 @@
 "use client";
-// components/FlattenPreview.tsx
-//
-// 扁平化前 / 后的对话式预览 —— 左边是当前的多线程（主线 + 分支子线程）
-// 右边是合并后的单线程：主线消息 + 所有子线程的消息按 preorder 拼进主线，
-// 带「↳ Flattened from …」分隔头。用真实 session 的 threads/messages 作结构。
-//
 // Before/after conversation-style preview for flatten:
 //   - Left: current multi-thread tree — main thread bubbles + sub-thread bubbles
 //     branching off anchors.
@@ -23,8 +17,7 @@ interface Props {
   messagesByThread?: Record<string, Message[] | undefined>;
 }
 
-/** Pigment index = 在父线程下的兄弟顺序（按创建时间）
- *  Pigment index = sibling order (by created_at) within the parent thread. */
+/** Pigment index = sibling order (by created_at) within the parent thread. */
 function buildPigmentMap(threads: Thread[]): Map<string, number> {
   const byParent = new Map<string | null, Thread[]>();
   for (const thr of threads) {
@@ -43,8 +36,7 @@ function buildPigmentMap(threads: Thread[]): Map<string, number> {
   return m;
 }
 
-/** preorder 遍历所有 thread —— Flatten 后消息会按这个顺序拼进主线。
- *  Preorder walk over the thread tree — after flatten, messages concatenate
+/** Preorder walk over the thread tree — after flatten, messages concatenate
  *  in this order. */
 function preorderThreads(threads: Thread[]): Thread[] {
   const byParent = new Map<string | null, Thread[]>();
@@ -65,15 +57,14 @@ function preorderThreads(threads: Thread[]): Thread[] {
   return out;
 }
 
-/** 每条 thread 的消息数（没有传 messagesByThread 时用 2 作默认估算）
- *  Message count per thread; falls back to 2 when messagesByThread isn't given. */
+/** Message count per thread; falls back to 2 when messagesByThread isn't given. */
 function msgCount(thr: Thread, msgs?: Record<string, Message[] | undefined>): number {
   if (!msgs) return 2;
   const n = msgs[thr.id]?.length ?? 2;
-  return Math.max(1, Math.min(6, n)); // 钳到 1..6，避免预览塞爆
+  return Math.max(1, Math.min(6, n)); // clamp to 1..6 so the preview doesn't blow up
 }
 
-/** 缩略气泡行 —— 一个用户气泡 + 一个 AI 气泡的小组合 */
+/** Thumbnail bubble row — a small user-bubble + AI-bubble pair. */
 function BubbleRow({
   alignRight,
   color,
@@ -106,7 +97,7 @@ function BubbleRow({
   );
 }
 
-/** 单条 thread 的小型气泡 stack —— 展示 N 条消息，用户/AI 交替 */
+/** Mini bubble stack for one thread — alternates user/AI for N messages. */
 function ThreadStack({
   thread,
   msgs,
@@ -118,7 +109,7 @@ function ThreadStack({
   thread: Thread;
   msgs: Record<string, Message[] | undefined> | undefined;
   width: number;
-  anchorIdx?: number; // 在第几条 AI 消息上放一个锚点（仅 main 用）
+  anchorIdx?: number; // which AI message to place an anchor on (main thread only)
   isMain: boolean;
   pigColor: string;
 }) {
@@ -140,14 +131,13 @@ function ThreadStack({
   return <div className="flex flex-col gap-[3px]">{rows}</div>;
 }
 
-// ── Graph before/after — 两个小 SVG 展示线程结构的坍缩 ─────────────
-// Two small SVGs showing how the thread tree collapses into a single main.
+// ── Graph before/after — two small SVGs showing how the thread tree
+// collapses into a single main thread.
 function GraphBefore({ threads, pigMap }: { threads: Thread[]; pigMap: Map<string, number> }) {
   const W = 150, H = 140;
   const mainId = threads.find((t) => t.parent_thread_id === null)?.id;
   if (!mainId) return null;
 
-  // 同 ThreadGraph：叶子数加权递归布局，子节点聚拢在父节点下、不会出现交叉边
   // Same leaf-count-weighted recursive layout as ThreadGraph — children
   // cluster under their parent and edges never cross.
   const PAD = 18;
@@ -238,7 +228,6 @@ function GraphBefore({ threads, pigMap }: { threads: Thread[]; pigMap: Map<strin
 
 function GraphAfter() {
   const W = 150, H = 140;
-  // flatten 后只剩一个 main 节点；用 pulsing ring 强调「合并到了这里」
   // After flatten there's exactly one main node; a static halo emphasizes it.
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxHeight: 140, display: "block" }} preserveAspectRatio="xMidYMid meet">
@@ -312,7 +301,7 @@ export default function FlattenPreview({ threads, messagesByThread }: Props) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Section 顶部 meta 标签 + Before/After 彩色标题 */}
+      {/* Section header: meta labels + Before/After colored titles. */}
       <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-end">
         <div className="flex items-center justify-center gap-1.5">
           <SectionLabel>{t.flattenPreviewBefore}</SectionLabel>
@@ -331,7 +320,7 @@ export default function FlattenPreview({ threads, messagesByThread }: Props) {
         </div>
       </div>
 
-      {/* ── Row 1: 对话视图 / Chat view ─────────────────────────────── */}
+      {/* ── Row 1: Chat view ──────────────────────────────────────── */}
       <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
         <div className="flex flex-col gap-1">
           <SectionLabel>chat</SectionLabel>
@@ -423,7 +412,7 @@ export default function FlattenPreview({ threads, messagesByThread }: Props) {
         </div>
       </div>
 
-      {/* ── Row 2: Graph 视图 / Graph view ─────────────────────────── */}
+      {/* ── Row 2: Graph view ─────────────────────────────────────── */}
       <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-start">
         <div className="flex flex-col gap-1">
           <SectionLabel>graph</SectionLabel>

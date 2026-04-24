@@ -1,5 +1,5 @@
 "use client";
-// app/page.tsx — 首页
+// Home page.
 
 import { useEffect, useRef, useState, KeyboardEvent } from "react";
 import type { CSSProperties } from "react";
@@ -15,7 +15,7 @@ import LangSelector from "@/components/LangSelector";
 import PinDemo from "@/components/PinDemo";
 import MobilePinDemo from "@/components/MobilePinDemo";
 
-// ── 主页 ─────────────────────────────────────────────────────────────
+// ── HomePage component ──────────────────────────────────────────────
 
 export default function HomePage() {
   const router = useRouter();
@@ -28,25 +28,20 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [heroText, setHeroText] = useState("");
   const heroComposingRef = useRef(false);
-  /** 匿名用户超过 1-session 上限时弹窗（罕见：需要手动清 prewarm 时触发）。
-   *  Modal shown when an anon user trips the 1-session cap during fallback createSession. */
+  /** Modal shown when an anon user trips the 1-session cap during fallback createSession. */
   const [quotaModal, setQuotaModal] = useState<{ message?: string } | null>(null);
-  /** 当前用户是否匿名；用来在 SessionDrawer 里隐藏「新对话」按钮。
-   *  Anon flag — hides the "new chat" button in SessionDrawer (1-session cap). */
+  /** Anon flag — hides the "new chat" button in SessionDrawer (1-session cap). */
   const [isAnon, setIsAnon] = useState(false);
-  // 预热：登录后立即在后台创建好一个 session，点击时直接跳转无需等待
+  // Prewarm: pre-generate a session UUID after login so a click navigates instantly.
   const prewarmedRef = useRef<string | null>(null);
 
-  // 预热：只预生成 UUID，不写 DB。
-  // 点击「新建对话」时才真正创建 session，在跳转前并行发出请求。
   // Prewarm: generate a UUID client-side only — no DB write at all.
-  // The session is created on-demand when the chat page loads.
+  // The session is actually created when the chat page loads.
   const prewarm = () => {
     prewarmedRef.current = crypto.randomUUID();
   };
 
-  // 先检查 auth，认证后再拉取 sessions（避免未登录时静默抛错）
-  // Check auth first, then fetch sessions (avoids silent errors for unauthenticated users)
+  // Check auth first, then fetch sessions (avoids silent errors for unauthenticated users).
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,22 +50,20 @@ export default function HomePage() {
           email: session.user.email,
           avatar_url: session.user.user_metadata?.avatar_url,
         });
-        // is_anonymous 可能不存在于老版本 supabase-js；缺失则视为非匿名。
         // is_anonymous may not exist on older supabase-js — treat absence as non-anon.
         setIsAnon(Boolean((session.user as { is_anonymous?: boolean }).is_anonymous));
         listSessions()
           .then(setSessions)
           .catch(() => setSessions([]))
           .finally(() => setLoading(false));
-        // 预生成 UUID（不写 DB）
+        // Pre-generate UUID (no DB write).
         prewarm();
       } else {
         setLoading(false);
       }
     });
 
-    // 卸载时清空 ref（UUID 从未写 DB，不需要删除）
-    // On unmount: just clear the ref — no DB record was created, nothing to delete
+    // On unmount: just clear the ref — no DB record was created, nothing to delete.
     return () => { prewarmedRef.current = null; };
   }, []);
 
@@ -82,10 +75,8 @@ export default function HomePage() {
   const handleNewChat = async (initialMessage?: string) => {
     const supabase = createClient();
     let { data: { session } } = await supabase.auth.getSession();
-    // 未登录 → 匿名试用（lazy：只在用户主动点「新对话」时才创建匿名账号，避免
-    // 爬虫/预渲染污染 auth.users）。失败才退到 /login。
-    // No session → lazy signInAnonymously (only on user action to keep auth.users clean).
-    // Fall back to /login only if anon sign-in fails.
+    // No session → lazy signInAnonymously (only on user action, to keep crawlers /
+    // prerenders out of auth.users). Fall back to /login only if anon sign-in fails.
     if (!session) {
       const { data, error } = await supabase.auth.signInAnonymously();
       if (error || !data.session) {
@@ -97,26 +88,23 @@ export default function HomePage() {
     if (initialMessage?.trim()) {
       sessionStorage.setItem("deeppin:pending-msg", initialMessage.trim());
     }
-    // 使用预生成的 UUID 立即跳转（chat 页面 init 会完成实际的 DB 创建）
-    // Use the pre-generated UUID for instant navigation; chat page init() does the actual DB write
+    // Use the pre-generated UUID for instant navigation; chat page init() does the actual DB write.
     if (prewarmedRef.current) {
       const id = prewarmedRef.current;
       prewarmedRef.current = null;
       router.push(`/chat/${id}`);
-      // 为下一次新建对话预生成 UUID
+      // Pre-generate UUID for the next new chat.
       prewarm();
       return;
     }
-    // 极少情况：ref 为空（组件刚挂载就立即点击），fallback 正常创建
-    // Rare fallback: ref is empty (click before prewarm ran) — create normally
+    // Rare fallback: ref is empty (click before prewarm ran) — create normally.
     setCreating(true);
     try {
       const s = await createSession();
       router.push(`/chat/${s.id}`);
     } catch (err) {
       setCreating(false);
-      // 匿名用户已用掉 1 session 额度 → 弹登录引导
-      // Anon user already burned their 1-session allowance → show sign-in modal
+      // Anon user already burned their 1-session allowance → show sign-in modal.
       if (err instanceof ApiError && err.code === "anon_session_limit") {
         setQuotaModal({ message: err.message });
       }
@@ -140,8 +128,7 @@ export default function HomePage() {
     setSessions([]);
   };
 
-  // 匿名用户手动触发 Google 绑定(linkIdentity 保留 user_id 与历史消息)。
-  // Anon users manually trigger Google link-identity (preserves user_id + history).
+  // Anon users manually trigger Google linkIdentity (preserves user_id + history).
   const handleSignIn = async () => {
     const supabase = createClient();
     const redirectTo =
@@ -153,7 +140,7 @@ export default function HomePage() {
     if (error) alert(error.message);
   };
 
-  // 渐入动画 / Staggered entrance
+  // Staggered entrance animation.
   const fadeUp = (delay: number): CSSProperties => ({
     opacity: mounted ? 1 : 0,
     transform: mounted ? "translateY(0)" : "translateY(16px)",
@@ -163,7 +150,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-base flex flex-col relative overflow-x-hidden">
 
-      {/* 背景：点网格 + 顶部光晕 */}
+      {/* Background: dot grid + top halo. */}
       <div className="absolute inset-0 pointer-events-none select-none" aria-hidden>
         <div
           className="absolute inset-0 opacity-100"
@@ -177,10 +164,10 @@ export default function HomePage() {
         />
       </div>
 
-      {/* 抽屉 */}
+      {/* Drawer. */}
       <SessionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} sessions={sessions} loading={loading} t={t} onDelete={handleDeleteSession} isAnon={isAnon} onAnonNewChat={() => setQuotaModal({})} />
 
-      {/* 顶栏 */}
+      {/* Topbar. */}
       <header className="relative z-10 border-b border-subtle px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -202,8 +189,7 @@ export default function HomePage() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2">
-          {/* 登录用户保留头像；退出按钮在下方主 CTA 位置（替代了「新对话」）
-           *  Signed-in users keep the avatar; the logout action lives in the
+          {/* Signed-in users keep the avatar; the logout action lives in the
            *  primary CTA slot below (replaced the former "New chat" button on
            *  the welcome page, per the directive to surface auth controls
            *  instead of session actions in the header). */}
@@ -214,8 +200,7 @@ export default function HomePage() {
               className="w-6 h-6 md:w-7 md:h-7 rounded-full border border-base object-cover"
             />
           )}
-          {/* Articles 链接:手机端 icon only(书本图标),桌面端文本
-           *  Articles link: icon-only on mobile (book icon), text on desktop. */}
+          {/* Articles link: icon-only on mobile (book icon), text on desktop. */}
           <Link
             href="/articles"
             aria-label={t.articles}
@@ -229,10 +214,7 @@ export default function HomePage() {
             <span className="hidden md:inline">{t.articles}</span>
           </Link>
           <LangSelector />
-          {/* 右上角主 CTA —— 只管登录/登出。未登录（user === null）和匿名
-           *  (isAnon) 都显示 Sign in；只有真实登录（user && !isAnon）才显示
-           *  Logout。新对话由下方 Hero 输入框承接，不在这里。
-           *  Welcome page topbar CTA shows Sign in for unauthenticated + anon
+          {/* Welcome page topbar CTA shows Sign in for unauthenticated + anon
            *  users, Logout only for genuinely signed-in users. New chat is
            *  started from the hero input below. */}
           {user && !isAnon ? (
@@ -258,12 +240,12 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* 主体 */}
+      {/* Main body. */}
       <main className="relative z-10 flex-1 flex flex-col items-center px-6 py-16 gap-12 overflow-y-auto">
 
         {/* ── Hero ── */}
         <div style={fadeUp(0)} className="flex flex-col items-center gap-5 text-center w-full max-w-[640px]">
-          {/* 图标 + 光晕 */}
+          {/* Icon + halo. */}
           <div className="relative">
             <div className="absolute inset-0 rounded-2xl blur-xl bg-indigo-500/20 scale-110" />
             <div className="relative w-14 h-14 rounded-2xl bg-surface border border-base flex items-center justify-center shadow-[0_0_0_1px_rgba(99,102,241,0.15),0_8px_32px_rgba(0,0,0,0.15)]">
@@ -275,7 +257,7 @@ export default function HomePage() {
 
           <h1 className="font-serif text-[26px] font-medium text-hi tracking-tight leading-tight">{t.welcomeTitle}</h1>
 
-          {/* 首页输入框 — 与对话页主栏等宽 */}
+          {/* Home input box — same width as the chat page main column. */}
           <div className="w-full bg-surface rounded-2xl border border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)] transition-all overflow-hidden">
             <textarea
               value={heroText}
@@ -314,16 +296,13 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* ── 插针演示 —— 演示已自带「两个坏选项」的文案 + pin 的解法，
-             所以 Why / How sections 删掉，避免重复。
-             包一层 w-full：父 main 用 items-center，这里需要显式 w-full 才能
-             让 demo 拿到容器宽度。
-             Wrapper sets w-full because the parent main has items-center,
-             which otherwise shrinks the child to its intrinsic content width
-             and the demo collapses. ── */}
+        {/* ── Pin demo — the demo already includes the "two bad options" copy
+             plus the pin solution, so the Why / How sections are intentionally
+             omitted to avoid duplication. Wrapper sets w-full because the
+             parent main uses items-center, which otherwise shrinks this child
+             to its intrinsic content width and the demo collapses. ── */}
         <div style={fadeUp(60)} className="w-full max-w-[1100px]">
-          {/* 桌面（md+）= 完整 PinDemo（2 栏 + 右侧 graph）；移动端 = 紧凑垂直版
-              Desktop ≥md uses full PinDemo (2-col + right graph); mobile gets a
+          {/* Desktop ≥md uses full PinDemo (2-col + right graph); mobile gets a
               compact vertical version that fits 380px-wide phone viewports. */}
           <div className="hidden md:block">
             <PinDemo />

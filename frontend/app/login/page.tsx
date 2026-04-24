@@ -1,7 +1,6 @@
 "use client";
-// app/login/page.tsx — 登录页
-// Paper-palette restyle: 暖纸底 + 卡片 + deep-ink 强调色；按钮更克制。
-// Paper-palette restyle — warm paper background, card, deep-ink accent, calmer button.
+// Login page — paper-palette restyle: warm paper background, card,
+// deep-ink accent, calmer button.
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
@@ -20,7 +19,6 @@ export default function LoginPage() {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });
-    // 成功时页面跳转到 Google，无需重置 loading
     // On success the page navigates to Google; on error reset so user can retry.
     if (error) {
       console.error("Google OAuth error:", error.message);
@@ -30,7 +28,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: "var(--paper)" }}>
-      {/* 背景 accent 光晕（很淡，呼应 hero 区）/ Subtle accent halo in the header. */}
+      {/* Subtle accent halo behind the card. */}
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[640px] h-[320px] blur-[80px] opacity-35 pointer-events-none"
         style={{

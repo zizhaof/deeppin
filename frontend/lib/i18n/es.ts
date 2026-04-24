@@ -7,21 +7,17 @@ export const es: T = {
   back: "Atrás",
   forward: "Adelante",
   mainThread: "Principal",
-  noTitle: "Chat nuevo",
-  switchThread: "Cambiar",
   // Encabezados de la barra lateral
   subQuestions: "Preguntas",
   overview: "Resumen",
   viewList: "Lista",
   viewGraph: "Gráfico",
   // Estados vacíos
-  selectToPin: "Selecciona texto para abrir una pregunta",
   noThreads: "Sin hilos",
   // Welcome
   welcomeTitle: "El pensamiento profundo empieza aquí",
   welcomeSub: "Pregunta cualquier cosa a Deeppin. Selecciona texto en una respuesta para abrir una subpregunta.",
   chooseQuestion: "Elige una pregunta para explorar",
-  tagline: "Selecciona cualquier texto para profundizar",
   // InputBar
   inputPlaceholder: "Escribe un mensaje… (Enter para enviar, Shift+Enter para salto de línea)",
   webSearchPlaceholder: "Búsqueda web…",
@@ -39,17 +35,14 @@ export const es: T = {
   daysAgo: "días atrás",
   // Estado
   loading: "Cargando…",
-  creating: "Creando sesión…",
   errorPrefix: "Error: ",
   processing: "Procesando…",
   streamError: "[Error]",
   // Hilos
-  mainConversation: "Conversación principal",
   subThread: "Subhilo",
   // Menú de pin
   pinAction: "Pregunta",
   copy: "Copiar",
-  goToThread: "Ir a la pregunta",
   // Preguntas sugeridas
   suggestedQuestions: "Preguntas sugeridas",
   customQuestion: "O escribe tu propia pregunta…",
@@ -68,12 +61,9 @@ export const es: T = {
   mergeTitle: "Salida fusionada",
   mergeAngles: "subpreguntas",
   mergeHint: "Elige un formato y pulsa Generar para fusionar todo el contenido de los pins en un informe",
-  mergePreparing: "Preparando…",
   mergeCopyMd: "Copiar Markdown",
   mergeDownload: "Descargar .md",
   mergeGenerating: "Generando…",
-  mergeRegenerate: "Regenerar",
-  mergeGenerate: "Generar",
   mergeFormatFree: "Resumen libre",
   mergeFormatFreeDesc: "Narrativa fluida que integra todas las perspectivas",
   mergeFormatBullets: "Lista de puntos",
@@ -86,23 +76,7 @@ export const es: T = {
   mergeFormatTranscriptDesc: "Salida textual de la conversación original",
   mergeCustomPromptPlaceholder: "Describe cómo quieres el resumen, p. ej.: como memo para el equipo, centrado en acciones…",
   // Problema en landing
-  problemSetup: "Cuando lees una respuesta de IA y quieres profundizar en una parte, solo tienes dos malas opciones:",
-  badChoice1Label: "Empezar un chat nuevo",
-  badChoice1Desc: "pierdes todo el contexto y tienes que volver a explicar",
-  badChoice2Label: "Preguntar en este chat",
-  badChoice2Desc: "interrumpes el hilo principal y el tema se desvía",
-  solutionLabel: "Deeppin",
-  solutionDesc: "Fija ese detalle y sigue cavando, tan profundo como quieras. ¿El hilo principal? Ni una palabra interrumpida.",
   // Cómo funciona
-  howToUseTitle: "Cómo funciona",
-  step1Title: "Pregunta cualquier cosa",
-  step1Desc: "Inicia una conversación con IA y obtén una respuesta detallada",
-  step2Title: "Pin para explorar",
-  step2Desc: "Resalta cualquier texto en una respuesta y haz clic en 'Pregunta' — se abre un subhilo enfocado y el chat principal queda intacto",
-  step3Title: "Tan profundo como quieras",
-  step3Desc: "Puedes pinear dentro de subpreguntas — sin límite de capas",
-  step4Title: "Fusiona todo",
-  step4Desc: "¿Terminaste de explorar? Combina todos los hilos en un informe completo y expórtalo",
   // Artículos
   articles: "Artículos",
   // Cuenta
@@ -121,9 +95,6 @@ export const es: T = {
   deleteCta: "Eliminar",
   deleting: "Eliminando…",
   deleteResetView: "Ajustar",
-  // MergeDemo
-  pinsReady: "pins listos",
-  mergeOutput: "Salida fusionada",
   // Aplanar
   flattenButton: "Aplanar",
   flattenConfirmTitle: "¿Aplanar esta sesión?",
@@ -157,7 +128,6 @@ export const es: T = {
   flattenPreviewAfter: "Después",
   flattenPreviewEmpty: "Solo el hilo principal — nada que aplanar.",
   mergeHintSelect: "Selecciona sub-preguntas para combinar · clic para alternar",
-  mergeHintDrag: "Rueda para desplazar · arrastra para mover",
   mergeSelectAll: "Seleccionar todo",
   mergeSelectNone: "Limpiar",
   mergeCta: "Combinar {n} sub-pregunta(s)",

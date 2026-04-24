@@ -1,5 +1,5 @@
 "use client";
-// components/PinStartDialog.tsx — 插针后弹出的对话框
+// Dialog shown after a pin is created.
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -9,7 +9,7 @@ export interface PinDialogInfo {
   threadId: string;
   anchorText: string;
   suggestions: string[];
-  /** true 时建议追问仍在后台生成，显示骨架动画 */
+  /** When true, suggested follow-ups are still generating; show a skeleton animation. */
   loading?: boolean;
 }
 
@@ -55,7 +55,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
       <div className="fixed inset-0 [background:rgba(27,26,23,0.45)] backdrop-blur-sm z-40" onClick={onClose} />
 
       <div className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface border border-base rounded-2xl shadow-2xl shadow-black/40 flex flex-col overflow-hidden">
-        {/* 锚点引用 */}
+        {/* Anchor quote */}
         <div className="px-5 pt-5 pb-3 flex gap-3 items-start">
           <div className="w-0.5 flex-shrink-0 self-stretch bg-indigo-500/30 rounded-full" />
           <p className="text-sm text-dim leading-relaxed italic line-clamp-3 flex-1">
@@ -71,7 +71,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
           </button>
         </div>
 
-        {/* 推荐问题 */}
+        {/* Suggested questions */}
         <div className="px-5 pb-3 flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <p className="text-[10px] text-ph font-semibold uppercase tracking-[0.1em]">{t.suggestedQuestions}</p>
@@ -98,7 +98,7 @@ export default function PinStartDialog({ info, onSend, onClose }: Props) {
 
         <div className="mx-5 border-t border-subtle" />
 
-        {/* 自定义输入 */}
+        {/* Custom input */}
         <div className="px-5 py-3 flex gap-2 items-end">
           <textarea
             ref={inputRef}

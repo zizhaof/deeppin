@@ -1,4 +1,4 @@
-"""验证 sessions 端点在无 token 时返回 401。"""
+"""Verify the sessions endpoint returns 401 when no token is provided."""
 import os
 import pytest
 from fastapi.testclient import TestClient
@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client(monkeypatch):
-    # main.py 在导入时校验必要环境变量，测试中提前注入占位值
+    # main.py validates required env vars at import time; inject placeholder values for tests
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon-key")

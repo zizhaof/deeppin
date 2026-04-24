@@ -1,14 +1,10 @@
 # tests/test_session_messages.py
 """
-GET /api/sessions/{session_id}/messages 端点测试
 Tests for the bulk session messages endpoint.
 
-覆盖 / Covers:
-  - 正常路径：按 thread_id 分组返回
+Covers:
     Happy path: messages grouped by thread_id
-  - 无线程 session 返回空字典
     Session with no threads returns empty dict
-  - 每个 thread 都有对应键（即使无消息）
     Every thread_id has a key even if it has no messages
 """
 
@@ -17,7 +13,7 @@ from unittest.mock import MagicMock
 
 
 def _make_sb(thread_data, message_data):
-    """构造能依次返回 thread 列表和 message 列表的 Supabase mock。"""
+    """Build a Supabase mock that returns the thread list and then the message list in sequence."""
     call_count = {"n": 0}
     results = [
         MagicMock(data=thread_data),
@@ -43,7 +39,7 @@ def _make_sb(thread_data, message_data):
 
 @pytest.mark.asyncio
 async def test_happy_path_groups_by_thread():
-    """两个 thread 各有消息，返回正确分组。"""
+    """Two threads each with messages return the correct grouping."""
     from routers.sessions import get_session_messages
 
     tid1, tid2 = "aaaa", "bbbb"
@@ -68,13 +64,13 @@ async def test_happy_path_groups_by_thread():
 
 @pytest.mark.asyncio
 async def test_no_threads_returns_empty_dict():
-    """session 下没有 thread 时直接返回空字典，不发第二次 DB 查询。"""
+    """When the session has no thread, return an empty dict directly without a second DB query."""
     from routers.sessions import get_session_messages
 
     import uuid
     sid = uuid.uuid4()
 
-    # 只需要第一次查询（threads）返回空列表
+    # Only the first query (threads) needs to return an empty list
     sb = MagicMock()
     chain = MagicMock()
     chain.select.return_value = chain
@@ -85,13 +81,13 @@ async def test_no_threads_returns_empty_dict():
     result = await get_session_messages(sid, auth=("mock-user", sb))
 
     assert result == {}
-    # 只调用了一次 table()（threads 查询），没有第二次
+    # table() is called exactly once (threads query); no second call
     assert sb.table.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_thread_with_no_messages_still_has_key():
-    """有 thread 但无消息时，该 thread_id 仍作为键存在（值为空列表）。"""
+    """When threads exist but have no messages, the thread_id key still appears (with an empty list)."""
     from routers.sessions import get_session_messages
 
     tid = "cccc"
@@ -106,7 +102,7 @@ async def test_thread_with_no_messages_still_has_key():
 
 @pytest.mark.asyncio
 async def test_message_not_in_known_threads_is_ignored():
-    """messages 里出现未知 thread_id 时安全忽略，不写入结果。"""
+    """Unknown thread_ids in messages are safely ignored and not written to the result."""
     from routers.sessions import get_session_messages
 
     tid = "dddd"

@@ -7,21 +7,17 @@ export const fr: T = {
   back: "Retour",
   forward: "Avant",
   mainThread: "Principal",
-  noTitle: "Nouveau chat",
-  switchThread: "Changer",
   // En-têtes de la barre latérale
   subQuestions: "Questions",
   overview: "Aperçu",
   viewList: "Liste",
   viewGraph: "Graphe",
   // États vides
-  selectToPin: "Sélectionne du texte pour ouvrir une question",
   noThreads: "Aucun fil",
   // Welcome
   welcomeTitle: "La réflexion profonde commence ici",
   welcomeSub: "Demande n'importe quoi à Deeppin. Sélectionne du texte dans une réponse pour ouvrir une sous-question.",
   chooseQuestion: "Choisis une question à explorer",
-  tagline: "Sélectionne n'importe quel texte pour creuser",
   // InputBar
   inputPlaceholder: "Écris un message… (Entrée pour envoyer, Maj+Entrée pour nouvelle ligne)",
   webSearchPlaceholder: "Recherche web…",
@@ -39,17 +35,14 @@ export const fr: T = {
   daysAgo: "jours",
   // Statut
   loading: "Chargement…",
-  creating: "Création de session…",
   errorPrefix: "Erreur : ",
   processing: "Traitement…",
   streamError: "[Erreur]",
   // Fils
-  mainConversation: "Conversation principale",
   subThread: "Sous-fil",
   // Menu pin
   pinAction: "Question",
   copy: "Copier",
-  goToThread: "Aller à la question",
   // Questions suggérées
   suggestedQuestions: "Questions suggérées",
   customQuestion: "Ou écris ta propre question…",
@@ -68,12 +61,9 @@ export const fr: T = {
   mergeTitle: "Sortie fusionnée",
   mergeAngles: "sous-questions",
   mergeHint: "Choisis un format et clique sur Générer pour fusionner tout le contenu des pins en un rapport",
-  mergePreparing: "Préparation…",
   mergeCopyMd: "Copier Markdown",
   mergeDownload: "Télécharger .md",
   mergeGenerating: "Génération…",
-  mergeRegenerate: "Régénérer",
-  mergeGenerate: "Générer",
   mergeFormatFree: "Résumé libre",
   mergeFormatFreeDesc: "Récit fluide combinant toutes les perspectives",
   mergeFormatBullets: "Points clés",
@@ -86,23 +76,7 @@ export const fr: T = {
   mergeFormatTranscriptDesc: "Sortie littérale de la conversation",
   mergeCustomPromptPlaceholder: "Décris comment tu veux le résumé, ex. : en mémo pour l'équipe, centré sur les actions…",
   // Problème landing
-  problemSetup: "Quand tu lis une réponse d'IA et veux creuser une partie, tu n'as que deux mauvaises options :",
-  badChoice1Label: "Démarrer un nouveau chat",
-  badChoice1Desc: "tu perds tout le contexte et dois tout réexpliquer",
-  badChoice2Label: "Demander dans ce chat",
-  badChoice2Desc: "tu interromps le fil principal et le sujet dérive",
-  solutionLabel: "Deeppin",
-  solutionDesc: "Épingle ce détail et continue à creuser — aussi profond que tu veux. Le fil principal ? Pas un mot interrompu.",
   // Mode d'emploi
-  howToUseTitle: "Comment ça marche",
-  step1Title: "Demande n'importe quoi",
-  step1Desc: "Lance une conversation avec l'IA et obtiens une réponse détaillée",
-  step2Title: "Épingle pour explorer",
-  step2Desc: "Sélectionne du texte dans une réponse, clique sur 'Question' — un sous-fil focalisé s'ouvre, le chat principal reste intact",
-  step3Title: "Aussi profond que tu veux",
-  step3Desc: "Épingle à nouveau dans les sous-questions — pas de limite de niveaux",
-  step4Title: "Fusionne tout",
-  step4Desc: "Exploration terminée ? Combine tous les fils en un rapport complet et exporte-le",
   // Articles
   articles: "Articles",
   // Compte
@@ -121,9 +95,6 @@ export const fr: T = {
   deleteCta: "Supprimer",
   deleting: "Suppression…",
   deleteResetView: "Ajuster",
-  // MergeDemo
-  pinsReady: "pins prêts",
-  mergeOutput: "Sortie fusionnée",
   // Aplatir
   flattenButton: "Aplatir",
   flattenConfirmTitle: "Aplatir cette session ?",
@@ -157,7 +128,6 @@ export const fr: T = {
   flattenPreviewAfter: "Après",
   flattenPreviewEmpty: "Juste le fil principal — rien à aplatir.",
   mergeHintSelect: "Sélectionne les sous-questions · clic pour basculer",
-  mergeHintDrag: "Molette pour panoramique · glisser pour déplacer",
   mergeSelectAll: "Tout sélectionner",
   mergeSelectNone: "Tout désélectionner",
   mergeCta: "Fusionner {n} sous-question(s)",

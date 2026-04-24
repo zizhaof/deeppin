@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import MarkdownContent from "@/components/MarkdownContent";
 import { useT } from "@/stores/useLangStore";
 
-/** 供外部（PinMenu onClose / handlePin）调用，清除原生文字选区 */
+/** Called externally (PinMenu onClose / handlePin) to clear the native text selection. */
 export function clearActiveHighlight() {
   window.getSelection()?.removeAllRanges();
 }
@@ -16,7 +16,7 @@ const COLLAPSE_THRESHOLD = 300;
 export interface AnchorRange {
   text: string;
   threadId: string;
-  /** 字符偏移量（来自后端），用于精确定位，避免相同文字多次高亮 */
+  /** Character offsets (from the backend) for precise placement so identical text isn't highlighted multiple times. */
   startOffset?: number;
   endOffset?: number;
 }
@@ -27,18 +27,12 @@ interface Props {
   content: string;
   streaming?: boolean;
   anchors?: AnchorRange[];
-  /** 有未读回复的 thread id 集合，锚点据此切换呼吸动画
-   *  Set of thread IDs with unread replies — anchors opt into the breathing animation when included. */
+  /** Set of thread IDs with unread replies — anchors opt into the breathing animation when included. */
   unreadThreadIds?: Set<string>;
   userAvatarUrl?: string | null;
-  /** 生成该回复的 LLM 模型名（如 "groq/llama-3.3-70b-versatile"） */
+  /** LLM model name that produced this reply (e.g. "groq/llama-3.3-70b-versatile"). */
   model?: string | null;
-  /** 移动端「选区模式」开关。
-   *  - undefined（桌面）：保留原行为（鼠标 mouseup + 长按 selectionchange）
-   *  - false（移动端关）：禁用所有 native text selection，气泡纯粹是只读
-   *  - true（移动端开）：用自定义 touch handlers 实时追踪手指位置，建 Range，
-   *    抬手即调 onSelect。不依赖系统长按。
-   *  Mobile-only "select mode" toggle:
+  /** Mobile-only "select mode" toggle:
    *    undefined → desktop behavior (mouseup + native long-press selection)
    *    false → mobile, user-select:none, no selection at all
    *    true  → mobile, custom touch tracking via caretRangeFromPoint/Position;
@@ -47,13 +41,14 @@ interface Props {
   onSelect?: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick?: (threadId: string) => void;
   onAnchorHover?: (threadIds: string[], rect: DOMRect | null) => void;
-  onMessageRef?: (messageId: string, el: HTMLDivElement | null) => void;
 }
 
 /**
- * React re-render 后 cloneRange 引用的 DOM 节点可能已被替换，导致
- * addRange 静默失败。此函数在当前 DOM 里用文本搜索重新定位并恢复选区。
- * 多段落选中时取第一段作为恢复目标（与 highlightStr 策略一致）。
+ * After a React re-render, the DOM nodes a cloned Range points at may have
+ * been replaced, causing addRange to silently fail. This function re-locates
+ * the selection in the current DOM by searching for its text. When the
+ * selection spans paragraphs, only the first paragraph is restored (matches
+ * the highlightStr strategy).
  */
 function restoreSelectionByText(container: Element, selectedText: string): void {
   const searchText = selectedText.includes("\n")
@@ -114,7 +109,6 @@ function getCharOffset(container: Element, targetNode: Node, targetOffset: numbe
   return offset;
 }
 
-// 5 色锚点颜料 — 读 globals.css 的 --pig-1..5（light=muted pigments，dark=老的亮色）
 // Anchor pigments — pulled from --pig-1..5 so the palette auto-switches with theme.
 const ANCHOR_COLORS = [
   "var(--pig-1)",
@@ -136,12 +130,12 @@ function renderWithHighlights(
   type Span = { start: number; end: number; threadId: string };
   const spans: Span[] = [];
   for (const { text, threadId, startOffset, endOffset } of anchors) {
-    // 优先使用后端存储的字符偏移量，精确定位唯一锚点位置
+    // Prefer backend-stored char offsets for exact placement of a unique anchor.
     if (startOffset != null && endOffset != null && startOffset < endOffset && endOffset <= content.length) {
       spans.push({ start: startOffset, end: endOffset, threadId });
       continue;
     }
-    // 降级：按文本搜索第一个匹配位置（旧数据兼容）
+    // Fallback: search for the first matching position by text (legacy data).
     const searchText = text.includes("\n")
       ? (text.split("\n").find((s) => s.trim()) ?? text)
       : text;
@@ -178,12 +172,10 @@ function renderWithHighlights(
     const allThreadIds = covering.map(c => c.threadId);
     const isUnread = !!unreadThreadIds && allThreadIds.some((id) => unreadThreadIds.has(id));
 
-    // 锚点视觉：已读 1px 静态细线；未读走 CSS `.anchor-breathing` 呼吸动画
-    // （box-shadow 画底线 + opacity 循环，颜色通过 --anchor-color CSS var 传）。
-    // 多锚点叠加时按颜料色画多条嵌套下划线。
     // Read = static 1px border-bottom. Unread = breathing underline driven by
     // the .anchor-breathing CSS class (box-shadow + opacity loop), with the
-    // pigment color piped in via the --anchor-color custom property.
+    // pigment color piped in via the --anchor-color custom property. When
+    // multiple anchors stack, they nest as multiple pigment-colored underlines.
     let inner: React.ReactNode = segText;
     for (let j = covering.length - 1; j >= 0; j--) {
       const color = colorMap.get(covering[j].threadId)!;
@@ -227,15 +219,14 @@ function renderWithHighlights(
   return <>{nodes}</>;
 }
 
-/** 选区高亮矩形，相对于内容 div 的坐标 */
+/** Selection-highlight rectangle in coordinates relative to the content div. */
 interface SelRect { top: number; left: number; width: number; height: number; }
 
-/** 移动端持久选区：一对 text-node caret 位置
- *  Mobile persistent selection — pair of text-node carets. */
+/** Mobile persistent selection — a pair of text-node carets. */
 export interface MBCaret { node: Text; offset: number; }
 export interface MBSelection { start: MBCaret; end: MBCaret; }
 
-/** 把一对 caret 按 DOM 顺序建成 forward Range（反向不会抛错） */
+/** Build a forward Range from a caret pair in DOM order (reverse pairs don't throw). */
 function buildRangeFromSel(sel: MBSelection): Range | null {
   try {
     const range = document.createRange();
@@ -271,35 +262,33 @@ function MessageBubble({
   onSelect,
   onAnchorClick,
   onAnchorHover,
-  onMessageRef,
 }: Props) {
   const t = useT();
   const isUser = role === "user";
   const divRef = useRef<HTMLDivElement>(null);
-  // 内容区 div，用于计算选区覆盖层的相对坐标
+  // Content-area div used to compute selection-overlay coords.
   const contentRef = useRef<HTMLDivElement>(null);
-  // 记录最近一次 touchend 时间，防止移动端浏览器模拟的 mouseup 重复触发
+  // Last touchend timestamp — prevents mobile browsers' synthesized mouseup from firing twice.
   const lastTouchEndRef = useRef(0);
   const [expanded, setExpanded] = useState(false);
-  /** AI 消息的原始/渲染模式切换 */
+  /** Toggle for raw-vs-rendered mode on AI messages. */
   const [rawMode, setRawMode] = useState(false);
-  /** 选区覆盖层矩形列表（移动端指离后 OS 选区消失，但此层持续显示） */
+  /** Selection-overlay rectangle list (mobile: OS selection vanishes after touchend but this overlay persists). */
   const [selRects, setSelRects] = useState<SelRect[]>([]);
-  /** 移动端持久选区 —— ref 里实时改动，state tick 触发 re-render 更新 action sheet 位置 */
   /** Mobile persistent selection — ref changes on every touch move;
    *  a paired state tick triggers re-renders so the action-sheet position
    *  recomputes from the latest range. */
   const pendingSelRef = useRef<MBSelection | null>(null);
   const [selectionTick, setSelectionTick] = useState(0);
-  /** 拖动中 —— 隐藏 action sheet，避免手指下面飘浮按钮 */
+  /** Dragging — hide the action sheet so it doesn't float under the user's finger. */
   const [dragging, setDragging] = useState(false);
-  /** 给内部 setPending 暴露给 touch handler + action sheet */
+  /** Exposes the internal setPending to touch handlers + the action sheet. */
   const overlayUpdaterRef = useRef<(() => void) | null>(null);
 
   const needsCollapse = isUser && !streaming && content.length > COLLAPSE_THRESHOLD;
   const displayContent = needsCollapse && !expanded ? content.slice(0, COLLAPSE_THRESHOLD) : content;
 
-  // 抽取选区处理逻辑，mouseup（桌面）和 selectionchange（移动端）共用
+  // Shared selection logic for desktop mouseup and mobile selectionchange.
   const handleSelection = () => {
     if (!onSelect || isUser) return;
     const sel = window.getSelection();
@@ -310,7 +299,7 @@ function MessageBubble({
     const range = sel.getRangeAt(0);
     if (!bubble.contains(range.commonAncestorContainer)) return;
 
-    // 在 onSelect 触发 re-render 之前保存选区快照
+    // Snapshot the selection before onSelect triggers a re-render.
     const savedRange = range.cloneRange();
     const startOffset = getCharOffset(bubble, range.startContainer, range.startOffset);
     const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
@@ -319,19 +308,19 @@ function MessageBubble({
 
     onSelect(selectedText, messageId, rect, startOffset, endOffset);
 
-    // onSelect 触发父组件 setState → React re-render → 浏览器选区丢失
-    // 在下一帧恢复：先试 cloneRange（快），失败则用文本搜索重新定位（鲁棒）
+    // onSelect → parent setState → React re-render → browser drops the selection.
+    // Restore on the next frame: try cloneRange first (fast); if that fails, re-locate by text search.
     requestAnimationFrame(() => {
       const s = window.getSelection();
-      if (!s || !s.isCollapsed) return; // 选区仍在，无需恢复
+      if (!s || !s.isCollapsed) return; // selection survived — nothing to restore
 
-      // 1. 先尝试直接恢复 cloneRange（DOM 节点未被替换时有效）
+      // 1. Try the cloned Range directly (works when the DOM nodes weren't replaced).
       try {
         s.removeAllRanges();
         s.addRange(savedRange);
       } catch { /* ignore */ }
 
-      // 2. 若仍为空（DOM 节点已被替换），在当前 DOM 里按文本重新定位
+      // 2. If still collapsed (DOM nodes were replaced), re-locate in the current DOM by text.
       if (s.isCollapsed) {
         const bubble = divRef.current;
         if (bubble) restoreSelectionByText(bubble, selectedText);
@@ -339,14 +328,15 @@ function MessageBubble({
     });
   };
 
-  // 桌面端：mouseup 直接触发（跳过移动端模拟的 mouseup）
+  // Desktop: mouseup fires directly (skip the mobile-synthesized mouseup).
   const handleMouseUp = () => {
     if (Date.now() - lastTouchEndRef.current < 600) return;
     handleSelection();
   };
 
-  // 将当前选区转换为相对内容 div 的矩形列表，存入 selRects
-  // 移动端指离后 OS 选区消失，但 React 状态驱动的覆盖层仍留存
+  // Convert the current selection to a list of rects (relative to the content
+  // div) and store them in selRects. On mobile the OS selection vanishes after
+  // touchend, but the React-driven overlay persists.
   const captureSelRects = () => {
     const sel = window.getSelection();
     const bubble = divRef.current;
@@ -366,8 +356,7 @@ function MessageBubble({
     if (rects.length > 0) setSelRects(rects);
   };
 
-  // 桌面端原生选区：长按 + selectionchange 防抖 / Desktop native selection
-  // 仅在 mobileSelectActive === undefined（即非移动端布局）时启用。
+  // Desktop native selection: long-press + debounced selectionchange.
   // Only active on desktop (when mobileSelectActive is undefined).
   useEffect(() => {
     if (!onSelect || isUser || mobileSelectActive !== undefined) return;
@@ -416,8 +405,7 @@ function MessageBubble({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSelect, isUser, messageId, mobileSelectActive]);
 
-  // 选区模式关闭 → 清掉残留的高亮覆盖层 + 选区 ref
-  // Clear stale overlay + pending ref when select mode toggles off
+  // Clear stale overlay + pending ref when select mode toggles off.
   useEffect(() => {
     if (mobileSelectActive === false) {
       setSelRects([]);
@@ -426,25 +414,16 @@ function MessageBubble({
     }
   }, [mobileSelectActive]);
 
-  // ── 移动端「选区模式」自定义 touch 追踪 / Mobile select-mode custom touch tracking ──
+  // ── Mobile select-mode custom touch tracking ──
   //
-  // 行为 / Behavior:
-  //  - 没有 pendingSel → touch-down 开启新选区，start=end=touch
-  //  - 有 pendingSel + touch 落在选区内（或离选区 ≤16px）
-  //      → 判定手指离 start 边近还是 end 边近（几何距离）
-  //      → 近端变为可拖动侧；远端保持；选区保留较大的一半（start..touch 或 touch..end）
-  //      → 手指移动继续更新该端
-  //  - 有 pendingSel + touch 落在选区外很远 → 丢弃旧选区，开新的
-  //  - touchend：不自动 fire onSelect，只停止拖动；选区高亮保留
-  //  - 用户点 action sheet 里的 Pin 按钮才真正 fire onSelect
-  //
-  //  touch-down on nothing → fresh selection
-  //  touch-down inside existing selection (or within 16px grace) → figure out
-  //    which edge is closer (by pixel distance), release that edge at touch,
-  //    keep the other side — finger now drags that released edge
-  //  touch-down clearly outside → restart fresh
-  //  touch-up → stop dragging; highlight stays; user taps Pin in action sheet
-  //    to commit
+  // Behavior:
+  //  touch-down on nothing → fresh selection (start = end = touch)
+  //  touch-down inside an existing selection (or within 16px grace) → figure
+  //    out which edge is closer (by pixel distance), release that edge at the
+  //    touch point, keep the other side — the finger now drags that edge
+  //  touch-down clearly outside → discard the old selection, start fresh
+  //  touch-up → stop dragging; the highlight stays; the user taps Pin in the
+  //    action sheet to commit (onSelect doesn't fire on touchend)
   useEffect(() => {
     if (!onSelect || isUser || !mobileSelectActive) return;
     const bubble = divRef.current;
@@ -475,7 +454,7 @@ function MessageBubble({
       return null;
     };
 
-    /** 取单个 caret 在页面上的 (x,y)，用于「几何距离」判断哪端更近 */
+    /** Get the page (x, y) of a single caret — used to find the nearest edge by pixel distance. */
     const caretPoint = (c: MBCaret): { x: number; y: number } | null => {
       try {
         const r = document.createRange();
@@ -483,7 +462,7 @@ function MessageBubble({
         r.setEnd(c.node, c.offset);
         const rect = r.getBoundingClientRect();
         if (!rect.height && !rect.width) {
-          // 零宽 range 有时 rect 取不到；取父节点 rect 的起点
+          // Zero-width ranges sometimes don't return a rect — fall back to the parent rect's start.
           const parent = c.node.parentElement;
           if (parent) {
             const pr = parent.getBoundingClientRect();
@@ -495,7 +474,7 @@ function MessageBubble({
       } catch { return null; }
     };
 
-    /** 触点是否落在当前 pendingSel 内部或边缘（16px grace zone） */
+    /** Whether the touch point falls inside (or within a 16px grace zone of) the current pendingSel. */
     const touchOnSelection = (x: number, y: number, sel: MBSelection): boolean => {
       const range = buildRangeFromSel(sel);
       if (!range) return false;
@@ -527,7 +506,7 @@ function MessageBubble({
       setSelRects(rects);
     };
 
-    // 暴露更新函数给「调整端」拖动 & action sheet 用
+    // Expose the update function to edge-adjust drag handlers + the action sheet.
     overlayUpdaterRef.current = updateOverlay;
 
     type DragMode = "fresh" | "adjust-start" | "adjust-end" | null;
@@ -543,25 +522,25 @@ function MessageBubble({
 
       const cur = pendingSelRef.current;
       if (!cur) {
-        // 无已有选区 → 新开
+        // No existing selection → start fresh.
         dragMode = "fresh";
         pendingSelRef.current = { start: c, end: c };
         updateOverlay();
         return;
       }
 
-      // 有已有选区 → 判断落点位置
+      // Existing selection → check where the touch landed.
       const inside = touchOnSelection(touch.clientX, touch.clientY, cur);
       if (!inside) {
-        // 落点在选区外（远）→ 丢弃旧的，开新选区
+        // Touch landed clearly outside the selection → discard it and start fresh.
         dragMode = "fresh";
         pendingSelRef.current = { start: c, end: c };
         updateOverlay();
         return;
       }
 
-      // 落点在选区内部或边缘 → 选离触点最近的一端作为「可移动侧」
-      // Release the edge whose caret is closer (in pixels) to the touch.
+      // Touch inside or near the selection → release the edge whose caret is
+      // closest (by pixel distance) and let the finger drag that edge.
       const sp = caretPoint(cur.start);
       const ep = caretPoint(cur.end);
       const dist = (p: { x: number; y: number } | null) =>
@@ -570,11 +549,11 @@ function MessageBubble({
       const distEnd = dist(ep);
 
       if (distStart <= distEnd) {
-        // 近 start → start 侧可拖，end 保持；选区立即收缩到 [touch..end]
+        // Closer to start → start edge is draggable, end stays; selection collapses to [touch..end].
         dragMode = "adjust-start";
         pendingSelRef.current = { start: c, end: cur.end };
       } else {
-        // 近 end → end 侧可拖
+        // Closer to end → end edge is draggable.
         dragMode = "adjust-end";
         pendingSelRef.current = { start: cur.start, end: c };
       }
@@ -598,12 +577,11 @@ function MessageBubble({
     };
 
     const onTouchEnd = () => {
-      // 不自动 commit 选区；保留高亮让用户点 action sheet 的 Pin
       // Don't auto-fire onSelect; keep the highlight visible so user can tap
       // the inline action sheet or touch again to adjust.
       dragMode = null;
       setDragging(false);
-      // 触发 re-render 让 action sheet 位置根据最新选区计算
+      // Tick state so the action sheet's position recomputes from the latest selection.
       setSelectionTick((n) => n + 1);
     };
 
@@ -621,10 +599,9 @@ function MessageBubble({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileSelectActive, isUser, messageId, onSelect]);
 
-  // ── 行内 action sheet（Copy / Pin / Cancel）─────────────────────────
-  // 挂在选区右下方；拖动中隐藏；点 Pin 后才 fire onSelect
-  // Inline action sheet pinned below the selection; hides during drag;
-  // Pin tap is the only thing that fires onSelect.
+  // ── Inline action sheet (Copy / Pin / Cancel) ───────────────────────
+  // Pinned below the selection; hidden during drag; Pin tap is the only
+  // thing that fires onSelect.
   const sheet = useMemo(() => {
     if (!mobileSelectActive || dragging) return null;
     const sel = pendingSelRef.current;
@@ -636,8 +613,7 @@ function MessageBubble({
     const text = range.toString().trim();
     if (!text) return null;
 
-    // Default: 选区下方；若会被屏幕底遮住，放到选区上方
-    // Default below selection; flip above if it would clip.
+    // Default position is below the selection; flip above when it would clip the viewport.
     const SHEET_W = 176;
     const SHEET_H = 44;
     const margin = 8;
@@ -649,7 +625,7 @@ function MessageBubble({
     left = Math.max(margin, Math.min(left, window.innerWidth - SHEET_W - margin));
 
     return { top, left, text, rect, range };
-  // selectionTick 的作用：touchend 时 bump，让 action sheet 位置重算
+  // selectionTick is bumped on touchend so the action sheet repositions.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileSelectActive, dragging, selectionTick]);
 
@@ -665,15 +641,14 @@ function MessageBubble({
     const endOffset = getCharOffset(bubble, range.endContainer, range.endOffset);
     const rect = range.getBoundingClientRect();
     onSelect(text, messageId, rect, startOffset, endOffset);
-    // 保留选区（pending），父组件处理完 PinDialog 再通过 mobileSelectActive→false 清掉
-    // Keep the pending selection until parent toggles mobileSelectActive off.
+    // Keep the pending selection; the parent clears it by toggling mobileSelectActive → false after PinDialog finishes.
   };
 
   const commitCopy = async () => {
     if (!sheet) return;
     try { await navigator.clipboard.writeText(sheet.text); }
     catch { /* silent */ }
-    // 复制完清掉选区
+    // Copy is committed — clear the selection.
     pendingSelRef.current = null;
     setSelRects([]);
     setSelectionTick((n) => n + 1);
@@ -690,21 +665,18 @@ function MessageBubble({
       data-message-id={messageId}
       ref={(el) => {
         (divRef as { current: HTMLDivElement | null }).current = el;
-        onMessageRef?.(messageId, el);
       }}
       className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4 group/bubble`}
     >
       <div className={`flex flex-col max-w-[78%] min-w-0 ${isUser ? "items-end" : "items-start"}`}>
-        {/* WHO 行 — mono uppercase + pigment dot + 可选 model 名
-            WHO row — mono uppercase label + pigment dot + optional model label (AI only). */}
+        {/* WHO row — mono uppercase label + pigment dot + optional model label (AI only). */}
         <div
           className="flex items-center gap-[7px] mb-[5px] select-none"
           style={{ color: "var(--ink-4)", userSelect: "none" }}
         >
-          {/* WHO 行是 metadata —— 颜料点 / YOU·Deeppin / model 名都不该被框选成锚点
-              The WHO row is metadata — pigment dot / YOU·Deeppin / model name
+          {/* The WHO row is metadata — pigment dot / YOU·Deeppin / model name
               shouldn't get selected and pinned. User label stays mono-caps
-              ("YOU") for that chat-log aesthetic; AI label is the Deeppin
+              ("YOU") for the chat-log aesthetic; AI label is the Deeppin
               brand in its natural case (not uppercased to "DEEPPIN"). */}
           <span
             className="w-[5px] h-[5px] rounded-full flex-shrink-0"
@@ -743,9 +715,6 @@ function MessageBubble({
           ref={contentRef}
           onMouseUp={handleMouseUp}
           className={`relative px-[14px] py-[11px] text-[14.5px] leading-[1.6] ${
-            // 移动端布局：永远 user-select: none —— 启用「Select 模式」时
-            // 由 useEffect 里的 caretRangeFromPoint 接管，不依赖 native selection。
-            // 桌面端保持原行为：select-text 让鼠标圈选生效。
             // Mobile: user-select stays off; the caretRangeFromPoint touch
             // handlers in select-mode build the Range manually. Desktop keeps
             // native select-text so mouse-drag selection works.
@@ -757,13 +726,13 @@ function MessageBubble({
           }`}
           style={{
             borderRadius: 14,
-            // 非对称圆角：user 的右下收 4，AI 的左下收 4 —— 给气泡一个「尾巴」方向
+            // Asymmetric corner radius: user bubble tightens its bottom-right, AI bubble its bottom-left — gives each a "tail" direction.
             ...(isUser
               ? { borderBottomRightRadius: 4 }
               : { borderBottomLeftRadius: 4 }),
           }}
         >
-          {/* 选区持久化覆盖层：移动端指离后 OS 选区消失，此层仍保持高亮 */}
+          {/* Persistent selection overlay: on mobile the OS selection vanishes after touchend, but this layer keeps the highlight visible. */}
           {selRects.map((r, i) => (
             <div
               key={i}
@@ -815,7 +784,7 @@ function MessageBubble({
           )}
         </div>
 
-        {/* Markdown/raw 切换 — AI 气泡底部 hover 显示（model 名已移到 WHO 行） */}
+        {/* Markdown/raw toggle — appears on hover at the bottom of AI bubbles (model name moved to the WHO row). */}
         {!isUser && !streaming && (
           <div className="mt-1 h-0 group-hover/bubble:h-4 overflow-hidden transition-[height] select-none">
             <button
@@ -836,8 +805,7 @@ function MessageBubble({
         )}
       </div>
 
-      {/* 移动端行内 action sheet — 固定定位到选区下方（或上方，若空间不够）
-          Mobile inline action sheet pinned next to the selection (below,
+      {/* Mobile inline action sheet pinned next to the selection (below,
           or above if it would clip). Only rendered when there's a pending
           selection and we're not actively dragging. */}
       {sheet && typeof document !== "undefined" && createPortal(
@@ -890,7 +858,7 @@ function MessageBubble({
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
-          {/* 下三角 —— 仅当 sheet 在选区下方时显示（用 top 推断） */}
+          {/* Down-pointing arrow — only shown when the sheet sits below the selection (inferred from `top`). */}
           {sheet.top > sheet.rect.bottom && (
             <span
               aria-hidden

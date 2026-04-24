@@ -1,21 +1,15 @@
 # backend/services/metrics.py
 """
-Prometheus 指标埋点
 Prometheus metrics instrumentation.
 
-设计 / Design:
-  1. API 层（/api/**）由 prometheus-fastapi-instrumentator 自动埋点，这里不重复。
+Design:
      API layer is auto-instrumented by prometheus-fastapi-instrumentator.
-  2. 组件调用（embedding / searxng / supabase）走 Counter + Histogram，埋在调用现场。
      Component calls use Counter + Histogram recorded inline at call sites.
-  3. LLM Slot 窗口状态（rpm_used / tpd_used 等）用自定义 Collector 在 scrape 时
-     读 SmartRouter，避免在 record_request 里频繁更新 Gauge。
+  3. LLM slot window state (rpm_used / tpd_used etc.) exposed via a custom Collector at scrape time
      LLM slot window state is exposed via a custom collector that reads SmartRouter
      at scrape time, so we don't update Gauges on every request.
-  4. LLM 调用量/失败数用 Counter，在 record_request / record_failure 里累加。
      LLM call / token / failure counts are Counters incremented at record time.
 
-所有 metric 名称遵循 Prometheus 命名约定（<component>_<action>_<unit>_total）。
 All metric names follow Prometheus conventions (<component>_<action>_<unit>_total).
 """
 from __future__ import annotations
@@ -25,9 +19,9 @@ from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.registry import Collector
 
 
-# ── 组件 Counter / Histogram ─────────────────────────────────────────
+# Histogram ─────────────────────────────────────────
 
-# Embedding (bge-m3 本地推理)
+# Embedding (bge-m3 local inference)
 EMBEDDING_CALLS = Counter(
     "deeppin_embedding_calls_total",
     "Number of embedding batch calls",
@@ -43,7 +37,7 @@ EMBEDDING_CHARS = Counter(
     "Total characters sent for embedding",
 )
 
-# SearXNG 搜索
+# SearXNG search
 SEARXNG_CALLS = Counter(
     "deeppin_searxng_calls_total",
     "Number of SearXNG queries",
@@ -55,7 +49,7 @@ SEARXNG_DURATION = Histogram(
     buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
 )
 
-# Supabase 调用（按 table 拆）
+# Supabase calls (split per table)
 SUPABASE_CALLS = Counter(
     "deeppin_supabase_calls_total",
     "Number of Supabase RPC / table calls",
@@ -88,11 +82,10 @@ LLM_FAILURES = Counter(
 )
 
 
-# ── LLM 窗口状态：自定义 Collector ────────────────────────────────────
+# LLM window state: custom Collector ────────────────────────────────────
 
 class _LLMSlotCollector(Collector):
     """
-    scrape 时读 SmartRouter.slots，导出每个 slot 的窗口 usage 与配置 limit。
     On each scrape, reads SmartRouter.slots and exports the current window usage
     and the configured limits for each slot. The current-vs-limit ratio is the
     primary signal for provider exhaustion.
@@ -163,7 +156,6 @@ _collector_registered = False
 
 def register_llm_collector() -> None:
     """
-    启动时注册一次 LLM Slot collector。重复调用是幂等的。
     Register the custom LLM slot collector once at startup; idempotent.
     """
     global _collector_registered
@@ -173,10 +165,10 @@ def register_llm_collector() -> None:
     _collector_registered = True
 
 
-# ── 便捷封装 / Convenience helpers ────────────────────────────────────
+# Convenience helpers ────────────────────────────────────
 
 def record_llm_call(*, provider: str, model: str, key_prefix: str, group: str, tokens: int) -> None:
-    """在 LLM 成功返回时调用 / Call when an LLM request succeeds."""
+    """Call when an LLM request succeeds."""
     LLM_CALLS.labels(provider, model, key_prefix, group or "").inc()
     if tokens:
         LLM_TOKENS.labels(provider, model, key_prefix).inc(tokens)
@@ -189,17 +181,14 @@ _VALID_REASONS = frozenset(
 
 def classify_llm_failure(exc: BaseException) -> str:
     """
-    把异常映射到低基数的 reason 标签，方便 Prometheus 聚合。
     Map an exception to a low-cardinality reason label for Prometheus aggregation.
 
-    优先读 HTTP 状态码 / Prefer HTTP status code:
       429      → rate_limit
       401/403  → auth
       5xx      → server_error
-    其次按异常类型 / Then by exception type:
       TimeoutError / asyncio.TimeoutError / "timeout" in type name → timeout
       ConnectionError / "connection" in type name                 → network
-    其它 / Otherwise → other
+    Otherwise → other
     """
     import asyncio
 
@@ -220,7 +209,6 @@ def classify_llm_failure(exc: BaseException) -> str:
     if "timeout" in type_name:
         return "timeout"
     if "connect" in type_name:
-        # 涵盖 httpx.ConnectError / ConnectionError / ConnectResetError 等
         # Covers httpx.ConnectError / ConnectionError / ConnectResetError, etc.
         return "network"
 
@@ -230,9 +218,8 @@ def classify_llm_failure(exc: BaseException) -> str:
 def record_llm_failure(
     *, provider: str, model: str, key_prefix: str, reason: str
 ) -> None:
-    """在 LLM 失败时调用 / Call when an LLM request fails.
+    """Call when an LLM request fails.
 
-    reason 必须是 _VALID_REASONS 里的一个，未知值折叠成 "other"，避免标签爆炸。
     reason must be one of _VALID_REASONS; unknown values collapse to "other"
     to keep label cardinality bounded.
     """

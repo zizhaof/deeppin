@@ -1,13 +1,11 @@
 # backend/routers/health.py
 """
-聚合健康检查端点
 Aggregated health check endpoint.
 
 GET /health
-  → 检查 backend 自身 + 所有外部依赖（searxng、supabase）
   → Checks the backend itself and all external dependencies (searxng, supabase)
-  → status: "ok" — 全部正常 / all healthy
-  → status: "degraded" — 部分组件异常 / some components unhealthy
+  all healthy
+  some components unhealthy
 """
 from __future__ import annotations
 
@@ -24,7 +22,7 @@ router = APIRouter()
 
 
 async def _check_searxng() -> bool:
-    """检查 SearXNG 是否可达。/ Check if SearXNG is reachable."""
+    """Check whether SearXNG is reachable."""
     url = os.getenv("SEARXNG_URL", "http://searxng:8080").rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -36,7 +34,6 @@ async def _check_searxng() -> bool:
 
 async def _check_embedding() -> dict:
     """
-    验证 embedding 模型：embed 两个句子，检查维度和语义相似度。
     Verify the embedding model: embed two sentences, check dimensions and semantic similarity.
     """
     import math
@@ -57,7 +54,6 @@ async def _check_embedding() -> dict:
 
 async def _check_single_slot(slot) -> dict:
     """
-    对单个 slot 发最小请求，验证 provider + model + key 可用。
     Send a minimal request to a single slot to verify provider + model + key.
     """
     import litellm
@@ -66,8 +62,6 @@ async def _check_single_slot(slot) -> dict:
             model=slot.litellm_model,
             messages=[{"role": "user", "content": "Reply with the single word: ok"}],
             api_key=slot.api_key,
-            # 100 而不是 5：推理模型（groq gpt-oss / nvidia nemotron）会先吃 reasoning token，
-            # 预算太小会导致 content 为空被误判失败
             # 100 instead of 5: reasoning models (groq gpt-oss / nvidia nemotron) spend budget on
             # reasoning tokens first; too-small cap leaves content empty and misclassifies as failed
             max_tokens=100,
@@ -91,7 +85,7 @@ async def _check_single_slot(slot) -> dict:
 
 
 async def _check_supabase() -> bool:
-    """检查 Supabase 连接是否正常。/ Check if the Supabase connection is healthy."""
+    """Check whether the Supabase connection is healthy."""
     try:
         sb = get_supabase()
         loop = asyncio.get_running_loop()
@@ -107,12 +101,11 @@ async def _check_supabase() -> bool:
 @router.get("/health")
 async def health():
     """
-    聚合健康检查：并发探测所有依赖，返回各组件状态。
     Aggregated health check: concurrently probe all dependencies and return per-component status.
 
-    全部正常 → HTTP 200，status: "ok"
-    任何依赖异常 → HTTP 503，status: "degraded"
-    （Docker healthcheck 根据 HTTP 状态码判断 healthy/unhealthy）
+    All healthy -> HTTP 200, status: "ok"
+    Any dependency failing -> HTTP 503, status: "degraded"
+    (Docker healthcheck decides healthy/unhealthy based on the HTTP status code)
     """
     searxng_ok, supabase_ok, embedding_info = await asyncio.gather(
         _check_searxng(),
@@ -130,7 +123,6 @@ async def health():
             "embedding": embedding_info,
         },
     }
-    # 503 让 Docker 将容器标记为 unhealthy，CI/CD 能感知到
     # Return 503 so Docker marks the container unhealthy when any dependency is down
     return JSONResponse(content=body, status_code=200 if all_ok else 503)
 
@@ -138,19 +130,15 @@ async def health():
 @router.get("/health/providers")
 async def health_providers():
     """
-    逐个验证每个 provider + model + key 组合是否可用。
     Test each provider + model + key combination individually.
 
-    为避免重复测试同一 (provider, key) 对，每对只取一个模型。
     To avoid redundant tests, only one model per (provider, key) pair is tested.
 
-    返回 / Returns:
       { "total": N, "ok": M, "failed": K, "results": [...] }
-      全部通过 → 200，有失败 → 503
+      All pass -> 200, any failure -> 503
     """
     from services.llm_client import router as smart_router
 
-    # 每个 (provider, key) 只测一个 slot，避免浪费额度
     # Test one slot per (provider, key) pair to conserve quota
     seen: set[tuple[str, str]] = set()
     slots_to_test = []
@@ -177,9 +165,7 @@ async def health_providers():
     )
 
 
-# ─── /health/providers/keys：零 quota 的 key + 模型清单校验 ──────────────
 # Zero-quota key + model-catalog validation via each provider's GET /v1/models.
-# 不消耗任何 LLM quota：只校验 key 是否合法 + 配置里声明的 model_id 是否仍在 provider 清单里。
 # Does not consume LLM quota; validates key legitimacy and that configured model_ids still exist upstream.
 
 # Provider -> (models_list_url, auth_style)
@@ -196,7 +182,6 @@ _MODELS_ENDPOINTS: dict[str, tuple[str, str]] = {
 
 def _extract_model_ids(provider: str, payload: dict) -> set[str]:
     """
-    从各 provider 的 /models 响应提取模型 id 集合。
     Extract the set of model IDs from each provider's /models response.
     """
     if provider == "gemini":
@@ -206,7 +191,7 @@ def _extract_model_ids(provider: str, payload: dict) -> set[str]:
             name = m.get("name", "")
             out.add(name.removeprefix("models/"))
         return out
-    # OpenAI 兼容：{"data": [{"id": "..."}, ...]}
+    # OpenAI-compatible: {"data": [{"id": "..."}, ...]}
     return {m["id"] for m in payload.get("data", []) if m.get("id")}
 
 
@@ -216,7 +201,6 @@ async def _check_key_and_catalog(
     configured_model_ids: set[str],
 ) -> dict:
     """
-    对单个 (provider, key) 拉 /models：验证 key 合法 + 比对配置的模型是否仍挂在清单上。
     For a single (provider, key), fetch /models: validate key + diff configured models vs. upstream catalog.
     """
     endpoint = _MODELS_ENDPOINTS.get(provider)
@@ -262,7 +246,7 @@ async def _check_key_and_catalog(
             "provider": provider,
             "key": api_key[:8] + "...",
             "ok": False,
-            "key_valid": None,  # 不确定 / unknown
+            "key_valid": None,  # unknown
             "status_code": r.status_code,
             "error": f"unexpected status: {r.text[:200]}",
         }
@@ -285,7 +269,7 @@ async def _check_key_and_catalog(
         "ok": not missing,
         "key_valid": True,
         "configured": sorted(configured_model_ids),
-        "missing_models": missing,          # 配置里有但 provider 不再暴露 / configured but no longer upstream
+        "missing_models": missing,          # configured but no longer upstream
         "available_count": len(available),
     }
 
@@ -293,27 +277,23 @@ async def _check_key_and_catalog(
 @router.get("/health/providers/keys")
 async def health_providers_keys():
     """
-    零 quota key 合法性 + 模型清单校验。
     Zero-quota key validity + model-catalog drift check.
 
-    每个 (provider, key) 拉一次 /v1/models（OpenAI 兼容）或等价端点（Gemini）：
-      - 401/403 → key 失效 / key rejected
-      - 200 → 比对配置里的 model_id 是否都还在 provider 返回的清单里
+    For each (provider, key), call /v1/models (OpenAI-compatible) or the equivalent endpoint (Gemini):
     For each (provider, key), fetch /models once and diff configured model_ids against the catalog.
 
-    Quota 消耗：0 / Quota cost: zero.
+    Quota cost: zero.
 
-    返回 / Returns:
       { "total": N, "ok": M, "failed": K, "results": [...] }
     """
     from services.llm_client import router as smart_router, ALL_MODELS
 
-    # 每 provider 声明的 model_id 集合
+    # Set of model_ids declared per provider
     configured_by_provider: dict[str, set[str]] = {}
     for spec in ALL_MODELS:
         configured_by_provider.setdefault(spec.provider, set()).add(spec.model_id)
 
-    # 按 (provider, key) 去重
+    # Deduplicate by (provider, key)
     seen: set[tuple[str, str]] = set()
     pairs: list[tuple[str, str]] = []
     for slot in smart_router.slots:
@@ -345,18 +325,14 @@ async def health_providers_keys():
 @router.get("/health/providers/full")
 async def health_providers_full():
     """
-    逐个验证**每个**配置的 (provider, model, key) 三元组。
     Test **every** configured (provider, model, key) triple individually.
 
-    与 /health/providers 的区别：不做 (provider, key) 去重，每个模型都单独测一次。
     Unlike /health/providers, no dedup by (provider, key); every model is tested.
 
-    额度消耗较大，仅用于每日定时巡检或手动排查模型配置漂移。
     High quota cost; intended for daily scheduled checks or manual drift detection.
 
-    返回 / Returns:
       { "total": N, "ok": M, "failed": K, "results": [...] }
-      全部通过 → 200，有失败 → 503
+      All pass -> 200, any failure -> 503
     """
     from services.llm_client import router as smart_router
 

@@ -1,5 +1,5 @@
-// frontend/app/auth/callback/route.ts
-// OAuth 回调：将 Google 授权码换成 Supabase session，写入 cookie，跳回首页
+// OAuth callback: exchange the Google auth code for a Supabase session,
+// write cookies, and redirect to the home page.
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";

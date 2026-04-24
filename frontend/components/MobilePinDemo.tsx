@@ -1,10 +1,4 @@
 "use client";
-// components/MobilePinDemo.tsx
-// 欢迎页 mobile 演示：跟 desktop PinDemo 跑同一条 phase 列表，只是 UI
-// 收成单栏 + Select FAB + 右抽屉 graph。手机端新增的「先点 Select」提示
-// 融进每次 sweep phase 的前半段，不单独建 phase —— 跟 desktop 的 phase id
-// 保持一一对应，方便一起维护。
-//
 // Mobile landing demo. Shares the phase list with desktop PinDemo; the
 // mobile-specific "tap Select first" hint is folded into the first half of
 // each sweep phase rather than a dedicated phase, so the two demos stay
@@ -17,8 +11,8 @@ import { useDemoController } from "@/lib/useDemoController";
 import { DEMO_CONTENT, type DemoContent } from "@/components/demoFlow/content";
 import { DEMO_PHASES, type DemoPhase } from "@/components/demoFlow/types";
 
-// ── Delays —— mobile sweep 稍长（要放完 Select FAB 点击再开始扫）
-// Mobile delays — sweep phases are longer to cover the Select-FAB tap hint.
+// Mobile delays — sweep phases are longer to cover the Select-FAB tap hint
+// before the actual sweep begins.
 const DELAYS: Record<DemoPhase, number> = {
   blank: 1500,
   "main-stream": 5500,
@@ -70,8 +64,6 @@ const inMainView = (p: DemoPhase) =>
   p === "l1-hover" ||
   p === "l1-enter" ||
   p === "graph-navigated" ||
-  // merge-hint 保留 MainView 做背景，避免 Merge 按钮脉冲时
-  // 下方聊天区空白；modal 在 merge-modal phase 才盖上来。
   // Keep MainView as the backdrop during merge-hint so the chat area
   // doesn't blank out while the Merge button pulses. The modal covers
   // it starting from merge-modal.
@@ -112,8 +104,6 @@ export default function MobilePinDemo() {
     [],
   );
 
-  // Sweep：每次 sweep phase 延后 900ms 开始（给 Select FAB 点击让路），
-  // 然后 1200ms 扫完。非 sweep 阶段定格在 1 以保持高亮。
   // Each sweep waits 900ms for the Select-FAB tap hint, then runs 1200ms.
   // Outside of sweep, stays pinned at 1 so the selection stays lit.
   const [sweepPct, setSweepPct] = useState(0);
@@ -146,7 +136,7 @@ export default function MobilePinDemo() {
     };
   }, [phase]);
 
-  // Tap ring —— 每个有交互的 phase 在末尾挂一次 press + print + ring
+  // Tap ring — every interactive phase fires one press + print + ring near its end.
   const [tapRing, setTapRing] = useState(false);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -176,7 +166,7 @@ export default function MobilePinDemo() {
     };
   }, [phase]);
 
-  // ── 流式 —— 同 desktop 策略：main + merge 流式，l1 / l2 不流式
+  // ── Streaming — same strategy as desktop: main + merge stream, l1 / l2 do not.
   const [mainLen, setMainLen] = useState(0);
   const [sub1Len, setSub1Len] = useState(0);
   const [sub2Len, setSub2Len] = useState(0);
@@ -213,7 +203,6 @@ export default function MobilePinDemo() {
     };
   };
 
-  // 主线 AI 回复：blank 时清空，其它 phase 直接满长显示（不流式）。
   // Main reply: empty on `blank`, full length everywhere else — no typewriter.
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
@@ -276,7 +265,7 @@ export default function MobilePinDemo() {
   const dialogPicked =
     phase === "p1-pick" || phase === "p2-pick" || phase === "p3-pick";
 
-  // 选择高亮持续 sweep + selpop + dialog + pick
+  // Selection highlight stays lit through sweep + selpop + dialog + pick.
   const anchor1Selecting =
     phase === "p1-sweep" || phase === "p1-selpop" ||
     phase === "p1-dialog" || phase === "p1-pick";
@@ -290,9 +279,6 @@ export default function MobilePinDemo() {
   const anchor1Visible = atOrAfter(phase, "p1-underline");
   const anchor2Visible = atOrAfter(phase, "p2-underline");
   const sub1AnchorVisible = atOrAfter(phase, "p3-underline");
-  // 跟 desktop 对齐：breathing 在 hover phase 开始就停掉，给 popover
-  // 一个稳定不透明的父容器；anchor-breathing 会在 50% 把整个 span 的
-  // opacity 压到 0.78，popover 作为子元素会跟着闪烁。
   // Match desktop: stop breathing once hover starts so the popover child
   // doesn't inherit the 0.78 opacity dip from anchor-breathing and blink.
   const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-hover"];
@@ -441,12 +427,9 @@ export default function MobilePinDemo() {
             >
               Deeppin
             </span>
-            {/* Merge button —— 只用 demo-merge-hint（外扩 halo）做提示；
-                tap-press 和 tap-print/ring 在按钮内部会盖住 "Merge" 文字，
-                移到父行上方或者直接跳过。
-                Use only the outward halo (demo-merge-hint) for the Merge
-                button hint. The inner tap-press / tap-print disc would
-                cover the "Merge" label and make the button look blank. */}
+            {/* Merge button — use only the outward halo (demo-merge-hint)
+                for the cue. The inner tap-press / tap-print disc would cover
+                the "Merge" label and make the button look blank. */}
             <span
               className={`relative ml-2 inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium ${
                 mergeBtnPulse ? "demo-merge-hint" : ""
@@ -1296,10 +1279,11 @@ function MobileSelPop({
   );
 }
 
-// MobileAnchorPopover —— 跟 desktop 的 AnchorPopover 同结构，更紧凑
-// (220px 宽) 以适配手机列宽。在锚点上方浮出，显示 YOU 问题 + AI 回答
-// + 大的 Enter 按钮。l*-enter phase 时 enterPulse=true，Enter 上跑
-// tap-press + tap-print/ring 提示点击进入。
+// MobileAnchorPopover — same structure as desktop AnchorPopover but more
+// compact (220px wide) for mobile column widths. Floats above the anchor
+// with the YOU question + AI reply + a large Enter button. During l*-enter
+// phases, enterPulse=true triggers tap-press + tap-print/ring on Enter to
+// hint the click target.
 // Mirror of desktop AnchorPopover but narrower (220px) to fit the mobile
 // column. Floats above the anchor with YOU / AI preview + an Enter row
 // that lights up during l*-enter so the demo reads as tap-to-enter.
@@ -1315,8 +1299,9 @@ function MobileAnchorPopover({
 }) {
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
   return (
-    // 手机端空间紧 —— popover 朝下显示（锚点通常在 AI 气泡上半部，
-    // 下方还有 ~200px 可用）；desktop 因为 overflow-hidden 切底才朝上。
+    // Mobile is tight on space — show the popover below the anchor (anchors
+    // usually sit in the upper half of an AI bubble with ~200px clear below).
+    // Desktop opens upward only because overflow-hidden clips the bottom.
     // Mobile has enough room below the anchor (bubble sits in the upper
     // half of the ~340px body), so render the popover downward; desktop
     // flipped upward because the bottom overflow-hidden clips it.
@@ -1433,7 +1418,7 @@ function MobileAnchorPopover({
   );
 }
 
-// Mobile pin dialog —— 3 条 suggestion + 输入框
+// Mobile pin dialog — 3 suggestions + input box.
 function MobileDialog({
   c, dialogOn, picked, tapRing,
 }: {
@@ -1552,7 +1537,7 @@ function MobileDialog({
   );
 }
 
-// ── MiniGraph（drawer 内）—— 支持 nodePulse + rootTapHint + atRootLabel
+// ── MiniGraph (inside the drawer) — supports nodePulse + rootTapHint + atRootLabel.
 function MiniGraph({
   c, anchor1Visible, anchor2Visible, sub1AnchorVisible,
   activeNode,
@@ -1830,7 +1815,7 @@ function MiniGraph({
   );
 }
 
-// ── MobileMergeOverlay —— 用实际 graph 代替 flat list（同 desktop）
+// ── MobileMergeOverlay — uses the real graph instead of a flat list (same as desktop).
 function MobileMergeOverlay({
   c, modalOpen, contentShown, done, mergeLen,
 }: {
@@ -1860,7 +1845,7 @@ function MobileMergeOverlay({
           transition: "transform 300ms cubic-bezier(0.16,1,0.3,1)",
         }}
       >
-        {/* 顶栏：dot + 标题 + 数量 + 关闭 —— 对齐真实 MergeOutput */}
+        {/* Top bar: dot + title + count + close — mirrors the real MergeOutput. */}
         <div
           className="flex items-center gap-1.5 px-3 py-2"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
@@ -1892,7 +1877,7 @@ function MobileMergeOverlay({
           </span>
         </div>
 
-        {/* Format row —— 3 个选项卡 */}
+        {/* Format row — 3 tabs. */}
         <div
           className="flex gap-1 px-2 py-1.5 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
@@ -1915,7 +1900,7 @@ function MobileMergeOverlay({
           })}
         </div>
 
-        {/* graph tree 选择（全选）*/}
+        {/* Graph tree selection (select all). */}
         <div
           className="px-3 py-2"
           style={{ borderBottom: "1px solid var(--rule-soft)", background: "var(--paper-2)" }}

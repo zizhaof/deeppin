@@ -1,12 +1,9 @@
 # backend/routers/stream.py
 """
-SSE 流式聊天端点
 SSE streaming chat endpoint.
 
 POST /api/threads/{thread_id}/chat
-  → 保存用户消息，构建 context，流式推送 AI 回复
   → Save the user message, build context, and stream the AI response
-  → SSE 事件格式 / SSE event format:
        data: {"type": "ping"}
        data: {"type": "status", "text": "..."}
        data: {"type": "chunk", "content": "..."}
@@ -14,10 +11,8 @@ POST /api/threads/{thread_id}/chat
        data: {"type": "error", "message": "..."}
        data: {"type": "thread_title", "thread_id": "...", "title": "..."}
 
-匿名用户额度 / Anonymous user quota:
-  - 匿名用户生命期累计 20 轮（所有线程加起来）
+Anonymous user quota:
     Anonymous users: 20 turns total across all threads in the session.
-  - 超出返回 402 + {code: "anon_quota_exceeded"}，前端捕捉后弹登录
     Exceed → HTTP 402 + structured code; frontend catches and prompts sign-in.
 """
 
@@ -35,7 +30,6 @@ router = APIRouter()
 
 async def _db(fn):
     """
-    将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
     Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
     """
     loop = asyncio.get_running_loop()
@@ -49,16 +43,14 @@ async def chat(
     user: CurrentUser = Depends(get_current_user_full),
 ):
     """
-    向指定线程发送消息，返回 SSE 流式 AI 回复。
     Send a message to the specified thread and return a streaming SSE AI response.
 
-    前置检查：线程存在性 + 匿名额度。
     Upfront checks: thread existence + anonymous quota.
     """
     sb = user.sb
 
-    # RLS: 若线程不属于该用户，maybe_single() 返回 None → 404
-    # 同时取 depth/title/session_id，避免 stream_manager 再发一次 DB 请求（节省一次 round-trip）
+    # RLS: if the thread does not belong to this user, maybe_single() returns None -> 404
+    # Also fetch depth/title/session_id to spare stream_manager another DB request (saves one round-trip)
     thread_res = await _db(lambda: (
         sb.table("threads")
         .select("id, depth, title, session_id")
@@ -72,7 +64,6 @@ async def chat(
     thread_meta = thread_res.data
     session_id: str | None = thread_meta.get("session_id")
 
-    # 匿名用户：查 session.turn_count，达到上限就 402
     # Anonymous users: fetch session.turn_count; 402 at the cap.
     if user.is_anonymous and session_id:
         session_res = await _db(lambda: (
@@ -96,7 +87,7 @@ async def chat(
                 },
             )
 
-    # stream_and_save 内部使用 service_role 写消息（背景任务模式，绕过 RLS 是预期行为）
+    # stream_and_save writes messages with service_role internally (background-task mode; bypassing RLS is intentional)
     return StreamingResponse(
         stream_and_save(
             str(thread_id),

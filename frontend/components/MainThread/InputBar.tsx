@@ -10,7 +10,7 @@ const PASTE_ATTACH_THRESHOLD = 300;
 interface FileAttachment {
   kind: "file";
   label: string;
-  /** 内联模式：短文件提取文本直接拼入消息 context，不在气泡中显示 */
+  /** Inline mode: short-file extracted text spliced into the message context (not shown in the bubble). */
   content?: string;
 }
 
@@ -28,14 +28,12 @@ interface Props {
   disabled?: boolean;
   webSearch?: boolean;
   onWebSearchToggle?: (enabled: boolean) => void;
-  /** 匿名试用额度计数（已发送轮数）。isAnon=false 时不展示。
-   *  Anonymous trial turn count. Not shown when isAnon is false. */
+  /** Anonymous trial turn count. Not shown when isAnon is false. */
   turnCount?: number;
   isAnon?: boolean;
 }
 
-// 与 backend/services/stream_manager.py::ANON_TURN_LIMIT 保持一致
-// Mirrors backend/services/stream_manager.py::ANON_TURN_LIMIT
+// Mirrors backend/services/stream_manager.py::ANON_TURN_LIMIT.
 const ANON_TURN_LIMIT = 20;
 
 export default function InputBar({ sessionId, onSend, disabled, webSearch = false, onWebSearchToggle, turnCount = 0, isAnon = false }: Props) {
@@ -43,8 +41,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
-  // 手动拖拽后的最小高度；0 = 未拖拽，让 textarea 自然收缩
-  // Minimum height after manual drag; 0 = not dragged, textarea shrinks naturally
+  // Minimum height after manual drag; 0 = not dragged, textarea shrinks naturally.
   const manualHeightRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -64,7 +61,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     if (trimmed) contentParts.push(trimmed);
     for (const a of attachments) {
       if (a.kind === "paste") contentParts.push(a.content);
-      // 内联模式文件：提取文本拼入 context，但不在气泡中显示
+      // Inline-mode file: splice the extracted text into the context but don't show it in the bubble.
       if (a.kind === "file" && a.content) contentParts.push(`[附件内容：${a.label}]\n${a.content}`);
     }
     const fullContent = contentParts.join("\n\n---\n\n");
@@ -74,9 +71,9 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     for (const a of attachments) displayParts.push(`📎 ${a.label}`);
     const displayContent = displayParts.join("  ");
 
-    // 任意文件附件的文件名（含内联和 RAG 两种模式），后端据此优先检索该文件或抑制旧文件 RAG
-    // Filename of any file attachment (inline or RAG); backend uses it to prefer this file's chunks
-    // or suppress old-file RAG when the file was sent inline (no chunks in DB)
+    // Filename of any file attachment (inline or RAG); backend uses it to prefer
+    // this file's chunks, or to suppress old-file RAG when the file was sent
+    // inline (no chunks in DB).
     const ragFilename = attachments.find((a) => a.kind === "file")?.label;
 
     const finalContent = fullContent || displayContent;
@@ -104,12 +101,11 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    // 以手动拖拽高度为下限，以内容自然高度为目标，最高 600px
-    // Use dragged height as floor, content height as target, cap at 600px
+    // Use the manually dragged height as the floor, content height as the target, capped at 600px.
     el.style.height = `${Math.max(manualHeightRef.current, Math.min(el.scrollHeight, 600))}px`;
   };
 
-  // 拖拽调整输入框高度 — 以 textarea 当前实际高度为起点，直接设置 style.height，立即可见
+  // Drag-to-resize the input — start from the textarea's current height and write style.height directly so the change is instantly visible.
   const onResizeDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -119,7 +115,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
     const onMove = (ev: MouseEvent) => {
       const next = Math.max(36, Math.min(400, startH + (startY - ev.clientY)));
       manualHeightRef.current = next;
-      // 直接写 style.height，让效果立即反映在界面上
+      // Write style.height directly so the resize is reflected immediately.
       if (el) el.style.height = `${next}px`;
     };
     const onUp = () => {
@@ -149,7 +145,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
       setUploading(true);
       try {
         const { filename, chunk_count, inline_text } = await uploadAttachment(sessionId, file);
-        // chunk_count=0 且 inline_text=null → 提取失败（扫描件/加密 PDF 等）
+        // chunk_count=0 and inline_text=null → extraction failed (scanned image / encrypted PDF / etc.).
         if (chunk_count === 0 && inline_text === null) {
           alert(`「${filename}」${t.fileParseError}`);
           return;
@@ -177,25 +173,21 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
   const quotaFull = quotaRemaining === 0;
 
   return (
-    // 跟 MessageList 的阅读列对齐：max-w-[780px] 居中 + 宽 padding
-    // Aligned with MessageList's reading column for visual continuity.
+    // Aligned with MessageList's reading column (max-w-[780px] centered, wide padding) for visual continuity.
     <div className="border-t border-subtle bg-base pt-3 pb-5 relative px-6 md:px-10">
      <div className="mx-auto w-full max-w-[780px] relative">
-      {/* 拖拽调整输入框高度的把手 */}
+      {/* Drag handle for resizing the input box. */}
       <div
         className="absolute top-0 left-0 right-0 h-2.5 cursor-ns-resize flex items-center justify-center group/rh"
         onMouseDown={onResizeDown}
       >
         <div className="w-10 h-0.5 rounded-full bg-subtle/50 group-hover/rh:bg-indigo-500/30 transition-colors" />
       </div>
-      {/* 匿名试用配额条 — 仅对匿名用户显示
-          以前用 absolute top-2 right-4 浮在输入框右上角,手机端会跟联网/发送
-          按钮挤在一起。改成放到输入框上方独立一行,右对齐,跟按钮组拉开
-          清晰的垂直距离。
-          Anonymous trial quota bar — was previously absolute-positioned at
-          top-2 right-4 over the input box, which crowded the web-search /
-          send buttons on mobile. Now its own block-level row above the
-          box, right-aligned, with clear vertical breathing room. */}
+      {/* Anonymous trial quota bar — only shown for anon users. Previously
+          absolute-positioned at top-2 right-4 over the input box, which
+          crowded the web-search / send buttons on mobile. Now its own
+          block-level row above the box, right-aligned, with clear vertical
+          breathing room. */}
       {isAnon && (
         <div
           className={`flex justify-end items-center gap-1.5 text-[10px] font-mono tabular-nums select-none pointer-events-none mb-1.5 pr-1 transition-colors ${
@@ -224,7 +216,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
           : "border-base focus-within:border-indigo-500/25 focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.1)]"
       }`}>
 
-        {/* 附件 chips */}
+        {/* Attachment chips. */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-2.5 pb-1">
             {attachments.map((a, i) => (
@@ -249,9 +241,9 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
           </div>
         )}
 
-        {/* 输入行 */}
+        {/* Input row. */}
         <div className="flex items-center gap-2 px-3 py-2.5">
-          {/* 附件按钮 */}
+          {/* Attachment button. */}
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
@@ -293,7 +285,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             className="flex-1 bg-transparent resize-none outline-none text-sm text-hi placeholder-ph disabled:opacity-30 leading-relaxed"
           />
 
-          {/* 联网搜索 toggle */}
+          {/* Web-search toggle. */}
           <button
             type="button"
             onClick={() => onWebSearchToggle?.(!webSearch)}
@@ -312,7 +304,7 @@ export default function InputBar({ sessionId, onSend, disabled, webSearch = fals
             </svg>
           </button>
 
-          {/* 发送按钮 */}
+          {/* Send button. */}
           <button
             onClick={handleSend}
             disabled={!canSend}

@@ -1,22 +1,18 @@
 "use client";
-// components/DemoTransport.tsx
-// 演示动画的播放控件 —— 挂在 caption 条右侧。默认播放；空闲 2.5s 后淡出，
-// 用户 hover/touch 整个 demo 盒子时再淡入。
-//
 // Demo transport controls — mounted inside the caption bar. Auto-plays by
 // default; fades out after ~2.5s of idle so it stays out of the way, and
 // fades back in when the user hovers / taps the demo container.
 //
-// 用法 / Usage:
+// Usage:
 //   <DemoTransport control={control} active={isHovered} />
 
 import type { DemoControl } from "@/lib/useDemoController";
 
 interface Props<P extends string> {
   control: DemoControl<P>;
-  /** 是否活跃（hover / touch）—— 活跃时控件完全不透明，否则低不透明度 */
+  /** Whether active (hover / touch) — fully opaque when active, otherwise dimmed. */
   active: boolean;
-  /** 紧凑模式 —— 手机端图标缩一点 */
+  /** Compact mode — slightly smaller icons for mobile. */
   compact?: boolean;
 }
 
@@ -84,8 +80,7 @@ export default function DemoTransport<P extends string>({
         </svg>
       </button>
 
-      {/* progress dots —— 每个 phase 一个小点，当前 phase 拉长、accent 色
-           Progress dots; current phase is elongated + accent-tinted. */}
+      {/* Progress dots — one dot per phase; the current phase is elongated + accent-tinted. */}
       <div className="flex items-center" style={{ gap }}>
         {Array.from({ length: phaseCount }).map((_, i) => {
           const isCurrent = i === phaseIndex;
