@@ -150,6 +150,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 Deeppin LLC —— Washington State
 
+## 许可证
+
+[FSL-1.1-MIT](LICENSE.md) —— Functional Source License，2 年后转 MIT。
+
+你可以自由使用、fork、修改、自部署 Deeppin 用于个人、公司内部、教学、研究。**不可以**用 Deeppin（或功能高度相似的衍生品）做与 Deeppin 直接竞争的商业服务。每个 release 在发布满 2 年后自动转为 MIT 协议。
+
+如果想商业 host Deeppin，欢迎联系我们。
+
 ---
 
 *为不愿在深度和心流之间二选一的思考者而建。*
