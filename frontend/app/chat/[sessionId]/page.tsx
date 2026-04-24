@@ -652,6 +652,7 @@ export default function ChatPage() {
         onNewChat={handleNewChat}
         isAnon={isAnon}
         onSignIn={handleSignIn}
+        userAvatarUrl={userAvatarUrl}
       />
 
       {/* Main two-column layout: chat + right-rail overview. The anchor-hover popover replaces the old left-rail card entry. */}
