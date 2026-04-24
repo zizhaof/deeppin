@@ -20,6 +20,10 @@ class ChatRequest(BaseModel):
     # Passed by the frontend when the user has just uploaded a file, so RAG prioritizes its chunks.
     attachment_filename: str | None = None
 
+    # Current frontend UI locale; forces the output language of the assistant reply,
+    # the META-block summary/title, and any fallback summarization that runs afterwards.
+    lang: str | None = None
+
 
 class Message(BaseModel):
     """

@@ -139,6 +139,7 @@ export async function createThread(params: {
   anchor_start_offset?: number;
   anchor_end_offset?: number;
   depth?: number;
+  lang?: string;
 }): Promise<Thread> {
   const res = await fetch(`${BASE_URL}/api/threads`, {
     method: "POST",
@@ -154,8 +155,10 @@ export async function createThread(params: {
  *  background _generate_and_patch task on the server has produced it. */
 export async function getSuggestions(
   threadId: string,
+  lang?: string,
 ): Promise<{ questions: string[]; title: string | null }> {
-  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/suggest`, {
+  const qs = lang ? `?${new URLSearchParams({ lang }).toString()}` : "";
+  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/suggest${qs}`, {
     headers: await getAuthHeaders(),
   });
   if (!res.ok) return { questions: [], title: null };

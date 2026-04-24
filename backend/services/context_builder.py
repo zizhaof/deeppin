@@ -52,8 +52,8 @@ def _messages_to_text(messages: list[dict]) -> str:
     """
     lines = []
     for m in messages:
-        role_label = "用户" if m["role"] == "user" else "AI"
-        lines.append(f"{role_label}：{m['content']}")
+        role_label = "User" if m["role"] == "user" else "AI"
+        lines.append(f"{role_label}: {m['content']}")
     return "\n".join(lines)
 
 
@@ -85,9 +85,10 @@ def _trim_context(messages: list[dict]) -> list[dict]:
             if len(m["content"]) > _MAX_SINGLE_MSG_CHARS:
                 char_len = len(m["content"])
                 placeholder = (
-                    f"[用户提供了长文本，共 {char_len} 字，已分块建立向量索引。"
-                    f"相关段落已由系统上下文注入，请根据上方 system 消息中的内容回答。"
-                    f"文本开头供参考：{m['content'][:200]}…]"
+                    f"[The user provided a long text of {char_len} characters; it has been chunked "
+                    f"and indexed. Relevant passages have been injected by the system context — "
+                    f"answer using the system messages above. Opening excerpt for reference: "
+                    f"{m['content'][:200]}…]"
                 )
                 m = {**m, "content": placeholder}
         result.append(m)
@@ -107,12 +108,18 @@ def _trim_context(messages: list[dict]) -> list[dict]:
 # _db is imported from db.supabase.run_db at the top; name preserved for test compatibility.
 
 
-async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
+async def _get_or_create_summary(
+    thread_id: str,
+    token_budget: int,
+    lang: str | None = None,
+) -> str:
     """
     Read the cached thread summary; if missing, generate it from scratch and write it to the DB.
 
     In normal operation summaries are maintained by stream_manager at write time.
     This function only triggers full generation for historical data migration or first access (fallback path).
+
+    `lang` forces the output language of the summary when a new one is generated here.
     """
     # Check cache
     cached = await _db(
@@ -141,7 +148,7 @@ async def _get_or_create_summary(thread_id: str, token_budget: int) -> str:
     if not messages:
         return ""
 
-    summary_text = await summarize(_messages_to_text(messages), token_budget)
+    summary_text = await summarize(_messages_to_text(messages), token_budget, lang=lang)
 
     await _db(
         lambda: get_supabase().table("thread_summaries").upsert({
@@ -159,6 +166,7 @@ async def build_context(
     thread_id: str,
     query_text: str = "",
     prefer_filename: str | None = None,
+    lang: str | None = None,
 ) -> list[dict]:
     """
     Build the AI messages list for the specified thread.
@@ -166,6 +174,9 @@ async def build_context(
     query_text: The latest user message, used for RAG retrieval (passed in by stream_manager).
 
     prefer_filename: Prefer RAG chunks from this file (passed when the user just uploaded it).
+
+    lang: UI locale forwarded to any lazy summary generation so historical
+    cache-miss fallbacks also respect the user's language.
     """
     thread_result = await _db(
         lambda: get_supabase().table("threads").select("*").eq("id", thread_id).maybe_single().execute(),
@@ -216,11 +227,14 @@ async def build_context(
         # Inject the main thread summary as compressed background when history exceeds the window
         summary_prefix: list[dict] = []
         if total > _THREAD_MSG_LIMIT:
-            summary = await _get_or_create_summary(thread_id, _budget_for_depth(0))
+            summary = await _get_or_create_summary(thread_id, _budget_for_depth(0), lang=lang)
             if summary:
                 summary_prefix = [{
                     "role": "system",
-                    "content": f"[对话历史摘要（第 {_THREAD_MSG_LIMIT + 1} 条之前）]\n{summary}",
+                    "content": (
+                        f"[Conversation history summary (older than the last {_THREAD_MSG_LIMIT} messages)]\n"
+                        f"{summary}"
+                    ),
                 }]
 
         return _trim_context(summary_prefix + rag_items + history)
@@ -255,7 +269,7 @@ async def build_context(
 
     # Concurrently fetch all ancestor summaries
     summaries: list[str] = await asyncio.gather(*[
-        _get_or_create_summary(anc["id"], budget)
+        _get_or_create_summary(anc["id"], budget, lang=lang)
         for anc, budget in zip(ancestors_root_first, budgets)
     ])
 
@@ -265,7 +279,11 @@ async def build_context(
         if not summary:
             continue
         depth_from_root = i
-        label = "主线对话摘要" if depth_from_root == 0 else f"第 {depth_from_root} 层子线程摘要"
+        label = (
+            "Main-thread summary"
+            if depth_from_root == 0
+            else f"Sub-thread summary (depth {depth_from_root})"
+        )
         prefix.append({"role": "system", "content": f"[{label}]\n{summary}"})
 
     # Anchor text (kept in full; it is the core reference for the sub-thread)
@@ -273,7 +291,10 @@ async def build_context(
     if anchor:
         prefix.append({
             "role": "system",
-            "content": f'用户在上述对话中选中了以下内容并提出追问，请围绕这段内容回答：\n"{anchor}"',
+            "content": (
+                "The user selected the following span in the conversation above and is asking a "
+                f'follow-up about it. Focus your answer on this span:\n"{anchor}"'
+            ),
         })
 
     # Most recent N messages in the current sub-thread (fetched desc, then reversed for chronological order)

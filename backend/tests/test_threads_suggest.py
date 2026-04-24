@@ -108,7 +108,7 @@ async def test_sync_gen_returns_title_from_llm():
         ],
     )
 
-    async def _fake_gen(anchor, ctx):
+    async def _fake_gen(anchor, ctx, lang=None):
         return ("Sync LLM Title", ["one", "two"])
 
     with patch("routers.threads.asyncio.sleep", return_value=None), \

@@ -95,6 +95,7 @@ async def chat(
             body.attachment_filename,
             thread_meta=thread_meta,
             session_id=session_id,
+            lang=body.lang,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

@@ -50,13 +50,13 @@ class TestMessagesToText:
         from services.context_builder import _messages_to_text
         messages = [{"role": "user", "content": "你好"}]
         text = _messages_to_text(messages)
-        assert "用户：你好" in text
+        assert "User: 你好" in text
 
     def test_assistant_message_labeled_as_ai(self):
         from services.context_builder import _messages_to_text
         messages = [{"role": "assistant", "content": "你好，有什么可以帮你？"}]
         text = _messages_to_text(messages)
-        assert "AI：" in text
+        assert "AI:" in text
 
     def test_alternating_messages_preserve_order(self):
         from services.context_builder import _messages_to_text
@@ -68,9 +68,9 @@ class TestMessagesToText:
         text = _messages_to_text(messages)
         lines = text.split("\n")
         assert len(lines) == 3
-        assert lines[0].startswith("用户：第一条")
-        assert lines[1].startswith("AI：回复")
-        assert lines[2].startswith("用户：第二条")
+        assert lines[0].startswith("User: 第一条")
+        assert lines[1].startswith("AI: 回复")
+        assert lines[2].startswith("User: 第二条")
 
 
 # ── _content_chars ────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ class TestTrimContext:
         assert len(result) == 1
         # Content should become a placeholder
         assert result[0]["content"] != long_content
-        assert "长文本" in result[0]["content"] or "向量" in result[0]["content"]
+        assert "long text" in result[0]["content"].lower() or "chunked" in result[0]["content"].lower()
 
     def test_phase1_system_messages_never_replaced(self):
         """System messages are never replaced regardless of length."""

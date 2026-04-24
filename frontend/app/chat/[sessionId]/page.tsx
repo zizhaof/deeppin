@@ -341,6 +341,7 @@ export default function ChatPage() {
       // the half matching the active locale before showing it.
       (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
       ragFilename,
+      lang,
     );
   };
 
@@ -357,6 +358,8 @@ export default function ChatPage() {
       makeStreamErrorHandler(threadId, false),
       undefined,
       (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
+      undefined,
+      lang,
     );
   }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler, lang]);
 
@@ -528,6 +531,7 @@ export default function ChatPage() {
         anchor_start_offset: info.startOffset,
         anchor_end_offset: info.endOffset,
         depth: parentDepth + 1,
+        lang,
       });
       pinThread(newThread);
 
@@ -546,7 +550,7 @@ export default function ChatPage() {
       // Backend /suggest polls server-side (up to 3s). Merge 3 placeholders with up to 3 LLM
       // follow-ups; dedup on normalized form to avoid collisions with sync_gen's template fallback.
       const normalize = (s: string) => s.replace(/\s+/g, "").toLowerCase();
-      getSuggestions(threadId).then(({ questions, title }) => {
+      getSuggestions(threadId, lang).then(({ questions, title }) => {
         // Swap the anchor-truncated placeholder for the LLM title so the tree
         // and graph show the contextual name instead of raw anchor text. The
         // background _generate_and_patch task is what actually produced this;

@@ -128,6 +128,7 @@ export async function sendMessageStream(
   onThreadTitle?: (threadId: string, title: string) => void,
   onStatus?: (text: string) => void,
   attachmentFilename?: string,
+  lang?: string,
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/chat`, {
     method: "POST",
@@ -135,6 +136,7 @@ export async function sendMessageStream(
     body: JSON.stringify({
       content,
       ...(attachmentFilename ? { attachment_filename: attachmentFilename } : {}),
+      ...(lang ? { lang } : {}),
     }),
   });
 
