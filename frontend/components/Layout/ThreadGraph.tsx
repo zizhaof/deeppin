@@ -138,31 +138,55 @@ function layoutNodes(
   return { nodes, height, pigIdxMap };
 }
 
-/** Wrap the title into at most two lines (char-width estimate; works for CJK and Latin). */
-function wrapLabel(text: string, maxPx: number): string[] {
+/** Wrap a title into up to `maxLines` lines, ellipsizing the last line if the
+ *  text still doesn't fit. Latin: greedy word-wrap with hard-break for tokens
+ *  longer than one line. CJK / no-whitespace input: hard-break by character. */
+function wrapLabel(text: string, maxPx: number, maxLines = 3): string[] {
   const charPx = 6.6; // estimated average glyph width for ~11px Fraunces
   const maxChars = Math.max(6, Math.floor(maxPx / charPx));
   if (text.length <= maxChars) return [text];
 
-  const words = text.split(/\s+/);
   const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    if ((cur + " " + w).trim().length <= maxChars) {
-      cur = (cur + " " + w).trim();
-    } else {
-      if (cur) lines.push(cur);
-      cur = w;
-      if (lines.length === 1) break;
+
+  if (!/\s/.test(text)) {
+    // CJK / no-space path
+    for (let i = 0; i < maxLines && i * maxChars < text.length; i++) {
+      lines.push(text.slice(i * maxChars, (i + 1) * maxChars));
     }
+  } else {
+    const words = text.split(/\s+/);
+    let cur = "";
+    for (const w of words) {
+      if (lines.length >= maxLines) break;
+      const candidate = cur ? cur + " " + w : w;
+      if (candidate.length <= maxChars) { cur = candidate; continue; }
+      if (cur) {
+        lines.push(cur);
+        cur = "";
+        if (lines.length >= maxLines) break;
+      }
+      // Token longer than one line — hard-break across remaining lines.
+      let rest = w;
+      while (rest.length > maxChars && lines.length < maxLines - 1) {
+        lines.push(rest.slice(0, maxChars));
+        rest = rest.slice(maxChars);
+      }
+      cur = rest;
+    }
+    if (cur && lines.length < maxLines) lines.push(cur);
   }
-  if (cur && lines.length < 2) lines.push(cur);
-  if (lines.length === 2 && lines[1].length > maxChars) {
-    lines[1] = lines[1].slice(0, maxChars - 1) + "…";
-  } else if (lines.length === 1 && lines[0].length > maxChars) {
-    lines[0] = lines[0].slice(0, maxChars - 1) + "…";
+
+  // Ellipsize last line if any non-whitespace tail was dropped.
+  const stripped = text.replace(/\s+/g, "").length;
+  const visible = lines.reduce((a, l) => a + l.length, 0);
+  if (visible < stripped) {
+    const last = lines[lines.length - 1] ?? "";
+    lines[lines.length - 1] =
+      last.length >= maxChars
+        ? last.slice(0, maxChars - 1) + "…"
+        : last + "…";
   }
-  return lines.slice(0, 2);
+  return lines.slice(0, maxLines);
 }
 
 export default function ThreadGraph({

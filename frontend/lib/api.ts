@@ -149,14 +149,18 @@ export async function createThread(params: {
   return res.json();
 }
 
-/** Get follow-up suggestions for this thread's anchor. */
-export async function getSuggestions(threadId: string): Promise<string[]> {
+/** Get follow-up suggestions and the LLM-generated title for this thread's anchor.
+ *  Title is bundled here so callers can swap the anchor placeholder once the
+ *  background _generate_and_patch task on the server has produced it. */
+export async function getSuggestions(
+  threadId: string,
+): Promise<{ questions: string[]; title: string | null }> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/suggest`, {
     headers: await getAuthHeaders(),
   });
-  if (!res.ok) return [];
+  if (!res.ok) return { questions: [], title: null };
   const data = await res.json();
-  return data.questions ?? [];
+  return { questions: data.questions ?? [], title: data.title ?? null };
 }
 
 /** Get a thread's message history. */
