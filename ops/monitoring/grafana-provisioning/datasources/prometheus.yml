@@ -1,4 +1,4 @@
-# Grafana 自动注入 Prometheus 数据源 / Auto-provision Prometheus data source.
+# Auto-provision the Prometheus data source into Grafana.
 apiVersion: 1
 
 deleteDatasources:

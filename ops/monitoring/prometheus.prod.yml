@@ -1,6 +1,6 @@
-# Prometheus 抓取配置（生产）/ Prometheus scrape config (production)
-# 生产环境：prometheus 跟 backend 在同一 compose network，直接用服务名 backend:8000
-# Production: prometheus and backend share the same compose network; use service name backend:8000
+# Prometheus scrape config (production).
+# Prometheus and backend share the same compose network, so the backend is
+# reachable via the service name.
 
 global:
   scrape_interval: 15s

@@ -1,9 +1,8 @@
 #!/bin/bash
 # scripts/smoke_test.sh
-# 部署后端到端连通性验证
-# End-to-end connectivity smoke test after deployment
+# End-to-end connectivity smoke test after deployment.
 #
-# 用法 / Usage:
+# Usage:
 #   bash scripts/smoke_test.sh https://deeppin.duckdns.org
 
 set -euo pipefail
@@ -12,7 +11,7 @@ BASE_URL="${1:-https://deeppin.duckdns.org}"
 PASS=0
 FAIL=0
 
-# 颜色 / Colors
+# Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
@@ -28,8 +27,8 @@ check() {
     PASS=$((PASS + 1))
   else
     echo -e "${RED}✗${NC} $name"
-    echo "    期望包含 / Expected: $expected"
-    echo "    实际返回 / Got:      $response"
+    echo "    expected substring: $expected"
+    echo "    got:                $response"
     FAIL=$((FAIL + 1))
   fi
 }
@@ -37,23 +36,24 @@ check() {
 echo "=== Smoke Test: $BASE_URL ==="
 echo ""
 
-# 1. 整体状态（LLM 偶尔限流导致 degraded，只要 status 字段存在即可）
-check "HTTPS 可访问"       "$BASE_URL/health"           '"status"'
+# 1. Overall status (LLM throttling can degrade the aggregate — we just
+#    need the status field to be present).
+check "HTTPS reachable"          "$BASE_URL/health"           '"status"'
 
-# 2. 各组件连通性
-check "backend 自身"       "$BASE_URL/health"           '"backend":true'
-check "searxng 连通"       "$BASE_URL/health"           '"searxng":true'
-check "supabase 连通"      "$BASE_URL/health"           '"supabase":true'
-check "embedding 正常"     "$BASE_URL/health"           '"ok":true'
-check "embedding 维度1024" "$BASE_URL/health"           '"dim":1024'
-check "embedding 模型bge"  "$BASE_URL/health"           'bge-m3'
+# 2. Per-component liveness.
+check "backend itself"           "$BASE_URL/health"           '"backend":true'
+check "searxng connectivity"     "$BASE_URL/health"           '"searxng":true'
+check "supabase connectivity"    "$BASE_URL/health"           '"supabase":true'
+check "embedding healthy"        "$BASE_URL/health"           '"ok":true'
+check "embedding dim=1024"       "$BASE_URL/health"           '"dim":1024'
+check "embedding model=bge-m3"   "$BASE_URL/health"           'bge-m3'
 
-# 3. 认证中间件生效
-check "未授权请求返回 401"  "$BASE_URL/api/sessions"     '"detail"'
+# 3. Auth middleware is wired up.
+check "unauth request -> 401"    "$BASE_URL/api/sessions"     '"detail"'
 
 echo ""
 echo "================================"
-echo "结果：${PASS} 通过，${FAIL} 失败"
+echo "Result: ${PASS} passed, ${FAIL} failed"
 echo "================================"
 
 [ "$FAIL" -eq 0 ] || exit 1
