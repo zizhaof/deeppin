@@ -145,7 +145,12 @@ DELETE /api/users/me                            删账户 + 全部对话
 
 ### staging 实务
 
-- 同一时间只能验一个分支（Oracle 24G 塞不下多个 bge-m3 backend）；前端每分支独立 Vercel preview URL（serverless 零成本）
+- **同一时间只能验一个分支**（Oracle 24G 塞不下多个 bge-m3 backend）。
+- **canonical staging URL 永远是这一对，不要暴露其他 link**：
+  - 前端：https://deeppin-git-staging-zizhaofs-projects.vercel.app/
+  - 后端：https://staging-deeppin.duckdns.org
+
+  自动配对原理：`deploy-staging.yml` 末尾的 `sync-staging-branch` job 会把刚部完的分支 force-push 到固定的 `staging` git ref；Vercel 的 `Preview (staging)` env scope 锁定 git-branch=staging，把 `NEXT_PUBLIC_API_URL` 指到 staging 后端，所以这个稳定 URL 上的前端永远连 staging 后端。**禁止**把每分支独立的 `deeppin-git-<feat-branch>-…vercel.app` 当 staging 链接给用户——那种 URL 默认指 prod 后端，给用户找起来也乱。
 - **部署 staging 前必须跟用户确认**：可能有其他 Claude session / 另一条分支正在 staging 上验证，盲目覆盖会打断别人的测。触发 `deploy-staging.yml`（或 `docker compose ... up -d` 到 staging）之前问一句「staging 空吗？可以抢吗？」
 - **部署 staging 前必须先 rebase 到 origin/main**：`git fetch origin && git rebase origin/main && git push --force-with-lease`，否则验的是落后 main 的代码，测过了 merge 回去可能因 main 上的新改动而炸。理由：staging 是「接近 prod」的验证，而 prod = 最新 main；基底不同就是白测。
 - `docker compose restart <svc>` **不重读** `env_file`；改 .env 要 `up -d --force-recreate <svc>`
@@ -156,7 +161,8 @@ DELETE /api/users/me                            删账户 + 全部对话
 ```
 1. 开 feat/xxx 分支 → push（自动跑 test-backend.yml）
 2. 想在手机/staging 验 → bot /deploy feat/xxx（或 gh workflow run deploy-staging.yml -f branch=feat/xxx）
-3. 访问 https://staging-deeppin.duckdns.org/health 看结果
+3. 访问 https://staging-deeppin.duckdns.org/health 看后端，
+   https://deeppin-git-staging-zizhaofs-projects.vercel.app/ 看前端（自动连 staging 后端）。
 4. 开 PR 合 main → 合并后自动部 prod
 ```
 
