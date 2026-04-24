@@ -13,6 +13,7 @@ import asyncio
 import base64
 import io
 import logging
+import math
 import re
 from typing import Optional
 
@@ -217,67 +218,131 @@ def _split_sentences(text: str) -> list[str]:
     return sentences
 
 
+def _group_sentences_into_chunks(
+    sentences: list[str],
+    sent_embs: list[list[float]],
+) -> tuple[list[str], list[list[int]]]:
+    """
+    Walk sentences with precomputed embeddings, cutting on semantic jumps or size overflow.
+    Returns (chunk_texts, chunk_sentence_indices).
+    """
+    chunks: list[str] = []
+    chunk_idx: list[list[int]] = []
+    current_sents: list[str] = [sentences[0]]
+    current_idx: list[int] = [0]
+    current_len: int = len(sentences[0])
+
+    for i in range(1, len(sentences)):
+        sent = sentences[i]
+        sent_len = len(sent)
+
+        # Dot product equals cosine similarity because vectors are L2-normalized
+        sim: float = sum(a * b for a, b in zip(sent_embs[i - 1], sent_embs[i]))
+
+        # Break on semantic jump or size overflow (only if current chunk meets MIN_CHUNK_CHARS)
+        should_break = (
+            sim < SEMANTIC_THRESHOLD or current_len + sent_len > MAX_CHUNK_CHARS
+        ) and current_len >= MIN_CHUNK_CHARS
+
+        if should_break:
+            chunks.append("".join(current_sents))
+            chunk_idx.append(current_idx)
+            current_sents = [sent]
+            current_idx = [i]
+            current_len = sent_len
+        else:
+            current_sents.append(sent)
+            current_idx.append(i)
+            current_len += sent_len
+
+    if current_sents:
+        tail = "".join(current_sents)
+        # Merge a too-short tail chunk into the previous one to avoid tiny orphan chunks
+        if chunks and len(tail) < MIN_CHUNK_CHARS:
+            chunks[-1] += tail
+            chunk_idx[-1].extend(current_idx)
+        else:
+            chunks.append(tail)
+            chunk_idx.append(current_idx)
+
+    return chunks, chunk_idx
+
+
+def _pool_chunk_embedding(sent_embs: list[list[float]], idxs: list[int]) -> list[float]:
+    """
+    Derive a chunk embedding by L2-normalizing the sum of its sentence embeddings.
+    Equivalent to mean-pool + renormalize since bge-m3 sentence vectors are unit-length.
+    """
+    if not idxs:
+        raise ValueError("empty sentence index list")
+    dim = len(sent_embs[idxs[0]])
+    acc = [0.0] * dim
+    for i in idxs:
+        v = sent_embs[i]
+        for j in range(dim):
+            acc[j] += v[j]
+    norm = math.sqrt(sum(x * x for x in acc)) or 1.0
+    return [x / norm for x in acc]
+
+
 async def chunk_text_semantic(text: str) -> list[str]:
     """
-    Semantic chunking based on embedding cosine similarity.
+    Semantic chunking based on embedding cosine similarity; returns text chunks only.
+    Thin wrapper around chunk_and_embed for call sites that don't need the embeddings.
+    """
+    chunks, _ = await chunk_and_embed(text)
+    return chunks
+
+
+async def chunk_and_embed(text: str) -> tuple[list[str], list[list[float]]]:
+    """
+    Semantic chunking + per-chunk embeddings in a single embed pass.
 
     Flow:
-      1. Split by sentence boundaries -> sentences
-      2. Batch-embed all sentences once (bge-m3 is normalized; dot product = cosine similarity)
-      3. When adjacent-sentence similarity < SEMANTIC_THRESHOLD, treat as a semantic break and cut
-      4. Merge sentences into chunks while keeping length under MAX_CHUNK_CHARS
+      1. Split into sentences.
+      2. Batch-embed every sentence once (bge-m3 is L2-normalized; dot product = cosine sim).
+      3. Group adjacent sentences into chunks, breaking on semantic jumps or size overflow.
+      4. Derive each chunk's embedding by summing + L2-renormalizing the sentence vectors
+         that compose it. Saves a full second embed pass that process_attachment used to
+         do on the joined chunk text — embedding is ~half the extract wall time on CPU.
 
-    Falls back to fixed-size chunking on any error.
+    Returns (chunks, chunk_embeddings) with aligned lengths.
+    Falls back to fixed-size chunking + a re-embed on any error.
     """
     from services.embedding_service import embed_texts
 
     sentences = _split_sentences(text)
     if not sentences:
-        return []
+        return [], []
     if len(sentences) == 1:
-        return [sentences[0]] if len(sentences[0]) >= MIN_CHUNK_CHARS else []
+        sent = sentences[0]
+        if len(sent) < MIN_CHUNK_CHARS:
+            return [], []
+        embs = await embed_texts([sent])
+        return [sent], list(embs)
 
     try:
-        # Single batch embed call — avoids repeated executor dispatch overhead
-        embeddings = await embed_texts(sentences)
+        sent_embs = await embed_texts(sentences)
 
-        chunks: list[str] = []
-        current: list[str] = [sentences[0]]
-        current_len: int = len(sentences[0])
+        chunks, chunk_idx = _group_sentences_into_chunks(sentences, sent_embs)
 
-        for i in range(1, len(sentences)):
-            sent = sentences[i]
-            sent_len = len(sent)
-
-            # Dot product equals cosine similarity because vectors are L2-normalized
-            sim: float = sum(a * b for a, b in zip(embeddings[i - 1], embeddings[i]))
-
-            # Break on semantic jump or size overflow (only if current chunk meets MIN_CHUNK_CHARS)
-            should_break = (
-                sim < SEMANTIC_THRESHOLD or current_len + sent_len > MAX_CHUNK_CHARS
-            ) and current_len >= MIN_CHUNK_CHARS
-
-            if should_break:
-                chunks.append("".join(current))
-                current = [sent]
-                current_len = sent_len
-            else:
-                current.append(sent)
-                current_len += sent_len
-
-        if current:
-            tail = "".join(current)
-            # Merge a too-short tail chunk into the previous one to avoid tiny orphan chunks
-            if chunks and len(tail) < MIN_CHUNK_CHARS:
-                chunks[-1] += tail
-            else:
-                chunks.append(tail)
-
-        return [c for c in chunks if c.strip()]
+        # Drop empty-after-strip chunks and their embeddings in lockstep
+        kept: list[tuple[str, list[float]]] = []
+        for text_chunk, idxs in zip(chunks, chunk_idx):
+            if text_chunk.strip() and idxs:
+                kept.append((text_chunk, _pool_chunk_embedding(sent_embs, idxs)))
+        if not kept:
+            return [], []
+        kept_chunks, kept_embs = zip(*kept)
+        return list(kept_chunks), list(kept_embs)
 
     except Exception as e:
-        logger.warning("语义切分失败，fallback 到固定切分 / Semantic chunking failed, falling back: %s", e)
-        return _chunk_fixed(text)
+        logger.warning("Semantic chunk+embed failed, falling back to fixed chunking + re-embed: %s", e)
+        fallback_chunks = _chunk_fixed(text)
+        if not fallback_chunks:
+            return [], []
+        fallback_embs = await embed_texts(fallback_chunks)
+        return fallback_chunks, list(fallback_embs)
 
 
 def _chunk_fixed(text: str) -> list[str]:
@@ -372,13 +437,10 @@ async def process_attachment(
             logger.info("附件内联模式 / Attachment inline: %s (%d chars)", filename, len(text))
             return {"chunk_count": 0, "inline_text": text.strip()}
 
-        # Long text: semantic chunk → embed → store
-        chunks = await chunk_text_semantic(text)
+        # Long text: semantic chunk + embed in a single pass → store
+        chunks, embeddings = await chunk_and_embed(text)
         if not chunks:
             return {"chunk_count": 0, "inline_text": None}
-
-        from services.embedding_service import embed_texts
-        embeddings = await embed_texts(chunks)
 
         await _store_chunks(session_id, filename, chunks, embeddings)
         logger.info("附件 RAG 模式 / Attachment RAG: %s (%d chunks, session=%s)",
