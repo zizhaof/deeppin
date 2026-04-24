@@ -138,6 +138,7 @@ async def _fallback_update_summary(
     depth: int,
     user_content: str,
     assistant_content: str,
+    lang: str | None = None,
 ) -> None:
     """
     Fallback path when META parsing fails: update the summary using merge_summary.
@@ -155,11 +156,11 @@ async def _fallback_update_summary(
             table="thread_summaries",
         )
         existing = cached.data[0].get("summary", "") if cached.data else ""
-        new_exchange = f"用户：{user_content}\nAI：{assistant_content}"
+        new_exchange = f"User: {user_content}\nAI: {assistant_content}"
         new_summary = (
-            await merge_summary(existing, new_exchange, budget)
+            await merge_summary(existing, new_exchange, budget, lang=lang)
             if existing
-            else await summarize(new_exchange, budget)
+            else await summarize(new_exchange, budget, lang=lang)
         )
         await _db(
             lambda: get_supabase().table("thread_summaries").upsert({
@@ -204,6 +205,7 @@ async def stream_and_save(
     attachment_filename: str | None = None,
     thread_meta: dict | None = None,
     session_id: str | None = None,
+    lang: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Core SSE generator: save message → build context → stream → background write summary/title/embedding.
@@ -287,6 +289,7 @@ async def stream_and_save(
             thread_id,
             query_text=user_content,
             prefer_filename=attachment_filename,
+            lang=lang,
         )
     except Exception as exc:
         intent_task.cancel()
@@ -314,6 +317,7 @@ async def stream_and_save(
         context,
         need_title=is_first_main_reply,
         summary_budget=summary_budget,
+        lang=lang,
     )
 
     try:
@@ -386,7 +390,7 @@ async def stream_and_save(
         _track(_save_summary(thread_id, summary, summary_budget))
     else:
         _track(
-            _fallback_update_summary(thread_id, depth, user_content, full_content)
+            _fallback_update_summary(thread_id, depth, user_content, full_content, lang=lang)
         )
 
     #    First main-thread reply: write session/thread title and push to the frontend

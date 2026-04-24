@@ -64,6 +64,59 @@ OPENROUTER_API_KEYS: list[str] = _load_keys("OPENROUTER_API_KEYS")
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Output-language directive (shared by every LLM call)
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Single source of truth: the user's UI locale (passed in as `lang`). Every
+# prompt builder prepends `_lang_directive(lang)` so the model is pinned to
+# one output language regardless of whatever languages appear in prior
+# context. We pair a short line in the target language (strong signal for
+# small models) with an English MUST-directive (strong signal for larger
+# chat models), which together cover both ends of the free-tier lineup.
+
+_LANG_NAMES: dict[str, str] = {
+    "en": "English",
+    "zh": "Simplified Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+    "ru": "Russian",
+}
+
+# One-liner written in the target language itself — this single in-language
+# demonstration is the most reliable way to flip a small summarizer model
+# off its default Chinese/English output.
+_LANG_DEMOS: dict[str, str] = {
+    "en": "Always respond in English.",
+    "zh": "请始终使用简体中文回答。",
+    "ja": "常に日本語で回答してください。",
+    "ko": "항상 한국어로 답변하세요.",
+    "es": "Responde siempre en español.",
+    "fr": "Répondez toujours en français.",
+    "de": "Antworte immer auf Deutsch.",
+    "pt": "Responda sempre em português.",
+    "ru": "Всегда отвечайте на русском языке.",
+}
+
+
+def _lang_directive(lang: str | None) -> str:
+    """Return the language directive block to prepend to any LLM system prompt.
+
+    Falls back to English for unknown or missing locales so callers never need
+    to guard the parameter themselves.
+    """
+    key = lang if lang in _LANG_NAMES else "en"
+    return (
+        f"{_LANG_DEMOS[key]}\n"
+        f"Your entire response MUST be written in {_LANG_NAMES[key]}. "
+        "Ignore any other language that appears in prior context."
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 模型配置 / Model configuration
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -629,45 +682,38 @@ async def chat_stream(
     need_title: bool = False,
     summary_budget: int = 100,
     inject_meta: bool = True,
+    lang: str | None = None,
 ) -> ChatStreamResult:
     """
-    主对话流式生成器，每次 yield 一个文字 chunk，同时通过 .model_used 暴露模型名。
     Main conversation streaming generator; yields one text chunk at a time.
     The model name is exposed via .model_used after the first chunk.
+
+    `lang` is the user's UI locale and forces the output language of both
+    the user-facing reply and the trailing META JSON (summary + title).
     """
     full_messages = list(messages)
 
     if inject_meta:
-        # 语言规则（最高优先级）：跟随用户最新一条消息的语言，除非该消息明确要求改用其他语言
-        # Language rule (highest priority): follow the user's most recent message's language,
-        # unless that message explicitly requests a different language.
-        language_rule = (
-            "Language rule (highest priority): Reply in the same language as the user's "
-            "most recent message. If that message explicitly requests a different language "
-            '(e.g. "please answer in English", "用中文回答"), follow the explicit request '
-            "instead. Do not be influenced by earlier turns' language."
-        )
         summary_rules = (
-            f"内部摘要规则（仅用于下方 JSON，不得出现在正文回答中）："
-            f"按话题分组，每条格式为 [Topic: 话题名] + 关键事实/结论/细节；"
-            f"话题数量不限，已有话题严格复用原标签；语言与用户一致；总长 <= {summary_budget} 字。"
+            f"Internal summary rule (applies only to the JSON below — never in the reply body): "
+            f"group by topic, one entry per topic as [Topic: <topic name>] + key facts, conclusions, and details. "
+            f"Any number of topics; strictly reuse existing topic labels; keep the summary under "
+            f"{summary_budget} tokens."
         )
-        example_fields = '"summary": "按上述规则生成的实际摘要"'
+        example_fields = '"summary": "the actual summary produced per the rule above"'
         if need_title:
-            # 标题语言与用户一致，长度相当于 6-12 个汉字（约 20-40 个拉丁字符）
-            # Title language follows the user; length ≈ 6–12 Chinese chars (≈ 20–40 latin chars)
             example_fields += (
-                ', "title": "conversation title in the same language as the user, '
-                'roughly 6-12 Chinese chars or 20-40 latin chars"'
+                ', "title": "short conversation title, roughly 6-12 CJK chars or 20-40 latin chars"'
             )
         full_messages.append({
             "role": "system",
             "content": (
-                f"{language_rule}\n\n"
+                f"{_lang_directive(lang)}\n\n"
                 f"{summary_rules}\n\n"
-                "重要：正文回答必须使用自然语言，禁止在正文中使用 [Topic:] 格式。\n\n"
-                f"完成正文回答后，紧接输出以下 XML 元数据标签（包括完整的 {META_TAG_OPEN} "
-                f"起始标签和 {META_TAG_CLOSE} 结束标签，标签名一字不漏，标签外不要输出任何字符）：\n"
+                "Important: the reply body must be natural prose — do NOT use the [Topic:] format there.\n\n"
+                f"After finishing the reply body, append the following XML metadata tag "
+                f"(emit the full {META_TAG_OPEN} opening and {META_TAG_CLOSE} closing tags verbatim, "
+                f"with nothing outside them):\n"
                 f"{META_TAG_OPEN}{{{example_fields}}}{META_TAG_CLOSE}"
             ),
         })
@@ -725,29 +771,30 @@ async def _summarizer_call(
 async def generate_title_and_suggestions(
     anchor_text: str,
     context_summary: str = "",
+    lang: str | None = None,
 ) -> tuple[str, list[str]]:
     """
-    一次调用同时生成子线程标题和 3 个建议追问。标题和追问的语种跟随锚点文字，不写死中文。
     Generate a sub-thread title and 3 suggested follow-up questions in one call.
-    Title + questions follow the anchor text's language; no hard-coded Chinese.
+    Title + questions are written in the UI locale `lang` (default English).
     """
     import re
     bg = f"\n\n[Full message containing the anchor]\n{context_summary}" if context_summary else ""
     raw = await _summarizer_call(
-        messages=[{
-            "role": "user",
-            "content": (
-                f'While reading an AI reply, the user selected this span as an anchor for a follow-up:\n"{anchor_text}"\n'
-                f"Using the anchor's surrounding context, produce a short title and deep follow-up questions.{bg}\n\n"
-                "Language rule (highest priority): the TITLE and every Q must be written in the same "
-                "language/script as the anchor text above. Do not default to English or Chinese.\n\n"
-                "Output exactly in the format below and nothing else:\n"
-                "TITLE: <a short title (about 4-8 words, or 4-8 CJK characters) naming the anchor's core idea>\n"
-                "Q1: <the most worthwhile deep follow-up about the anchor, informed by context>\n"
-                "Q2: <a second deep follow-up about the anchor>\n"
-                "Q3: <a third deep follow-up about the anchor>"
-            ),
-        }],
+        messages=[
+            {"role": "system", "content": _lang_directive(lang)},
+            {
+                "role": "user",
+                "content": (
+                    f'While reading an AI reply, the user selected this span as an anchor for a follow-up:\n"{anchor_text}"\n'
+                    f"Using the anchor's surrounding context, produce a short title and deep follow-up questions.{bg}\n\n"
+                    "Output exactly in the format below and nothing else:\n"
+                    "TITLE: <a short title (about 4-8 words, or 4-8 CJK characters) naming the anchor's core idea>\n"
+                    "Q1: <the most worthwhile deep follow-up about the anchor, informed by context>\n"
+                    "Q2: <a second deep follow-up about the anchor>\n"
+                    "Q3: <a third deep follow-up about the anchor>"
+                ),
+            },
+        ],
         max_tokens=200,
         timeout=10,
     )
@@ -774,43 +821,52 @@ async def generate_title_and_suggestions(
         if m:
             title = m.group(1).strip()
 
-    # 解析失败时不再写死中文 fallback 问题（前端有多语种占位提示）。
-    # On parse failure, no hard-coded Chinese fallback questions; the frontend has localized placeholders.
+    # On parse failure, return an empty list; the frontend renders a localized placeholder.
     return title, questions[:3]
 
 
-async def summarize(text: str, max_tokens: int) -> str:
-    """将文本压缩为 max_tokens 以内的摘要 / Compress text into a summary within max_tokens."""
+async def summarize(text: str, max_tokens: int, lang: str | None = None) -> str:
+    """Compress text into a summary within max_tokens, written in the UI locale."""
     return await _summarizer_call(
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Compress the following content into a summary under {max_tokens} tokens. "
-                f"Group by topic, one line each: [Topic: <topic name>] key facts and concrete details. "
-                f"Keep the core information. Write the summary in the same language as the original text below:\n\n{text}"
-            ),
-        }],
+        messages=[
+            {"role": "system", "content": _lang_directive(lang)},
+            {
+                "role": "user",
+                "content": (
+                    f"Compress the following content into a summary under {max_tokens} tokens. "
+                    f"Group by topic, one line each: [Topic: <topic name>] key facts and concrete details. "
+                    f"Keep the core information:\n\n{text}"
+                ),
+            },
+        ],
         max_tokens=max_tokens,
         timeout=15,
     )
 
 
-async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: int) -> str:
-    """将一轮新对话增量合并进现有摘要 / Incrementally merge one new conversation round into the existing summary."""
+async def merge_summary(
+    existing_summary: str,
+    new_exchange: str,
+    max_tokens: int,
+    lang: str | None = None,
+) -> str:
+    """Incrementally merge one new conversation round into the existing summary."""
     return await _summarizer_call(
-        messages=[{
-            "role": "user",
-            "content": (
-                "Below is an existing summary of a conversation, followed by one new round that just happened.\n"
-                "Merge the key content of the new round into the summary. "
-                "Group by topic, one line each: [Topic: <topic name>] key facts and concrete details. "
-                "Strictly reuse existing topic labels — do not rename them. "
-                f"Keep the updated summary under {max_tokens} tokens. "
-                "Write in the same language as the source material, and output only the summary itself:\n\n"
-                f"[Existing summary]\n{existing_summary}\n\n"
-                f"[New round]\n{new_exchange}"
-            ),
-        }],
+        messages=[
+            {"role": "system", "content": _lang_directive(lang)},
+            {
+                "role": "user",
+                "content": (
+                    "Below is an existing summary of a conversation, followed by one new round that just happened.\n"
+                    "Merge the key content of the new round into the summary. "
+                    "Group by topic, one line each: [Topic: <topic name>] key facts and concrete details. "
+                    "Strictly reuse existing topic labels — do not rename them. "
+                    f"Keep the updated summary under {max_tokens} tokens. Output only the summary itself:\n\n"
+                    f"[Existing summary]\n{existing_summary}\n\n"
+                    f"[New round]\n{new_exchange}"
+                ),
+            },
+        ],
         max_tokens=max_tokens,
         timeout=15,
     )
@@ -819,11 +875,9 @@ async def merge_summary(existing_summary: str, new_exchange: str, max_tokens: in
 async def assess_relevance(
     main_summary: str,
     threads: list[dict],
+    lang: str | None = None,
 ) -> list[dict]:
-    """
-    一次 LLM 调用评估各子线程与主线的相关性。
-    Assess relevance of sub-threads to the main thread in one LLM call.
-    """
+    """Assess relevance of sub-threads to the main thread in one LLM call."""
     import re as _re
 
     thread_lines = "\n".join(
@@ -832,17 +886,20 @@ async def assess_relevance(
     )
 
     raw = await _summarizer_call(
-        messages=[{
-            "role": "user",
-            "content": (
-                "You are an analysis assistant. Below are the main thread summary and several sub-question summaries.\n"
-                "For each sub-question, decide whether it is relevant enough to the main topic to be selected by default for merged output.\n\n"
-                f"[Main summary]\n{main_summary}\n\n"
-                f"[Sub-questions]\n{thread_lines}\n\n"
-                'Output strictly as a JSON array and nothing else. Write "reason" in the same language as the main summary above:\n'
-                '[{"thread_id": "...", "selected": true, "reason": "one short sentence"}]'
-            ),
-        }],
+        messages=[
+            {"role": "system", "content": _lang_directive(lang)},
+            {
+                "role": "user",
+                "content": (
+                    "You are an analysis assistant. Below are the main thread summary and several sub-question summaries.\n"
+                    "For each sub-question, decide whether it is relevant enough to the main topic to be selected by default for merged output.\n\n"
+                    f"[Main summary]\n{main_summary}\n\n"
+                    f"[Sub-questions]\n{thread_lines}\n\n"
+                    'Output strictly as a JSON array and nothing else:\n'
+                    '[{"thread_id": "...", "selected": true, "reason": "one short sentence"}]'
+                ),
+            },
+        ],
         max_tokens=500,
         timeout=15,
     )
@@ -862,21 +919,6 @@ async def assess_relevance(
     return [{"thread_id": t["thread_id"], "selected": True, "reason": ""} for t in threads]
 
 
-# 合并输出支持的 UI locale → 自然语言名的映射，用于强制输出语种。
-# Map of supported UI locales to natural-language names used to force output language.
-_MERGE_LANG_NAMES: dict[str, str] = {
-    "en": "English",
-    "zh": "Chinese (Simplified)",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "pt": "Portuguese",
-    "ru": "Russian",
-}
-
-# Transcript 模式下的结构性标签 per-locale（供直接拼接，无 LLM 参与）。
 # Transcript-mode structural labels per-locale (concatenated directly, no LLM involvement).
 _TRANSCRIPT_LABELS: dict[str, dict[str, str]] = {
     "en": {"title": "Conversation transcript", "main": "Main thread", "sub": "Sub-question", "anchor": "Anchor"},
@@ -983,28 +1025,16 @@ async def merge_threads(
     if len(user_content) > _HARD_CAP_CHARS:
         user_content = user_content[:_HARD_CAP_CHARS] + "\n\n…(content truncated)"
 
-    # 语种指令：有 lang 就强制目标语种；没有就跟随原文语种。
-    # Language directive: if lang is given, force the target; otherwise follow the source.
-    if lang and lang in _MERGE_LANG_NAMES:
-        lang_directive = (
-            f"Write the entire merged report in {_MERGE_LANG_NAMES[lang]}, including all headings and labels. "
-            "Translate any section headings above into that language as needed."
-        )
-    else:
-        lang_directive = (
-            "Write the merged report in the same language as the main thread content above. "
-            "Translate section headings into that language as needed."
-        )
-
     messages = [
         {
             "role": "system",
             "content": (
+                f"{_lang_directive(lang)}\n\n"
                 "You are an assistant that helps users consolidate the results of their thinking. "
                 "The user pinned multiple points during the conversation to explore them in depth. "
                 "The main thread is the backbone; sub-questions are deep dives into its details. "
-                "Integrate everything into a valuable output with the main thread at the core.\n\n"
-                + lang_directive + "\n\n"
+                "Integrate everything into a valuable output with the main thread at the core. "
+                "Translate any section headings above into the target output language as needed.\n\n"
                 + instruction
             ),
         },
@@ -1014,7 +1044,7 @@ async def merge_threads(
         },
     ]
 
-    stream = await chat_stream(messages, model_type="merge", inject_meta=False)
+    stream = await chat_stream(messages, model_type="merge", inject_meta=False, lang=lang)
     async for chunk in stream:
         yield chunk
 

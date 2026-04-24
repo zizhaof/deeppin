@@ -98,6 +98,7 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
                 thread_id_str,
                 body.anchor_text,
                 str(body.anchor_message_id) if body.anchor_message_id else None,
+                lang=body.lang,
             )
         )
 
@@ -108,6 +109,7 @@ async def _generate_and_patch(
     thread_id: str,
     anchor_text: str,
     anchor_message_id: str | None,
+    lang: str | None = None,
 ) -> None:
     """
     Background task: fetch the full message containing the anchor → generate title and suggestions → write back to DB.
@@ -135,7 +137,7 @@ async def _generate_and_patch(
 
     llm_ok = True
     try:
-        title, suggestions = await generate_title_and_suggestions(anchor_text, context_summary)
+        title, suggestions = await generate_title_and_suggestions(anchor_text, context_summary, lang=lang)
     except Exception as e:
         # LLM failed: use first 20 chars of anchor as title; no suggestions
         llm_ok = False
@@ -160,7 +162,11 @@ async def _generate_and_patch(
 
 
 @router.get("/threads/{thread_id}/suggest")
-async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)):
+async def suggest_questions(
+    thread_id: uuid.UUID,
+    lang: str | None = None,
+    auth=Depends(get_current_user),
+):
     """
     Return suggested follow-up questions for a sub-thread (up to 3) plus the
     LLM-generated title.
@@ -248,7 +254,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
 
     sync_llm_ok = True
     try:
-        new_title, questions = await generate_title_and_suggestions(anchor, context_summary)
+        new_title, questions = await generate_title_and_suggestions(anchor, context_summary, lang=lang)
         if new_title:
             title = new_title
     except Exception as e:

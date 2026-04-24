@@ -4,6 +4,7 @@ Unit tests for the LLM client.
 
 Covers:
   - _load_groq_keys
+  - _lang_directive: per-locale demonstration line + English MUST suffix
   - pick_model: returns a valid model name
   - _build_model_list: multi-key x multi-model expansion
   - SmartRouter: slot selection, usage tracking, score computation, recovery time
@@ -14,6 +15,7 @@ Covers:
   - merge_threads: merge output across all formats
 """
 import os
+import re
 import time
 import pytest
 from unittest.mock import patch, AsyncMock
@@ -564,4 +566,188 @@ class TestMergeThreads:
 
         assert "flowing" in captured["system"].lower() or "in-depth" in captured["system"].lower()
 
+
+# ── _lang_directive / output-language forcing ─────────────────────────────
+
+# Unicode range covering Han/Kana/Hangul/Cyrillic — used to catch stray
+# non-Latin prose that would bias small summarizer models away from the
+# chosen UI locale.
+_CJK_CYR_RE = re.compile(r"[぀-ヿ㐀-鿿가-힣Ѐ-ӿ]")
+
+
+class TestLangDirective:
+    """The shared directive helper every LLM call uses to pin output language."""
+
+    def test_english_default_on_missing_lang(self):
+        from services.llm_client import _lang_directive
+        d = _lang_directive(None)
+        assert "Always respond in English" in d
+        assert "MUST be written in English" in d
+
+    def test_english_default_on_unknown_lang(self):
+        from services.llm_client import _lang_directive
+        assert "Always respond in English" in _lang_directive("klingon")
+
+    def test_zh_demo_in_target_script(self):
+        """The demo line must be in the target script — this is the signal that flips small models."""
+        from services.llm_client import _lang_directive
+        d = _lang_directive("zh")
+        assert "请始终使用简体中文回答" in d
+        assert "MUST be written in Simplified Chinese" in d
+
+    def test_ja_demo_in_target_script(self):
+        from services.llm_client import _lang_directive
+        d = _lang_directive("ja")
+        assert "日本語で回答" in d
+        assert "MUST be written in Japanese" in d
+
+    def test_all_supported_locales_present(self):
+        """Every locale the UI ships must have a directive entry."""
+        from services.llm_client import _LANG_NAMES, _LANG_DEMOS
+        for code in ("en", "zh", "ja", "ko", "es", "fr", "de", "pt", "ru"):
+            assert code in _LANG_NAMES
+            assert code in _LANG_DEMOS
+
+
+class TestChatStreamSystemPrompt:
+    """Regression guards for the main chat-stream system prompt."""
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_is_english_only(self):
+        """The bug that prompted this feature: Chinese prose in the system prompt biased llama-3.3-70b to output Chinese even for English users."""
+        from services.llm_client import chat_stream
+
+        captured = {}
+
+        async def fake_completion(**kwargs):
+            captured["messages"] = kwargs["messages"]
+
+            class _Resp:
+                _smart_router_model = "test/stub"
+
+                def __aiter__(self):
+                    async def _gen():
+                        if False:
+                            yield None
+                    return _gen()
+            return _Resp()
+
+        with patch("services.llm_client.router.completion", side_effect=fake_completion):
+            result = await chat_stream([{"role": "user", "content": "hi"}], need_title=True)
+            async for _ in result:
+                pass
+
+        system_msgs = [m for m in captured["messages"] if m["role"] == "system"]
+        # There must be an injected system prompt (inject_meta default=True).
+        assert system_msgs, "chat_stream should inject a system prompt"
+        last_system = system_msgs[-1]["content"]
+
+        # Regression guard: no CJK/Cyrillic prose in the English-default prompt.
+        assert not _CJK_CYR_RE.search(last_system), (
+            "Default chat_stream system prompt must be ASCII/Latin only — "
+            f"non-Latin chars leaked: {last_system!r}"
+        )
+
+        # And the English directive is present.
+        assert "Always respond in English" in last_system
+        assert "MUST be written in English" in last_system
+
+    @pytest.mark.asyncio
+    async def test_system_prompt_forces_target_lang(self):
+        """Passing lang='zh' injects the Chinese demo line verbatim."""
+        from services.llm_client import chat_stream
+
+        captured = {}
+
+        async def fake_completion(**kwargs):
+            captured["messages"] = kwargs["messages"]
+
+            class _Resp:
+                _smart_router_model = "test/stub"
+
+                def __aiter__(self):
+                    async def _gen():
+                        if False:
+                            yield None
+                    return _gen()
+            return _Resp()
+
+        with patch("services.llm_client.router.completion", side_effect=fake_completion):
+            result = await chat_stream([{"role": "user", "content": "hi"}], lang="zh")
+            async for _ in result:
+                pass
+
+        last_system = captured["messages"][-1]["content"]
+        assert "请始终使用简体中文回答" in last_system
+        assert "MUST be written in Simplified Chinese" in last_system
+
+
+class TestSummarizerLangDirective:
+    """Every summarizer-group call must carry a lang directive so it can't drift."""
+
+    @pytest.mark.asyncio
+    async def test_generate_title_and_suggestions_injects_zh_directive(self):
+        from services.llm_client import generate_title_and_suggestions
+        captured = {}
+
+        async def fake(messages, **_):
+            captured["messages"] = messages
+            return "TITLE: t\nQ1: a\nQ2: b\nQ3: c"
+
+        with patch("services.llm_client._summarizer_call", side_effect=fake):
+            await generate_title_and_suggestions("anchor in English", lang="zh")
+
+        system = captured["messages"][0]
+        assert system["role"] == "system"
+        assert "请始终使用简体中文回答" in system["content"]
+
+    @pytest.mark.asyncio
+    async def test_summarize_injects_en_directive_by_default(self):
+        from services.llm_client import summarize
+        captured = {}
+
+        async def fake(messages, **_):
+            captured["messages"] = messages
+            return "summary"
+
+        with patch("services.llm_client._summarizer_call", side_effect=fake):
+            await summarize("some text", 200)
+
+        system = captured["messages"][0]
+        assert system["role"] == "system"
+        assert "Always respond in English" in system["content"]
+
+    @pytest.mark.asyncio
+    async def test_merge_summary_forwards_lang(self):
+        from services.llm_client import merge_summary
+        captured = {}
+
+        async def fake(messages, **_):
+            captured["messages"] = messages
+            return "merged"
+
+        with patch("services.llm_client._summarizer_call", side_effect=fake):
+            await merge_summary("old", "new round", 300, lang="ja")
+
+        system = captured["messages"][0]
+        assert "日本語で回答" in system["content"]
+
+    @pytest.mark.asyncio
+    async def test_assess_relevance_forwards_lang(self):
+        from services.llm_client import assess_relevance
+        captured = {}
+
+        async def fake(messages, **_):
+            captured["messages"] = messages
+            return "[]"
+
+        with patch("services.llm_client._summarizer_call", side_effect=fake):
+            await assess_relevance(
+                "main summary",
+                [{"thread_id": "t1", "title": "T", "summary": "s"}],
+                lang="fr",
+            )
+
+        system = captured["messages"][0]
+        assert "Répondez toujours en français" in system["content"]
 

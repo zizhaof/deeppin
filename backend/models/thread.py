@@ -33,6 +33,10 @@ class CreateThreadRequest(BaseModel):
     # Depth passed directly from the frontend to avoid an extra DB round-trip
     depth: int | None = None
 
+    # Current frontend UI locale; forces the output language of the LLM-generated
+    # title and suggested follow-up questions for this sub-thread.
+    lang: str | None = None
+
 
 class Thread(BaseModel):
     """
