@@ -251,6 +251,13 @@ cd backend && pytest tests/test_foo.py -q                    # 单文件
 2. **更新文档**：如果改动影响架构 / API / 部署 / provider 清单 / MVP 范围 / 开发约定 → 同步 update CLAUDE.md，必要时 README.md。过期文档比没有更糟。
 3. Commit 信息：`<type>: <英文简述>`，必要时带正文解释为什么。
 4. **push 前 confirm**：用户没明说「push」就不要自己 push。
+5. **PR 开了之后后台监视合并**：用 `gh pr view <num> --json state,mergedAt -q .state` 周期性查（推荐 Schedule/loop 5-10 min 一次）。一旦 `state == MERGED`：
+   - 同步主仓：`git -C ~/workspace/deeppin fetch origin && git -C ~/workspace/deeppin pull --ff-only origin main`
+   - 删 worktree：`git -C ~/workspace/deeppin worktree remove ~/workspace/deeppin-trees/<safe-branch>`（或 `dpwt-rm <branch>`）
+   - 删本地分支：`git -C ~/workspace/deeppin branch -d <branch>`（已合并的话 `-d` 安全；没合并别用 `-D`）
+   - 远端 feature 分支：merge 通过 GitHub UI 时通常勾了 "Delete branch"，不用手动管；如果还在，`git push origin --delete <branch>`
+   - 通知用户清理完了
+   理由：worktree 留太久会和后续从 origin/main 起的新分支基底脱节，主仓 `git worktree list` 会越来越长。
 
 ### 工作区规矩：所有改动都走 worktree，主仓永远 clean 在 main
 
