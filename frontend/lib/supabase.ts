@@ -1,5 +1,4 @@
-// frontend/lib/supabase.ts
-// 浏览器端 Supabase 客户端（用于客户端组件）
+// Browser-side Supabase client (for client components).
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClient() {

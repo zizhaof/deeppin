@@ -1,7 +1,3 @@
-// components/demoFlow/content.ts
-// Welcome-page 三层 walkthrough 的 9 语种文案 —— PinDemo 和 MobilePinDemo 共用。
-// 所有 UI 可见文字都在这里；两个组件只消费不生产。
-//
 // Nine-locale copy for the landing-page 3-layer walkthrough, shared by
 // PinDemo (desktop) and MobilePinDemo. Any user-facing string lives here;
 // the two components only consume this table.
@@ -10,37 +6,37 @@ import type { Lang } from "@/lib/i18n";
 import type { DemoPhase } from "./types";
 
 export interface DemoContent {
-  // —— 主线问答 ———————————————————————————————————————————————
+  // ── Main thread Q&A ──────────────────────────────────────────────
   mainQuestion: string;
-  /** AI 主线回复拼接：aiBefore1 + anchor1 + aiBetween + anchor2 + aiAfter2 */
+  /** Main AI reply concatenated as: aiBefore1 + anchor1 + aiBetween + anchor2 + aiAfter2. */
   aiBefore1: string;
   anchor1: string;
   aiBetween: string;
   anchor2: string;
   aiAfter2: string;
-  /** L0 pin 1/2 各自 3 条 AI 推荐追问，picked = 第一条 */
+  /** Three AI follow-up suggestions for L0 pin 1/2; picked = the first. */
   suggestions1: readonly [string, string, string];
   suggestions2: readonly [string, string, string];
 
-  // —— 子线程 1（L1）内容 ——————————————————————————————————————
-  /** sub1Before + sub1Anchor + sub1After —— 嵌入 L2 入口锚点 */
+  // ── Sub-thread 1 (L1) content ────────────────────────────────────
+  /** sub1Before + sub1Anchor + sub1After — sub1Anchor becomes the L2 entry anchor. */
   sub1Before: string;
   sub1Anchor: string;
   sub1After: string;
-  /** L1 里再插一针的 3 条追问 */
+  /** Three follow-up suggestions for the L1-pin-again step. */
   suggestions3: readonly [string, string, string];
 
-  // —— 子子线程 2（L2）回复 ——————————————————————————————————————
+  // ── Deepest sub-thread (L2) reply ───────────────────────────────
   sub2Reply: string;
 
-  // —— 面包屑标题 ——————————————————————————————————————————
+  // ── Breadcrumb titles ───────────────────────────────────────────
   subTitle1: string;
   subTitle2: string;
   deepTitle: string;
   mainCrumb: string;
 
-  // —— UI 标签 ———————————————————————————————————————————
-  /** selpop 上的「追问 / Question」按钮（取代旧的「插针」按钮） */
+  // ── UI labels ───────────────────────────────────────────────────
+  /** "Question" button on selpop (replaces the old "Pin" button). */
   followupLabel: string;
   pinLabel: string;
   copyLabel: string;
@@ -53,22 +49,22 @@ export interface DemoContent {
   mergeLabel: string;
   mergeOutputLabel: string;
   suggestionsLabel: string;
-  /** Pin dialog 里自定义输入框 placeholder */
+  /** Placeholder for the pin dialog's custom-question input. */
   customQuestionPlaceholder: string;
-  /** Anchor popover 里 "YOU" / "Deeppin" 小标题 */
+  /** "YOU" / "Deeppin" sub-labels in the anchor popover. */
   youLabel: string;
   aiLabel: string;
-  /** 抽屉 / 大图上 "你在这里" 标示 */
+  /** "You are here" marker on the drawer / large graph. */
   youAreHereLabel: string;
-  /** graph-nav-root 时 "点这里" 提示 */
+  /** "Tap here" hint for the graph-nav-root step. */
   tapLabel: string;
-  /** 流式过程中的状态词（右栏 generating） */
+  /** Status words shown while streaming (right-rail generating indicator). */
   replyingLabel: string;
   generatingLabel: string;
-  /** 背景回复就绪时的指示 */
+  /** Indicator shown when the background reply is ready. */
   readyLabel: string;
 
-  // —— Merge 弹窗内容 ————————————————————————————————————————
+  // ── Merge modal copy ────────────────────────────────────────────
   mergeSelectThreads: string;
   mergeAll: string;
   mergeGenerate: string;
@@ -76,14 +72,13 @@ export interface DemoContent {
   mergeCopy: string;
   mergeFormats: readonly [string, string, string];
   mergeReport: string;
-  /** merge modal 底下的「N 条分支已选」标签 */
+  /** "N branches selected" label at the bottom of the merge modal. */
   mergeBranchesSelected: string;
 
-  // —— 每个 phase 的底栏 caption ————————————————————————————————
+  // ── Bottom caption per phase ────────────────────────────────────
   caption: Record<DemoPhase, string>;
 }
 
-// 英文作为基准 locale —— 其它 8 种基于这份翻译。
 // English is the base copy — the other eight locales mirror it.
 export const DEMO_CONTENT: Record<Lang, DemoContent> = {
   en: {

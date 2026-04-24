@@ -22,7 +22,6 @@ import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import { clearActiveHighlight } from "@/components/MainThread/MessageBubble";
 import AnchorPreviewPopover from "@/components/MainThread/AnchorPreviewPopover";
 import FlattenPreview from "@/components/FlattenPreview";
-import type { ThreadCardItem } from "@/components/SubThread/types";
 import ThreadNav from "@/components/Layout/ThreadNav";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import ThreadGraph from "@/components/Layout/ThreadGraph";
@@ -32,27 +31,23 @@ import MobileChatLayout from "@/components/Mobile/MobileChatLayout";
 import DeleteThreadDialog from "@/components/DeleteThreadDialog";
 
 /**
- * 检测用户输入是否需要实时联网搜索。
+ * Detect whether user input needs real-time web search.
  *
- * 双轨匹配：
- *   A. 强信号领域词 — 词本身就意味着需要实时数据（股价、天气、热搜…）
- *   B. 显式查询动作词 — 用户明确提出"查/搜/找"的意图（查一下、帮我搜…）
- * 任意一轨命中即触发。
+ * Two-track match:
+ *   A. Strong-signal domain words — the word itself implies real-time data
+ *      (stock prices, weather, trending, etc.).
+ *   B. Explicit query verbs — the user spells out "look up / search / find".
+ * Trigger if either track matches.
  */
 
 /**
- * 客户端瞬时生成占位追问，供弹窗立即展示，稍后由 LLM 结果合并/替换。
- * 占位固定英文：UI 语言跟锚点语言不匹配的组合场景下，把"未决"的那一方统一用英文兜，
- * 避免混排歧义；LLM 返回后会用匹配锚点语言的真实追问覆盖。
- *
  * Client-side placeholder questions shown instantly in the pin dialog while the
  * LLM generates real follow-ups. Kept in English on purpose: anchor language and
  * UI language may diverge, and an English fallback keeps the transient state
  * unambiguous until LLM results arrive.
  */
 function makePlaceholders(anchorText: string): string[] {
-  // 问题文本使用完整锚点，UI 显示由 CSS truncate 截断，发送给 AI 的内容不截断
-  // Use full anchor text; CSS `truncate` handles visual clipping — never truncate what's sent to the AI
+  // Use full anchor text; CSS `truncate` handles visual clipping — never truncate what's sent to the AI.
   return [
     `Explain "${anchorText}" in detail`,
     `What are the use cases of "${anchorText}"?`,
@@ -73,7 +68,6 @@ export default function ChatPage() {
     messagesByThread,
     streamingByThread,
     unreadCounts,
-    anchorTextTops,
     suggestions,
     navHistory,
     navIndex,
@@ -106,10 +100,9 @@ export default function ChatPage() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [pinDialog, setPinDialog] = useState<PinDialogInfo | null>(null);
-  /** 悬浮锚点时展开的预览 popover — 取代旧的左栏卡片入口
-   *  Anchor-hover preview popover — replaces the old left-rail card entry. */
+  /** Anchor-hover preview popover — replaces the old left-rail card entry. */
   const [anchorHover, setAnchorHover] = useState<{ threadIds: string[]; rect: DOMRect } | null>(null);
-  /** 右侧概览视图：dots（圆点树）或 list（文字列表） */
+  /** Right-rail overview view: dots (circle tree) or list (text list). */
   const [rightView, setRightView] = useState<"dots" | "canvas">(() =>
     typeof window !== "undefined"
       ? ((localStorage.getItem("deeppin:right-view") as "dots" | "canvas") ?? "dots")
@@ -120,15 +113,14 @@ export default function ChatPage() {
     localStorage.setItem("deeppin:right-view", v);
   };
 
-  // navigateTo 包装：记录上次访问的线程，下次进入 session 时恢复
-  // Wrapper around navigateTo: saves last visited thread so it can be restored on next session entry
+  // Wrapper around navigateTo: saves last visited thread so it can be restored on next session entry.
   const handleNavigateTo = useCallback((threadId: string) => {
     navigateTo(threadId);
     localStorage.setItem(`deeppin:last-thread:${sessionId}`, threadId);
   }, [navigateTo, sessionId]);
 
-  // 扁平化：调用后端，重新加载 session（threads 列表只剩主线，主线消息按 preorder 重排）
-  // Flatten: call backend, reload session (threads list collapses to main only, main messages reordered by preorder)
+  // Flatten: call backend, reload session (threads list collapses to main only,
+  // main messages reordered by preorder).
   const handleFlatten = useCallback(async () => {
     setFlattening(true);
     setFlattenToast(null);
@@ -161,15 +153,15 @@ export default function ChatPage() {
     }
   }, [sessionId, setThreads, setMessages, navigateTo, t]);
 
-  // toast 自动消失 / Auto-dismiss the flatten toast
+  // Auto-dismiss the flatten toast.
   useEffect(() => {
     if (!flattenToast) return;
     const id = setTimeout(() => setFlattenToast(null), 3500);
     return () => clearTimeout(id);
   }, [flattenToast]);
 
-  // 右栏宽度（可拖拽调整）—— 默认按 4:1（main:rail）比例设定。
-  // Right panel width — defaults to a 4:1 main:rail ratio (rail ~= 20% of viewport).
+  // Right panel width (drag-resizable) — defaults to a 4:1 main:rail ratio
+  // (rail ~= 20% of viewport).
   const [rightW, setRightW] = useState(() => {
     if (typeof window === "undefined") return 340;
     const stored = Number(localStorage.getItem("deeppin:right-w"));
@@ -177,7 +169,6 @@ export default function ChatPage() {
     return Math.max(240, Math.min(420, Math.round(window.innerWidth * 0.2)));
   });
   const MIN_SIDE = 220;
-  // 上限 = 窗口宽度的一半，为主对话区留出 >= 220px 的空间
   // Max = half of viewport width; main column always keeps >= 220px.
   const maxSide = () =>
     typeof window !== "undefined" ? Math.max(MIN_SIDE, Math.floor(window.innerWidth / 2)) : 640;
@@ -193,23 +184,12 @@ export default function ChatPage() {
     window.addEventListener("mouseup", onUp);
   }, []);
   const anchorHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // messageId → 相对主滚动容器顶部的 top 偏移（px），用于 Mobile 的锚点计算
-  const [messagePositions, setMessagePositions] = useState<Record<string, number>>({});
-
-  // ── refs ────────────────────────────────────────────────────────
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const messageRefs = useRef<Record<string, HTMLDivElement>>({});
-  const scrollFrameRef = useRef<number | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
-  /** 当前登录用户是否匿名；影响「新对话」按钮可见性 + 配额弹窗文案。
-   *  Whether the current user is anonymous — gates in-chat "new session" button + quota modal. */
+  /** Whether the current user is anonymous — gates in-chat "new session" button + quota modal. */
   const [isAnon, setIsAnon] = useState(false);
-  /** 额度用尽弹窗。variant 决定是 20 轮用尽 (quota) 还是多开 session (session)。
-   *  Quota-exceeded modal; variant picks between trial-turns vs session-cap copy. */
+  /** Quota-exceeded modal; variant picks between trial-turns vs session-cap copy. */
   const [quotaModal, setQuotaModal] = useState<{ variant: "quota" | "session"; message?: string } | null>(null);
-  /** 当前 session 已使用的轮数（匿名用户 quota 计数器用）。init 时从 getSession 取，
-   *  每次 send 后本地 +1；与后端 turn_count 最终一致，但无需额外往返。
-   *  Per-session turn count for the anon quota counter. Initialized from getSession,
+  /** Per-session turn count for the anon quota counter. Initialized from getSession,
    *  incremented locally after each send — eventually consistent with backend turn_count. */
   const [sessionTurnCount, setSessionTurnCount] = useState(0);
 
@@ -221,14 +201,13 @@ export default function ChatPage() {
   const isStreaming = streamingText !== undefined || !!activeStatus;
   const activeSuggestions = activeThreadId ? (suggestions[activeThreadId] ?? []) : [];
 
-  // ── 初始化（含 auth 检查）────────────────────────────────────────
-  // Auth check is done inside init() so data fetches never race with auth
+  // ── Initialization (includes auth check) ────────────────────────
+  // Auth check is done inside init() so data fetches never race with auth.
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      // 双保险：middleware 已处理，但 init 内也验证一次，确保数据请求不会在 auth 之前发出
-      // Defense-in-depth: middleware already blocked unauthenticated access,
-      // but checking here ensures data fetches never fire before auth is confirmed
+      // Defense-in-depth: middleware already blocks unauthenticated access,
+      // but checking here ensures data fetches never fire before auth is confirmed.
       const supabase = createClient();
       const { data: { session: authSession } } = await supabase.auth.getSession();
       if (!authSession) {
@@ -236,20 +215,17 @@ export default function ChatPage() {
         return;
       }
       setUserAvatarUrl(authSession.user.user_metadata?.avatar_url ?? null);
-      // is_anonymous 可能不存在（老版本 supabase-js），缺失则按「非匿名」处理
-      // is_anonymous may be absent on older supabase-js; treat missing as non-anon
+      // is_anonymous may be absent on older supabase-js; treat missing as non-anon.
       setIsAnon(Boolean((authSession.user as { is_anonymous?: boolean }).is_anonymous));
 
       try {
-        // 若 session 尚未写入 DB（首页预热只生成了 UUID），先创建再加载。
         // If the session hasn't been persisted yet (prewarm only generated a UUID),
         // create it now with the pre-generated ID, then load normally.
         try {
           await getSession(sessionId);
         } catch {
-          // 404（或其他错误）：用预生成的 sessionId 在 DB 中创建 session
-          // 匿名用户已有 1 个 session 时会 402 anon_session_limit
-          // Anon users hitting the 1-session cap get 402 anon_session_limit here
+          // 404 (or any other error): create the session in the DB with the pre-generated id.
+          // Anon users hitting the 1-session cap get 402 anon_session_limit here.
           try {
             await createSession({ id: sessionId });
           } catch (err) {
@@ -261,8 +237,7 @@ export default function ChatPage() {
           }
         }
 
-        // session（含 threads）和全部消息并行加载，1 次网络往返
-        // Load session (with threads) and all messages in parallel — 1 round-trip total
+        // Load session (with threads) and all messages in parallel — 1 round-trip total.
         const [session, messageMap] = await Promise.all([
           getSession(sessionId),
           getAllMessages(sessionId),
@@ -280,7 +255,7 @@ export default function ChatPage() {
           : main?.id;
         if (target) navigateTo(target);
 
-        // 批量写入所有线程消息（O(1) 次请求，替代原来的 N 次串行请求）
+        // Batch-write messages for every thread (one request instead of N serial calls).
         // Bulk-set all thread messages (O(1) requests, replaces the original N sequential requests)
         for (const t of allThreads) {
           if (cancelled) break;
@@ -296,22 +271,21 @@ export default function ChatPage() {
     return () => { cancelled = true; };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 切换线程时懒加载消息 ────────────────────────────────────────
+  // ── Lazy-load messages when switching threads ───────────────────
   useEffect(() => {
     if (!activeThreadId) return;
     const msgs = messagesByThread[activeThreadId];
-    // undefined 表示从未加载（新线程不走这里，pinThread 已初始化为 []）
+    // undefined means never loaded (new threads don't hit this — pinThread initializes to []).
     if (msgs !== undefined) return;
     getMessages(activeThreadId)
       .then((m) => setMessages(activeThreadId, m))
       .catch(() => {});
   }, [activeThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 首页输入框跳转后自动发送待发消息 ──────────────────────────
+  // ── Auto-send the pending message after navigating from the home input ──
   const pendingMsgSentRef = useRef(false);
   useEffect(() => {
     if (!activeThreadId || pendingMsgSentRef.current) return;
-    // 校验：activeThreadId 必须属于当前 session，防止使用上一个 session 的残留 ID
     // Validate: activeThreadId must belong to the current session to guard against
     // stale Zustand state left over from the previous navigation.
     if (!threads.some(t => t.id === activeThreadId && t.session_id === sessionId)) return;
@@ -322,53 +296,19 @@ export default function ChatPage() {
     handleSend(pending);
   }, [activeThreadId, threads]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 消息位置测量 ────────────────────────────────────────────────
-  const updatePositions = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const containerTop = container.getBoundingClientRect().top;
-    const newPos: Record<string, number> = {};
-    for (const [id, el] of Object.entries(messageRefs.current)) {
-      if (el) {
-        newPos[id] = el.getBoundingClientRect().top - containerTop + container.scrollTop;
-      }
-    }
-    setMessagePositions((prev) => {
-      const keys = new Set([...Object.keys(prev), ...Object.keys(newPos)]);
-      for (const k of keys) {
-        if (prev[k] !== newPos[k]) return newPos;
-      }
-      return prev;
-    });
-  }, []);
-
-  const messageCount = activeMessages.length;
-  useEffect(() => {
-    updatePositions();
-  }, [messageCount, updatePositions]);
-
-  const handleMessageRef = useCallback((messageId: string, el: HTMLDivElement | null) => {
-    if (el) messageRefs.current[messageId] = el;
-    else delete messageRefs.current[messageId];
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    if (scrollFrameRef.current !== null) return;
-    scrollFrameRef.current = requestAnimationFrame(() => {
-      updatePositions();
-      scrollFrameRef.current = null;
-    });
-  }, [updatePositions]);
-
-  // ── 发送消息 ────────────────────────────────────────────────────
-  // content = AI 看到的完整内容；display = 气泡里显示的文字（含附件标签，可选）
-  // ragFilename = 刚上传的 RAG 文件名，后端用于优先检索该文件的块
+  // ── Send message ────────────────────────────────────────────────
+  // content = full text the AI sees; display = optional bubble text (may include
+  // attachment label).
+  // ragFilename = the just-uploaded RAG filename — backend prioritizes chunks
+  // from that file.
   //
-  // 注意：所有消息都走 sendMessageStream（存库路径）。
-  // 联网搜索由后端 classify_search_intent 自动判断，前端不再路由到无状态的 /api/search。
-  // 这样确保所有对话（包括搜索类查询）都能持久化，刷新后不丢失。
-  // 统一处理流式错误：匿名额度用尽 → 弹配额登录弹窗；其他 → 常规错误显示。
-  // Unified stream error handler: quota exceeded opens the sign-in modal; others fall back to existing error UI.
+  // Note: every message goes through sendMessageStream (the persisted path).
+  // Web-search is decided server-side by classify_search_intent — the frontend
+  // no longer routes to the stateless /api/search. This ensures every chat
+  // (including search queries) is persisted and survives a refresh.
+  //
+  // Unified stream error handler: anon quota exhausted → quota sign-in modal;
+  // anything else → existing error UI.
   const makeStreamErrorHandler = useCallback(
     (threadId: string, surfaceError: boolean) =>
       (msg: string, info?: SseErrorInfo) => {
@@ -397,8 +337,7 @@ export default function ChatPage() {
       (fullText, messageId, model) => finalizeStream(threadId, fullText, messageId, model),
       makeStreamErrorHandler(threadId, true),
       (tid, title) => updateThreadTitle(tid, title),
-      // 后端 status 文本是 "中文 / English" 双语,这里按 lang 裁掉一半
-      // Backend SSE status text is bilingual ("中文 / English") — keep only
+      // Backend SSE status text is bilingual ("Chinese / English") — keep only
       // the half matching the active locale before showing it.
       (text) => setStreamStatus(threadId, localizeStatusText(text, lang)),
       ragFilename,
@@ -421,13 +360,12 @@ export default function ChatPage() {
     );
   }, [consumeSuggestion, addUserMessage, appendChunk, finalizeStream, setStreamStatus, makeStreamErrorHandler, lang]);
 
-  // ── 点击锚点进入子线程 ──────────────────────────────────────────
+  // ── Click an anchor to enter the sub-thread ─────────────────────
   const handleAnchorClick = useCallback((threadId: string) => {
     handleNavigateTo(threadId);
   }, [handleNavigateTo]);
 
-  // ── Sessions 列表懒加载（首次访问时拉一次）
-  //    Lazy-fetch the session list (kicked off on first drawer open). */
+  // ── Lazy-fetch the session list (kicked off on first drawer open) ─
   const ensureSessionsLoaded = useCallback(() => {
     if (sessions.length === 0) {
       setSessionsLoading(true);
@@ -438,15 +376,13 @@ export default function ChatPage() {
     }
   }, [sessions.length]);
 
-  // 桌面 SessionDrawer 入口:打开抽屉 + 懒加载
-  // Desktop entry point: open the legacy SessionDrawer + lazy-load.
+  // Desktop entry point: open the SessionDrawer + lazy-load the list.
   const handleOpenSessions = useCallback(() => {
     setShowSessions(true);
     ensureSessionsLoaded();
   }, [ensureSessionsLoaded]);
 
-  // ── 新建对话：匿名用户弹登录引导，登录用户直接跳新 UUID ───────────
-  // New chat: anon users get the sign-in prompt; signed-in users go straight to a fresh UUID.
+  // ── New chat: anon → sign-in prompt; signed-in → straight to a fresh UUID ─
   const handleNewChat = useCallback(() => {
     if (isAnon) {
       setQuotaModal({ variant: "session" });
@@ -456,8 +392,7 @@ export default function ChatPage() {
     router.push(`/chat/${id}`);
   }, [isAnon, router]);
 
-  // ── 匿名用户手动触发 Google linkIdentity（保留 user_id + 历史）──
-  // Anon sign-in — linkIdentity preserves user_id + all trial messages.
+  // ── Anon sign-in — linkIdentity preserves user_id + all trial messages ─
   const handleSignIn = useCallback(async () => {
     const supabase = createClient();
     const redirectTo =
@@ -474,21 +409,20 @@ export default function ChatPage() {
     try {
       await deleteSession(sid);
       setSessions((prev) => prev.filter((s) => s.id !== sid));
-      // 如果删的是当前 session，跳回首页
+      // If we deleted the current session, head back to home.
       if (sid === sessionId) router.push("/");
     } catch (err) {
       alert(`${t.deleteError}${err instanceof Error ? err.message : t.unknownError}`);
     }
   }, [sessionId, t]);
 
-  // ── 删除线程弹窗：带 graph 预览，主线命中 → 删 session ─────────────
-  // Delete-thread dialog: graph-preview confirm; hitting the main thread wipes
-  // the entire session.
+  // ── Delete-thread dialog: graph-preview confirm; hitting the main thread
+  //    wipes the entire session ────────────────────────────────────
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const openDeleteDialog = useCallback((threadId: string) => {
-    setAnchorHover(null); // hover popover 关闭，避免遮弹窗
+    setAnchorHover(null); // close the hover popover so it doesn't sit over the dialog
     setDeleteTargetId(threadId);
   }, []);
 
@@ -505,8 +439,7 @@ export default function ChatPage() {
     setDeleting(true);
     try {
       if (isMainTarget) {
-        // 删主线 = 删 session，后端 CASCADE；跳首页
-        // Deleting the main thread = deleting the session (backend CASCADE).
+        // Deleting the main thread = deleting the session (backend CASCADE) — go home.
         await deleteSession(sessionId);
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
         router.push("/");
@@ -514,7 +447,6 @@ export default function ChatPage() {
       }
       await deleteThread(deleteTargetId);
       const parentId = target.parent_thread_id;
-      // 如果激活线程在被删子树里，先跳到 parent；再从 store 里剔除
       // If the active thread lives in the doomed subtree, hop to the parent
       // before we strip it from the store.
       const doomed = new Set<string>();
@@ -536,15 +468,14 @@ export default function ChatPage() {
     }
   }, [deleteTargetId, threads, sessionId, activeThreadId, removeThreadAndDescendants, handleNavigateTo, router, t]);
 
-  // ── 切换线程时清除残留 hover popover ─────────────────────────────
+  // ── Clear stale hover popover when switching threads ────────────
   useEffect(() => {
     setAnchorHover(null);
   }, [activeThreadId]);
 
-  // ── 悬浮锚点：展开/关闭预览 popover（左栏卡片入口的替代方案）─────
-  // Anchor hover: open/close the preview popover (replaces the old left-rail card entry point).
-  // 延迟关闭，让用户有时间把鼠标从锚点移到 popover 上
-  // Delay close so the mouse can travel from anchor to popover without dropping it.
+  // ── Anchor hover: open/close the preview popover (replaces the old
+  //    left-rail card entry point). Delay close so the mouse can travel
+  //    from anchor to popover without dropping it ────────────────
   const handleAnchorHover = useCallback((threadIds: string[], rect: DOMRect | null) => {
     if (anchorHoverTimer.current) clearTimeout(anchorHoverTimer.current);
     if (threadIds.length > 0 && rect) {
@@ -554,48 +485,25 @@ export default function ChatPage() {
     }
   }, []);
 
-  // ── 插针 ────────────────────────────────────────────────────────
+  // ── Pin handling ────────────────────────────────────────────────
   const handleTextSelect = useCallback(
     (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
-      const container = scrollContainerRef.current;
-      const centerY = rect.top + rect.height / 2;
-      const anchorContentY = container
-        ? centerY - container.getBoundingClientRect().top + container.scrollTop
-        : centerY;
-
-      setSelection({ text, messageId, rect, anchorContentY, startOffset, endOffset });
+      setSelection({ text, messageId, rect, startOffset, endOffset });
     },
     []
   );
 
-  // 手机端专用:用户在 inline action sheet 上点 Pin 时直接走 handlePin
-  // (动作语义已经是「我要插针」,不再需要 PinMenu 中转)。
-  //
-  // 需要保持函数引用稳定(MessageBubble 的 touch useEffect 依赖它),但
-  // handlePin 在每次 render 被重建,且闭包读 mainThread / activeThreadId
-  // 等在首渲染时都还 undefined。`useCallback([], [])` 会把首渲染那个
-  // "handlePin=会提前 return 的版本" 冻住,点 Pin 永远无反应。
-  // 用 ref 兜底:callback 引用稳定,但 handlePinRef.current 每次 render
-  // 刷成最新的那个 handlePin。
-  //
-  // Mobile-only bridge — taps on Pin skip PinMenu and go straight to
-  // handlePin. We must keep this callback referentially stable (the
-  // touch-handler useEffect in MessageBubble has it as a dep), but
-  // handlePin is recreated each render and closes over mainThread /
-  // activeThreadId, which are undefined on the very first render before
-  // the session API resolves. A `useCallback(fn, [])` would freeze the
-  // first-render handlePin forever, so the early-return `if (!mainThread)`
-  // fires on every tap and nothing happens. Use a ref to always reach
-  // the latest handlePin while keeping the outer callback stable.
+  // Mobile-only bridge — taps on Pin in the inline action sheet jump straight
+  // to handlePin (no PinMenu round-trip). The callback identity must stay stable
+  // because MessageBubble's touch useEffect depends on it, but handlePin is
+  // rebuilt every render and closes over mainThread / activeThreadId — both
+  // undefined on the first render. `useCallback(fn, [])` would freeze the early-
+  // return version forever, so we proxy through a ref that always points at the
+  // latest handlePin.
   const handlePinRef = useRef<((info: SelectionInfo) => void) | null>(null);
   const handleMobileSelectionPin = useCallback(
     (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
-      const container = scrollContainerRef.current;
-      const centerY = rect.top + rect.height / 2;
-      const anchorContentY = container
-        ? centerY - container.getBoundingClientRect().top + container.scrollTop
-        : centerY;
-      handlePinRef.current?.({ text, messageId, rect, anchorContentY, startOffset, endOffset });
+      handlePinRef.current?.({ text, messageId, rect, startOffset, endOffset });
     },
     []
   );
@@ -607,9 +515,7 @@ export default function ChatPage() {
 
     if (!mainThread) return;
 
-    const anchorTextTop = info.anchorContentY;
-
-    // 前端已知父线程 depth，直接算出子线程 depth，省去后端一次 DB 查询
+    // We already know the parent's depth on the client, so compute the child's depth here and save the backend a DB lookup.
     const parentId = activeThreadId ?? mainThread.id;
     const parentDepth = threads.find((t) => t.id === parentId)?.depth ?? 0;
 
@@ -623,18 +529,20 @@ export default function ChatPage() {
         anchor_end_offset: info.endOffset,
         depth: parentDepth + 1,
       });
-      pinThread(newThread, anchorTextTop);
+      pinThread(newThread);
 
       const threadId = newThread.id;
 
-      // 立刻用占位符展示弹窗，用户无需等待 LLM
+      // Show the dialog immediately with placeholders so the user doesn't wait on the LLM.
       const placeholders = makePlaceholders(info.text);
       setSuggestions(threadId, placeholders);
       setPinDialog({ threadId, anchorText: info.text, suggestions: placeholders, loading: true });
 
-      // /suggest 后端已做 server-side 轮询（cache_hit → poll_hit → sync_gen，最长 3s）
-      // 合并策略：3 模板 + 最多 3 条 LLM 追问；归一化字面去重，避免 sync_gen 兜底时
-      //          跟占位符撞车导致重复项（LLM 正常生成的上下文追问基本不会跟模板撞）。
+      // /suggest already polls server-side (cache_hit → poll_hit → sync_gen, up to 3s).
+      // Merge strategy: 3 placeholder templates + up to 3 LLM follow-ups, dedup'd
+      // by normalized text so that the sync_gen fallback can't collide with the
+      // placeholders (in practice, LLM-generated contextual follow-ups rarely
+      // collide with the templates).
       // Backend /suggest polls server-side (up to 3s). Merge 3 placeholders with up to 3 LLM
       // follow-ups; dedup on normalized form to avoid collisions with sync_gen's template fallback.
       const normalize = (s: string) => s.replace(/\s+/g, "").toLowerCase();
@@ -657,55 +565,14 @@ export default function ChatPage() {
     }
   };
 
-  // 每次 render 刷新 handlePinRef(稳定 callback 通过 ref 总能读到最新 handlePin)
   // Refresh the handlePin ref every render so the stable mobile bridge
   // always calls the latest closure, not a frozen first-render one.
   handlePinRef.current = handlePin;
 
-  // ── rollItems（当前激活线程的直接子针） ─────────────────────────
-  const rollItems: ThreadCardItem[] = [];
-  for (const thr of threads) {
-    if (thr.parent_thread_id !== activeThreadId) continue;
-
-    const anchorTop =
-      anchorTextTops[thr.id] ??
-      (thr.anchor_message_id ? (messagePositions[String(thr.anchor_message_id)] ?? 0) : 0);
-
-    rollItems.push({
-      thread: thr,
-      messages: messagesByThread[thr.id] ?? [],
-      streamingText: streamingByThread[thr.id],
-      statusText: statusByThread[thr.id],
-      suggestions: suggestions[thr.id] ?? [],
-      unreadCount: unreadCounts[thr.id] ?? 0,
-      anchorTop,
-    });
-  }
-  {
-    const parentMsgs = activeThreadId ? (messagesByThread[activeThreadId] ?? []) : [];
-    const msgOrder: Record<string, number> = {};
-    parentMsgs.forEach((m, i) => { msgOrder[m.id.toLowerCase()] = i; });
-    rollItems.sort((a, b) => {
-      const ai = a.thread.anchor_message_id != null ? (msgOrder[a.thread.anchor_message_id.toLowerCase()] ?? 9999) : 9999;
-      const bi = b.thread.anchor_message_id != null ? (msgOrder[b.thread.anchor_message_id.toLowerCase()] ?? 9999) : 9999;
-      if (ai !== bi) return ai - bi;
-      const aStart = a.thread.anchor_start_offset;
-      const bStart = b.thread.anchor_start_offset;
-      if (aStart != null && bStart != null && aStart !== bStart) return aStart - bStart;
-      if (aStart != null && bStart == null) return -1;
-      if (aStart == null && bStart != null) return 1;
-      const aEnd = a.thread.anchor_end_offset;
-      const bEnd = b.thread.anchor_end_offset;
-      if (aEnd != null && bEnd != null && aEnd !== bEnd) return aEnd - bEnd;
-      if (aEnd != null && bEnd == null) return -1;
-      if (aEnd == null && bEnd != null) return 1;
-      return new Date(a.thread.created_at).getTime() - new Date(b.thread.created_at).getTime();
-    });
-  }
-
-  // ── 锚点高亮数据（全线程，不只主线） ───────────────────────────
-  // useMemo 保证 threads 不变时返回同一引用，否则每次渲染产生新对象
-  // 导致 MessageBubble 的 anchors prop 变化，React.memo 失效，选区丢失
+  // ── Anchor-highlight data (all threads, not just the main one) ──
+  // useMemo keeps the same reference while threads is unchanged; otherwise a
+  // fresh object every render would change MessageBubble's anchors prop,
+  // defeat React.memo, and drop the user's text selection.
   const anchorsByMessage = useMemo(() => {
     const map: Record<string, AnchorRange[]> = {};
     for (const thr of threads) {
@@ -722,10 +589,10 @@ export default function ChatPage() {
     return map;
   }, [threads]);
 
-  // 子线程（插针）数量，供 MergeOutput 面板显示
+  // Number of sub-threads (pins) — surfaced by the MergeOutput panel.
   const pinCount = threads.filter((t) => t.depth > 0).length;
 
-  // 有未读回复的 thread id 集合 — 锚点呼吸下划线用这个判断
+  // Set of thread IDs with unread replies — used by the anchor breathing-underline check.
   // Set of thread IDs with unread replies — anchor breathing-underline keys off this.
   const unreadThreadIds = useMemo(() => {
     const s = new Set<string>();
@@ -766,7 +633,7 @@ export default function ChatPage() {
 
   return (
     <>
-      {/* ── 桌面端布局（md 及以上显示） ── */}
+      {/* ── Desktop layout (md and up) ── */}
       <div className="hidden md:flex flex-col h-screen bg-base overflow-hidden">
       <ThreadNav
         threads={threads}
@@ -782,19 +649,15 @@ export default function ChatPage() {
         onSignIn={handleSignIn}
       />
 
-      {/* 主体两栏：主对话 + 右侧概览。锚点 hover popover 取代了原来的左栏卡片入口 */}
+      {/* Main two-column layout: chat + right-rail overview. The anchor-hover popover replaces the old left-rail card entry. */}
       {/* Main 2-column shell: chat + right overview. Anchor-hover popover replaces the old left rail. */}
       <div
         className="flex flex-1 min-h-0 overflow-hidden relative"
         onMouseLeave={() => setAnchorHover(null)}
       >
-        {/* 中间：主对话 */}
+        {/* Center: main chat. */}
         <div className="flex-1 flex flex-col min-w-0 relative">
-          <div
-            ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto scrollbar-thin"
-            onScroll={handleScroll}
-          >
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
             <MessageList
               messages={activeMessages}
               streamingText={streamingText}
@@ -804,7 +667,6 @@ export default function ChatPage() {
               suggestions={activeSuggestions}
               anchorText={activeThread?.anchor_text}
               userAvatarUrl={userAvatarUrl}
-              onMessageRef={handleMessageRef}
               onTextSelect={handleTextSelect}
               onAnchorClick={handleAnchorClick}
               onAnchorHover={handleAnchorHover}
@@ -813,14 +675,13 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* 右栏 resize handle — hover 显示 3-dash grip + accent 条，跟设计 .resizer 对齐
-            Right-rail resize handle — hover reveals 3-dash grip + accent stripe (design .resizer). */}
+        {/* Right-rail resize handle — hover reveals a 3-dash grip + accent stripe (design .resizer). */}
         <div
           className="resize-handle group/rh relative flex-shrink-0 cursor-col-resize self-stretch"
           style={{ width: 10 }}
           onMouseDown={(e) => { e.preventDefault(); startResizeRight(e.clientX, rightW); }}
         >
-          {/* 1px 细线，hover / drag 时变 accent 2px */}
+          {/* 1px line; on hover / drag it becomes a 2px accent stripe. */}
           <span
             className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px transition-all group-hover/rh:w-[2px] group-hover/rh:bg-accent"
             style={{ background: "var(--rule)" }}
@@ -832,12 +693,10 @@ export default function ChatPage() {
             <span className="block w-[3px] h-[2px] rounded-full bg-accent" />
           </span>
         </div>
-        {/* 右栏：概览面板 — 按设计 rail-head / rail-tabs / rail-body 三段式
-            Right rail — design's rail-head / rail-tabs / rail-body three-section split. */}
+        {/* Right rail — design's rail-head / rail-tabs / rail-body three-section split. */}
         {(
           <div style={{ width: rightW, flexShrink: 0 }} className="min-w-0 border-l border-subtle flex flex-col bg-elevated">
-            {/* rail-head：eyebrow + 线程计数 + merge/flatten 按钮
-                rail-head: eyebrow + count + merge/flatten actions */}
+            {/* rail-head: eyebrow + thread count + merge/flatten actions. */}
             <div className="px-4 pt-4 pb-3 flex items-center gap-3 flex-shrink-0 border-b border-rule">
               <h2 className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-lo">
                 {t.overview}
@@ -873,8 +732,7 @@ export default function ChatPage() {
               )}
             </div>
 
-            {/* rail-tabs：mono 大写 + active 下划线（代替 glass pill）
-                rail-tabs: mono uppercase + active bottom-border (replaces the glass pill toggle) */}
+            {/* rail-tabs: mono uppercase + active bottom-border (replaces the glass pill toggle). */}
             <div className="flex flex-shrink-0 border-b border-rule-soft">
               <button
                 onClick={() => switchRightView("dots")}
@@ -927,8 +785,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* 锚点 hover 预览 popover — 原左栏卡片入口的替代
-            Anchor hover preview popover — replaces the old left-rail card entry */}
+        {/* Anchor hover preview popover — replaces the old left-rail card entry. */}
         <AnchorPreviewPopover
           hover={anchorHover}
           threads={threads}
@@ -946,7 +803,6 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* 输入框：左栏已删，直接占满中间主对话区（减去右侧概览） */}
       {/* Input bar: left rail removed — spans the main column (minus the right overview). */}
       <div className="flex">
         <div className="flex-1 min-w-0">
@@ -964,22 +820,18 @@ export default function ChatPage() {
       </div>
 
       </div>
-      {/* ── 移动端布局（md 以下显示） ── */}
-      {/* MobileChatLayout 内部用 fixed inset-0，此 wrapper 仅控制显隐 */}
+      {/* ── Mobile layout (below md) ── */}
+      {/* MobileChatLayout uses fixed inset-0 internally; this wrapper just controls show/hide. */}
       <div className="md:hidden overflow-hidden">
         <MobileChatLayout
           threads={threads}
           activeThreadId={activeThreadId}
           canBack={navIndex > 0}
-          canForward={navIndex < navHistory.length - 1}
           onBack={navigateBack}
-          onForward={navigateForward}
           onNavigateTo={handleNavigateTo}
           // Sessions
           sessions={sessions}
           sessionsLoading={sessionsLoading}
-          // 手机端内置自己的左抽屉,这里只负责懒加载 sessions(不开 SessionDrawer,
-          // 否则桌面遗留抽屉会和手机抽屉同时弹出两层)。
           // Mobile layout owns its own left drawer — only trigger the lazy
           // session fetch here; opening the legacy SessionDrawer too would
           // result in two stacked drawers on mobile.
@@ -994,16 +846,13 @@ export default function ChatPage() {
           activeSuggestions={activeSuggestions}
           activeThread={activeThread ?? null}
           userAvatarUrl={userAvatarUrl}
-          onMessageRef={handleMessageRef}
-          // 手机端 Pin tap 直接创建子线程,跳过 PinMenu(其 mobile 分支已被
-          // inline action sheet 取代)。Mobile inline Pin tap creates the
-          // sub-thread directly — bypasses PinMenu's removed mobile branch.
+          // Mobile inline Pin tap creates the sub-thread directly — bypasses
+          // PinMenu's removed mobile branch (the inline action sheet replaced it).
           onTextSelect={handleMobileSelectionPin}
           onAnchorClick={handleAnchorClick}
           onAnchorHover={handleAnchorHover}
           onSendSuggestion={(q) => { if (activeThreadId) handleSendSuggestion(activeThreadId, q); }}
           // Right drawer
-          rollItems={rollItems}
           unreadCounts={unreadCounts}
           messagesByThread={messagesByThread}
           pinCount={pinCount}
@@ -1023,7 +872,7 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* ── 共享浮层（fixed 定位，桌面/移动端通用） ── */}
+      {/* ── Shared overlays (fixed positioning, used by desktop and mobile) ── */}
       <PinMenu
         selection={selection}
         onPin={handlePin}
@@ -1033,9 +882,6 @@ export default function ChatPage() {
       <PinStartDialog
         info={pinDialog}
         onSend={(threadId, question) => {
-          // 插针后不切线程 —— 用户留在原阅读位置，子线程 AI 回复在后台流
-          // 式完成；锚点下划线的未读脉动 + 概览 drawer 的未读点会提示有新
-          // 回复，想看时手动进入。桌面/手机同一逻辑。
           // Stay on the current thread after pinning. The sub-thread streams
           // in the background; the anchor's unread pulse + overview drawer's
           // unread dot signal the new reply, and the user jumps in when
@@ -1045,11 +891,9 @@ export default function ChatPage() {
         onClose={() => setPinDialog(null)}
       />
 
-      {/* 删除线程确认弹窗（带 graph 预览；主线命中 = 删 session）
-          Delete-thread confirm (graph preview; main-thread target wipes session)
-          条件挂载：保证 zoom/pan hook 每次都在 body 进 DOM 后才测量
-          Conditional mount — the zoom/pan hook's initial measurement runs on
-          the container ref's attach, so the dialog body must not pre-mount. */}
+      {/* Delete-thread confirm (graph preview; main-thread target wipes session).
+          Conditional mount — the zoom/pan hook's initial measurement runs when
+          the container ref attaches, so the dialog body must not pre-mount. */}
       {deleteTargetId !== null && (
         <DeleteThreadDialog
           targetThreadId={deleteTargetId}
@@ -1065,13 +909,11 @@ export default function ChatPage() {
         <MergeOutput
           sessionId={sessionId}
           threads={threads}
-          pinCount={pinCount}
           onClose={() => setShowMerge(false)}
         />
       )}
 
-      {/* 扁平化确认弹窗 — 破坏性操作，带 before / after 可视化预览
-          Flatten confirmation — destructive, with before/after preview */}
+      {/* Flatten confirmation — destructive, with before/after preview. */}
       {showFlattenConfirm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
@@ -1102,7 +944,7 @@ export default function ChatPage() {
               </div>
             </div>
 
-            {/* Before / After 可视化 / preview */}
+            {/* Before / After visual preview. */}
             <div className="px-6 py-5" style={{ background: "var(--paper-2)" }}>
               <FlattenPreview threads={threads} />
             </div>
@@ -1134,15 +976,14 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* toast：扁平化结果提示 / flatten result toast */}
+      {/* Flatten result toast. */}
       {flattenToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-md bg-surface-95 border border-subtle shadow-lg text-xs text-md">
           {flattenToast}
         </div>
       )}
 
-      {/* 桌面专属:手机端 MobileChatLayout 自带左抽屉,不能再渲染这一层
-          Desktop only — MobileChatLayout owns its own session drawer on
+      {/* Desktop only — MobileChatLayout owns its own session drawer on
           mobile, so gating this on md+ prevents two drawers stacking. */}
       <div className="hidden md:contents">
         <SessionDrawer

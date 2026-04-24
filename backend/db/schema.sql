@@ -11,9 +11,9 @@ create table if not exists sessions (
 create table if not exists threads (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references sessions(id) on delete cascade,
-  parent_thread_id uuid references threads(id) on delete cascade,  -- null 表示主线
+  parent_thread_id uuid references threads(id) on delete cascade,  -- null indicates the main thread
   anchor_text text,
-  anchor_message_id uuid,  -- FK 在 messages 表创建后补加，见下方
+  anchor_message_id uuid,  -- FK is added after the messages table is created (see below)
   anchor_start_offset int,
   anchor_end_offset   int,
   side                text check (side in ('left', 'right')),
@@ -30,8 +30,8 @@ create table if not exists messages (
   role text not null check (role in ('user', 'assistant')),
   content text not null,
   token_count int,
-  model text,  -- 生成该消息的 LLM（含 provider 前缀），如 "groq/llama-3.3-70b-versatile"
-  position int,  -- 扁平化后的 preorder 序号；未扁平化为 null
+  model text,  -- LLM that generated this message (with provider prefix), e.g. "groq/llama-3.3-70b-versatile"
+  position int,  -- preorder index after flattening; null when not flattened
   created_at timestamptz default now()
 );
 
@@ -42,7 +42,7 @@ create table if not exists thread_summaries (
   updated_at timestamptz default now()
 );
 
--- 查询性能索引
+-- Query performance indexes
 create index if not exists idx_threads_session_id        on threads(session_id);
 create index if not exists idx_threads_parent_thread_id  on threads(parent_thread_id);
 create index if not exists idx_messages_thread_id        on messages(thread_id);

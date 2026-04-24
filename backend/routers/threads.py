@@ -1,16 +1,13 @@
 # backend/routers/threads.py
 """
-Thread 路由
 Thread router — create and manage threads (pins).
 
-端点列表 / Endpoints:
-  POST   /api/threads                          创建线程（主线或子线程/插针）
-  GET    /api/threads/{thread_id}/suggest      获取子线程建议追问（优先返回 DB 缓存）
-  POST   /api/threads/{thread_id}/autostart    自动向子线程发送第一条消息（流式）
-  GET    /api/threads/{thread_id}/messages     获取线程消息历史
-  POST   /api/threads/{thread_id}/messages     直接写入一条消息（不触发 AI，用于保存合并结果）
-  GET    /api/threads/{thread_id}/subtree      返回该线程及所有后代的树结构（用于删除前预览）
-  DELETE /api/threads/{thread_id}              删除该线程及所有后代（CASCADE）
+Endpoints:
+  POST   /api/threads                          Create a thread (main thread or sub-thread/pin)
+  GET    /api/threads/{thread_id}/suggest      Get suggested follow-ups for a sub-thread (DB cache preferred)
+  GET    /api/threads/{thread_id}/messages     Fetch a thread's message history
+  POST   /api/threads/{thread_id}/messages     Write a message directly (no AI trigger; used to save merge results)
+  DELETE /api/threads/{thread_id}              Delete the thread and all descendants (CASCADE)
 """
 
 import asyncio
@@ -19,23 +16,19 @@ import logging
 import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
 from db.supabase import get_supabase
-from dependencies.auth import CurrentUser, get_current_user, get_current_user_full
+from dependencies.auth import get_current_user
 from models.thread import CreateThreadRequest, Thread
-from models.message import ChatRequest
 from services.llm_client import generate_title_and_suggestions
-from services.stream_manager import ANON_TURN_LIMIT, stream_and_save
 
 router = APIRouter()
 
 
 async def _db(fn):
     """
-    将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
     Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
     """
     loop = asyncio.get_running_loop()
@@ -45,26 +38,22 @@ async def _db(fn):
 @router.post("/threads", response_model=Thread, status_code=201)
 async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user)):
     """
-    创建子线程（插针）。
     Create a sub-thread (pin).
 
-    depth 由前端直接传入（省去 DB 查询）；未传时查父线程后 +1。
     depth is passed directly from the frontend (no DB round-trip);
     if omitted, it is derived by querying the parent thread and adding 1.
 
-    LLM 标题和建议追问在后台异步生成，不阻塞本端点响应。
     LLM title and suggested questions are generated asynchronously in the background;
     they do not block this endpoint's response.
     """
     _user_id, sb = auth
 
-    # 计算嵌套深度 / Calculate nesting depth
+    # Calculate nesting depth
     if body.depth is not None:
-        # 前端直接传入，无需查库（最优路径）
         # Provided directly by the frontend; no DB query needed (optimal path)
         depth = body.depth
     elif body.parent_thread_id:
-        # 前端未传 depth，查父线程 / Frontend did not send depth; query the parent thread
+        # Frontend did not send depth; query the parent thread
         parent_res = await _db(lambda: (
             sb.table("threads")
             .select("depth")
@@ -76,9 +65,8 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
             raise HTTPException(status_code=404, detail="父线程不存在 / Parent thread not found")
         depth = parent_res.data["depth"] + 1
     else:
-        depth = 1  # 无父线程时默认深度 1 / Default depth 1 when no parent thread
+        depth = 1  # Default depth 1 when no parent thread
 
-    # 写库后立即返回，LLM 在后台异步生成标题/建议
     # Write to DB and return immediately; LLM generates title/suggestions in the background
     try:
         thread_res = await _db(lambda: sb.table("threads").insert({
@@ -88,9 +76,8 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
             "anchor_message_id": str(body.anchor_message_id) if body.anchor_message_id else None,
             "anchor_start_offset": body.anchor_start_offset,
             "anchor_end_offset": body.anchor_end_offset,
-            "side": body.side,
-            "title": None,        # 后台异步填充 / Filled asynchronously in the background
-            "suggestions": None,  # 后台异步填充 / Filled asynchronously in the background
+            "title": None,        # Filled asynchronously in the background
+            "suggestions": None,  # Filled asynchronously in the background
             "depth": depth,
         }).execute())
     except Exception as exc:
@@ -103,7 +90,6 @@ async def create_thread(body: CreateThreadRequest, auth=Depends(get_current_user
     thread_data = thread_res.data[0]
     thread_id_str = thread_data["id"]
 
-    # 有锚点时，后台生成标题 + 建议追问并回写 DB
     # When there is anchor text, generate title + suggestions in the background and write back to DB
     if body.anchor_text:
         from services.stream_manager import _track
@@ -124,14 +110,11 @@ async def _generate_and_patch(
     anchor_message_id: str | None,
 ) -> None:
     """
-    后台任务：取锚点所在的完整消息作为背景 → 生成标题和建议追问 → 回写 DB。
     Background task: fetch the full message containing the anchor → generate title and suggestions → write back to DB.
 
-    失败静默处理，不影响子线程正常使用（标题/建议可为空）。
     Failures are silent; they do not affect normal sub-thread use (title/suggestions may be empty).
     """
     t0 = time.monotonic()
-    # 取锚点所在的完整消息，帮助 LLM 在完整段落语境中理解锚点含义
     # Fetch the full message containing the anchor so the LLM understands it in its paragraph context
     context_summary = ""
     if anchor_message_id:
@@ -154,7 +137,6 @@ async def _generate_and_patch(
     try:
         title, suggestions = await generate_title_and_suggestions(anchor_text, context_summary)
     except Exception as e:
-        # LLM 失败：截取锚点前20字作为标题，建议追问为空
         # LLM failed: use first 20 chars of anchor as title; no suggestions
         llm_ok = False
         title = anchor_text[:20]
@@ -180,14 +162,10 @@ async def _generate_and_patch(
 @router.get("/threads/{thread_id}/suggest")
 async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
-    返回子线程的建议追问（最多 3 个）。
     Return suggested follow-up questions for a sub-thread (up to 3).
 
-    优先返回创建时已写入 DB 的缓存，避免重复 LLM 调用。
     Prefers the DB-cached suggestions written at creation time to avoid redundant LLM calls.
 
-    缓存缺失时（历史线程兜底）：等待 300ms 后再查一次（_generate_and_patch 通常已完成），
-    仍缺失则实时生成并回写。
     On cache miss (fallback for historical threads): wait 300ms and re-check
     (_generate_and_patch is usually done by then); if still missing, generate and write back in real time.
     """
@@ -206,7 +184,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
 
     thread = thread_res.data
 
-    # 命中缓存直接返回 / Return cached suggestions immediately if available
+    # Return cached suggestions immediately if available
     cached = thread.get("suggestions")
     if cached:
         try:
@@ -217,9 +195,8 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
             )
             return {"questions": questions[:3]}
         except Exception:
-            pass  # 缓存损坏，走实时生成 / Cache corrupt; fall through to real-time generation
+            pass  # Cache corrupt; fall through to real-time generation
 
-    # _generate_and_patch 可能仍在后台跑，轮询最多等 3s（每 200ms 查一次，最多 15 次）
     # _generate_and_patch may still be running; poll every 200ms up to 3s total (15 attempts)
     for i in range(15):
         await asyncio.sleep(0.2)
@@ -240,9 +217,8 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
                 )
                 return {"questions": questions[:3]}
             except Exception:
-                break  # 缓存损坏，直接实时生成 / Cache corrupt; fall through to real-time generation
+                break  # Cache corrupt; fall through to real-time generation
 
-    # 缓存仍缺失：实时生成（历史线程兜底）
     # Cache still missing: generate in real time (fallback for historical threads)
     anchor = thread.get("anchor_text") or ""
     context_summary = ""
@@ -265,12 +241,11 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         _, questions = await generate_title_and_suggestions(anchor, context_summary)
     except Exception as e:
         sync_llm_ok = False
-        # LLM 失败时返回空列表；前端有多语种占位符（customQuestion），不硬编码中文 fallback。
         # On LLM failure, return an empty list; the frontend renders a localized placeholder — no hard-coded Chinese fallback.
         questions = []
         logger.warning("[suggest] sync LLM 失败 thread=%s err=%s", thread_id, e)
 
-    # 回写缓存，避免下次再生成 / Write back to cache to avoid regenerating next time
+    # Write back to cache to avoid regenerating next time
     try:
         await _db(lambda: sb.table("threads").update({"suggestions": questions}).eq("id", str(thread_id)).execute())
     except Exception:
@@ -283,70 +258,13 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
     return {"questions": questions[:3]}
 
 
-@router.post("/threads/{thread_id}/autostart")
-async def autostart_thread(
-    thread_id: uuid.UUID,
-    body: ChatRequest,
-    user: CurrentUser = Depends(get_current_user_full),
-):
-    """
-    自动向子线程发送第一条消息（建议问题），流式返回 AI 回复。
-    Auto-send the first message (a suggested question) to a sub-thread; stream back the AI reply.
-
-    SSE 格式与 /api/threads/{id}/chat 完全一致。
-    SSE format is identical to /api/threads/{id}/chat.
-    """
-    sb = user.sb
-
-    # 验证线程存在且属于当前用户（RLS 自动过滤）；同时取 session_id 做匿名额度判定 + 记账
-    # Verify thread exists + belongs to user (RLS); also grab session_id for quota gating + accounting.
-    thread_res = await _db(lambda: (
-        sb.table("threads").select("id, session_id").eq("id", str(thread_id)).maybe_single().execute()
-    ))
-    if not thread_res or not thread_res.data:
-        raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
-
-    session_id: str | None = thread_res.data.get("session_id")
-
-    # 匿名用户额度检查（与 /chat 一致逻辑）
-    # Anonymous quota check (same logic as /chat).
-    if user.is_anonymous and session_id:
-        session_res = await _db(lambda: (
-            sb.table("sessions").select("turn_count").eq("id", session_id).maybe_single().execute()
-        ))
-        turn_count = (session_res.data or {}).get("turn_count", 0) if session_res else 0
-        if turn_count >= ANON_TURN_LIMIT:
-            raise HTTPException(
-                status_code=402,
-                detail={
-                    "code": "anon_quota_exceeded",
-                    "limit": ANON_TURN_LIMIT,
-                    "message": (
-                        "已达到免费试用上限，登录后继续对话（已有消息会保留）。"
-                        " / Free-trial limit reached. Sign in to continue — your conversation will be kept."
-                    ),
-                },
-            )
-
-    return StreamingResponse(
-        stream_and_save(str(thread_id), body.content, session_id=session_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲 / Disable Nginx buffering
-        },
-    )
-
-
 @router.get("/threads/{thread_id}/messages")
 async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
-    获取指定线程的消息历史，按创建时间升序排列。
     Get the message history for the specified thread in ascending chronological order.
     """
     _user_id, sb = auth
 
-    # 验证线程存在（maybe_single 在无结果时返回 None 而不是抛异常）
     # Verify thread exists; maybe_single returns None on no match instead of raising
     thread_res = await _db(lambda: (
         sb.table("threads")
@@ -366,7 +284,6 @@ async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
         .execute()
     ))
 
-    # position-aware 排序：扁平化后主线消息按 position 重排，未扁平化时回落到 created_at
     # Position-aware sort: post-flatten main thread messages sort by position; otherwise created_at order is preserved
     msgs = messages_res.data or []
     msgs.sort(key=_message_sort_key)
@@ -375,7 +292,6 @@ async def get_messages(thread_id: uuid.UUID, auth=Depends(get_current_user)):
 
 def _message_sort_key(m: dict) -> tuple:
     """
-    扁平化后排序键：先按 position（null 排最后），再按 created_at。
     Sort key after flatten: position first (nulls last), then created_at as tiebreaker.
     """
     pos = m.get("position")
@@ -385,7 +301,6 @@ def _message_sort_key(m: dict) -> tuple:
 @router.post("/threads/{thread_id}/messages", status_code=201)
 async def save_message(thread_id: uuid.UUID, body: dict, auth=Depends(get_current_user)):
     """
-    直接写入一条消息，不触发 AI（用于保存合并输出结果到主线）。
     Directly insert a message without triggering AI (e.g., saving merge output to the main thread).
     """
     _user_id, sb = auth
@@ -411,51 +326,9 @@ async def save_message(thread_id: uuid.UUID, body: dict, auth=Depends(get_curren
     return msg_res.data[0] if msg_res.data else {}
 
 
-@router.get("/threads/{thread_id}/subtree")
-async def get_subtree(thread_id: uuid.UUID, auth=Depends(get_current_user)):
-    """
-    返回该线程及所有后代的树结构，用于删除前展示将被删除的范围。
-    Return the thread and all its descendants as a tree, for previewing deletion scope.
-    """
-    _user_id, sb = auth
-
-    thread_res = await _db(lambda: (
-        sb.table("threads")
-        .select("id, title, session_id")
-        .eq("id", str(thread_id))
-        .maybe_single()
-        .execute()
-    ))
-    if not thread_res or not thread_res.data:
-        raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
-
-    session_id = thread_res.data["session_id"]
-
-    # 一次查出 session 内所有线程，内存递归构建子树
-    all_res = await _db(lambda: (
-        sb.table("threads")
-        .select("id, title, parent_thread_id")
-        .eq("session_id", session_id)
-        .execute()
-    ))
-    all_threads = {t["id"]: t for t in (all_res.data or [])}
-
-    def build_subtree(tid: str) -> dict:
-        node = all_threads.get(tid, {})
-        children = [
-            build_subtree(t["id"])
-            for t in all_threads.values()
-            if t.get("parent_thread_id") == tid
-        ]
-        return {"id": tid, "title": node.get("title"), "children": children}
-
-    return build_subtree(str(thread_id))
-
-
 @router.delete("/threads/{thread_id}", status_code=204)
 async def delete_thread(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
-    删除该线程及所有后代（DB CASCADE 自动处理 messages/summaries）。
     Delete the thread and all its descendants (DB CASCADE handles messages/summaries).
     """
     _user_id, sb = auth

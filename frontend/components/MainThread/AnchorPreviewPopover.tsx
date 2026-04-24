@@ -16,17 +16,16 @@ interface Props {
   messagesByThread: Record<string, Message[] | undefined>;
   unreadCounts: Record<string, number>;
   onEnter: (threadId: string) => void;
-  /** 请求删除该线程（连同所有后代）——由父层弹 DeleteThreadDialog 确认
-   *  Request to delete this thread (and its entire subtree) — parent opens the
+  /** Request to delete this thread (and its entire subtree) — parent opens the
    *  DeleteThreadDialog to confirm. */
   onDelete?: (threadId: string) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }
 
-// 与 MessageBubble 中 ANCHOR_COLORS 保持一致（按 threadId 在同一消息里的出现顺序上色）
-// 5 个值都是 CSS var()，随 light/dark 自动切换。
-// Same palette as MessageBubble's ANCHOR_COLORS (CSS vars — theme-aware).
+// Same palette as MessageBubble's ANCHOR_COLORS — colors anchors by their order
+// of appearance within a message. All five values are CSS vars and auto-switch
+// with light/dark theme.
 const ANCHOR_COLORS = [
   "var(--pig-1)",
   "var(--pig-2)",
@@ -38,10 +37,6 @@ const ANCHOR_COLORS = [
 const POPOVER_WIDTH = 320;
 
 /**
- * 锚点 hover 预览 popover — 取代旧的左栏卡片入口。
- * 鼠标悬浮到带下划线的锚点 span 上 → 在锚点下方弹出预览卡；
- * 显示子线程标题、锚点原文、最新一句 AI 回答、是否未读，点击进入。
- *
  * Anchor-hover preview popover — replaces the old left-rail card entry point.
  * Hovering an underlined anchor span pops this preview below it: title,
  * anchor source text, latest AI reply, unread indicator, enter button.
@@ -60,7 +55,6 @@ export default function AnchorPreviewPopover({
   const popRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  // 仅显示第一个匹配到的 thread（同一 span 上多个 thread 堆叠时以首个为主）
   // Show the first matching thread only — multi-thread overlaps are rare; first one wins.
   const thread = hover?.threadIds.map((id) => threads.find((th) => th.id === id)).find(Boolean) as
     | Thread
@@ -70,7 +64,6 @@ export default function AnchorPreviewPopover({
     : 0;
   const color = ANCHOR_COLORS[Math.max(0, threadIndex) % ANCHOR_COLORS.length];
 
-  // 位置计算：优先放在锚点下方，超出视口底则翻到上方；水平居中并夹紧到视口内。
   // Position: below the anchor by default, flip above if clipped; center horizontally, clamp to viewport.
   useLayoutEffect(() => {
     if (!hover || !thread) {
@@ -92,7 +85,7 @@ export default function AnchorPreviewPopover({
     setPos({ top, left });
   }, [hover, thread]);
 
-  // ESC 关闭：popover 一旦可见就挂监听，离开时卸载
+  // ESC closes: attach the listener whenever the popover is visible; detach when it isn't.
   useEffect(() => {
     if (!hover) return;
     const onKey = (e: KeyboardEvent) => {
@@ -138,7 +131,7 @@ export default function AnchorPreviewPopover({
           borderRadius: 12,
         }}
       >
-        {/* 标题条 — 颜料色点 + 序号 + 标题 + 未读 chip */}
+        {/* Title bar — pigment dot + index + title + unread chip. */}
         <div className="flex items-center gap-2 px-3.5 py-2.5">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} aria-hidden />
           <span className="flex-1 font-serif text-[14px] font-medium truncate" style={{ color: "var(--ink)" }}>
@@ -154,8 +147,7 @@ export default function AnchorPreviewPopover({
           )}
         </div>
 
-        {/* Question — 用户实际问的问题
-            The actual question the user asked in this sub-thread */}
+        {/* Question — the actual question the user asked in this sub-thread. */}
         <div className="px-3.5 py-2.5" style={{ borderTop: "1px solid var(--rule-soft)" }}>
           <div
             className="font-mono text-[9px] uppercase tracking-[0.12em] mb-1.5"
@@ -169,7 +161,7 @@ export default function AnchorPreviewPopover({
           </p>
         </div>
 
-        {/* Answer — Deeppin 的最新回复 / Latest Deeppin reply */}
+        {/* Answer — latest Deeppin reply. */}
         <div className="px-3.5 py-2.5" style={{ borderTop: "1px solid var(--rule-soft)" }}>
           <div
             className="font-mono text-[9px] uppercase tracking-[0.12em] mb-1.5"
@@ -183,7 +175,7 @@ export default function AnchorPreviewPopover({
           </p>
         </div>
 
-        {/* 操作栏 */}
+        {/* Action bar. */}
         <div
           className="flex items-center justify-between gap-2 px-3.5 py-2"
           style={{ background: "var(--paper-2)", borderTop: "1px solid var(--rule-soft)" }}

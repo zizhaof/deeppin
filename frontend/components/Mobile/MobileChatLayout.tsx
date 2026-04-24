@@ -1,9 +1,4 @@
 "use client";
-// components/Mobile/MobileChatLayout.tsx
-//
-// 移动端布局重构 —— claude.ai-style：单页面满屏对话 + 左 drawer（sessions）
-// + 右 drawer（list/graph + merge/flatten）；不再有左右滑动的三面板。
-//
 // Mobile layout — claude.ai-style: single full-screen chat + left drawer
 // (sessions + pinned bottom for lang / account) + right drawer (list/graph
 // view + pinned bottom for merge / flatten). No more horizontal panel swipe.
@@ -11,7 +6,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Thread, Message, Session } from "@/lib/api";
-import type { ThreadCardItem } from "@/components/SubThread/types";
 import type { AnchorRange } from "@/components/MainThread/MessageBubble";
 import ThreadTree from "@/components/Layout/ThreadTree";
 import ThreadGraph from "@/components/Layout/ThreadGraph";
@@ -26,9 +20,7 @@ export interface MobileChatLayoutProps {
   threads: Thread[];
   activeThreadId: string | null;
   canBack: boolean;
-  canForward: boolean;
   onBack: () => void;
-  onForward: () => void;
   onNavigateTo: (threadId: string) => void;
 
   // Sessions drawer
@@ -47,14 +39,12 @@ export interface MobileChatLayoutProps {
   activeThread: Thread | null;
   userAvatarUrl: string | null;
 
-  onMessageRef: (messageId: string, el: HTMLDivElement | null) => void;
   onTextSelect: (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => void;
   onAnchorClick: (threadId: string) => void;
   onAnchorHover: (threadIds: string[], rect: DOMRect | null) => void;
   onSendSuggestion: (question: string) => void;
 
   // Right drawer (overview)
-  rollItems: ThreadCardItem[];
   unreadCounts: Record<string, number>;
   messagesByThread: Record<string, Message[]>;
   pinCount: number;
@@ -67,8 +57,7 @@ export interface MobileChatLayoutProps {
   isStreaming: boolean;
   webSearch: boolean;
   onWebSearchToggle: (v: boolean) => void;
-  /** 匿名试用额度（已发送轮数），仅 isAnon=true 时 InputBar 会展示
-   *  Anonymous trial turn count; surfaced by InputBar when isAnon. */
+  /** Anonymous trial turn count; surfaced by InputBar when isAnon. */
   turnCount?: number;
 
   // Account / auth
@@ -76,14 +65,12 @@ export interface MobileChatLayoutProps {
   onSignIn?: () => void;
   onDeleteAccount?: () => void;
 
-  /** 请求删除当前激活线程（连同所有后代）——由父层弹 DeleteThreadDialog 确认。
-   *  主线被删 = 删除整个 session。
-   *  Request to delete the active thread and its entire subtree — parent opens
+  /** Request to delete the active thread and its entire subtree — parent opens
    *  DeleteThreadDialog to confirm. Deleting the main thread wipes the session. */
   onDeleteActive?: (threadId: string) => void;
 }
 
-// ── Brand mark — 跟桌面顶栏一套（paper 方块 + 深墨蓝星 + Fraunces）
+// ── Brand mark — same set as the desktop topbar (paper square + deep ink star + Fraunces).
 function BrandMark() {
   return (
     <div className="flex items-center gap-2">
@@ -126,7 +113,7 @@ function IconButton({
   );
 }
 
-// ── Drawer wrapper（左/右抽屉公用）/ Reusable drawer panel ───────────────
+// ── Drawer wrapper (used by both left and right drawers) ─────────────
 function Drawer({
   open,
   onClose,
@@ -138,7 +125,7 @@ function Drawer({
   side: "left" | "right";
   children: React.ReactNode;
 }) {
-  // 锁住 body 滚动 & ESC 关闭 / Lock body scroll + ESC to close
+  // Lock body scroll + ESC to close.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -153,7 +140,7 @@ function Drawer({
 
   return (
     <>
-      {/* 遮罩 */}
+      {/* Backdrop. */}
       <div
         onClick={onClose}
         className={`fixed inset-0 z-40 [background:rgba(27,26,23,0.45)] transition-opacity duration-200 ${
@@ -161,7 +148,7 @@ function Drawer({
         }`}
         aria-hidden
       />
-      {/* 抽屉本体 */}
+      {/* Drawer body. */}
       <aside
         className={`fixed top-0 bottom-0 z-50 w-[60vw] max-w-[320px] flex flex-col transition-transform duration-250 ease-out`}
         style={{
@@ -201,12 +188,10 @@ export default function MobileChatLayout({
   activeSuggestions,
   activeThread,
   userAvatarUrl,
-  onMessageRef,
   onTextSelect,
   onAnchorClick,
   onAnchorHover,
   onSendSuggestion,
-  rollItems,
   unreadCounts,
   messagesByThread,
   pinCount,
@@ -226,18 +211,14 @@ export default function MobileChatLayout({
   const t = useT();
   const router = useRouter();
 
-  void rollItems; // 旧三栏的 props，保留兼容；新布局没用到 / kept for compat
-
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [overviewView, setOverviewView] = useState<"list" | "graph">("graph");
-  // 选区模式：默认 false（普通滚动）；按下「Select」切到 true，触发后自动回 false
   // Select-mode toggle — default off (normal scroll); flips on, captures one
   // selection, auto-flips back off so the user can scroll normally again.
   const [selectMode, setSelectMode] = useState(false);
 
-  /** 在 onTextSelect 之后自动关掉选区模式（这样不需要用户手动再点一次按钮） */
-  /* Wrap parent's onTextSelect so we auto-exit select mode once a selection lands. */
+  /** Wrap parent's onTextSelect so we auto-exit select mode once a selection lands. */
   const wrappedTextSelect = useCallback(
     (text: string, messageId: string, rect: DOMRect, startOffset: number, endOffset: number) => {
       onTextSelect(text, messageId, rect, startOffset, endOffset);
@@ -246,7 +227,7 @@ export default function MobileChatLayout({
     [onTextSelect],
   );
 
-  // 打开左抽屉 = 触发 sessions 懒加载 / Opening left drawer triggers session list lazy-load
+  // Opening the left drawer triggers the session-list lazy-load.
   const openLeftDrawer = useCallback(() => {
     setLeftOpen(true);
     onOpenSessions();
@@ -260,7 +241,7 @@ export default function MobileChatLayout({
     return s;
   }, [unreadCounts]);
 
-  // 当前线程标题（topbar 中央显示）
+  // Current thread title (shown in the center of the topbar).
   const activeTitle =
     activeThread?.parent_thread_id === null
       ? activeThread?.title ?? t.mainThread
@@ -271,9 +252,9 @@ export default function MobileChatLayout({
           : t.subThread);
 
   return (
-    // fixed inset-0：钉死在可见视口
+    // fixed inset-0 — anchored to the visible viewport.
     <div className="fixed inset-0 flex flex-col overflow-hidden" style={{ background: "var(--paper)" }}>
-      {/* ── Topbar：hamburger | 中央 brand+breadcrumb | 右 panel 按钮 ── */}
+      {/* ── Topbar: hamburger | center brand+breadcrumb | right panel button ── */}
       <header
         className="h-12 flex items-center px-3 gap-2 flex-shrink-0 z-20 select-none"
         style={{ background: "var(--paper)", borderBottom: "1px solid var(--rule)" }}
@@ -295,8 +276,7 @@ export default function MobileChatLayout({
         )}
 
         <div className="flex-1 min-w-0 flex items-center justify-center">
-          {/* 当前线程标题；子线程时显示 sub title，主线时显示 brand（点击回首页）
-              Main thread → BrandMark doubles as a home-link; sub-thread → title. */}
+          {/* Current thread title — main thread shows BrandMark (doubles as a home link); sub-thread shows the title. */}
           {activeThread?.parent_thread_id === null ? (
             <button
               onClick={() => router.push("/")}
@@ -315,8 +295,7 @@ export default function MobileChatLayout({
           )}
         </div>
 
-        {/* 删除当前线程按钮（主线 = 删 session）——放在 overview 按钮前。
-            Delete-current-thread button (main thread = wipe session) — sits
+        {/* Delete-current-thread button (main thread = wipe session) — sits
             before the overview trigger. */}
         {onDeleteActive && activeThreadId && (
           <button
@@ -332,7 +311,7 @@ export default function MobileChatLayout({
           </button>
         )}
 
-        {/* 右上角：overview drawer 触发按钮，带未读 badge */}
+        {/* Top-right: overview-drawer trigger with unread badge. */}
         <button
           onClick={() => setRightOpen(true)}
           aria-label={t.overview}
@@ -355,7 +334,7 @@ export default function MobileChatLayout({
         </button>
       </header>
 
-      {/* ── 子线程时显示锚点上下文 / Anchor context strip in sub-threads ── */}
+      {/* ── Anchor context strip — only in sub-threads. ── */}
       {activeThread?.anchor_text && activeThread.parent_thread_id !== null && (
         <div
           className="flex-shrink-0 mx-3 mt-2 px-3 py-1.5 rounded-lg text-[11.5px] leading-snug line-clamp-2"
@@ -370,7 +349,7 @@ export default function MobileChatLayout({
         </div>
       )}
 
-      {/* ── 主对话区 ── */}
+      {/* ── Main chat area ── */}
       <div className="flex-1 overflow-y-auto min-h-0 relative">
         <MessageList
           messages={activeMessages}
@@ -382,16 +361,13 @@ export default function MobileChatLayout({
           suggestions={activeSuggestions}
           anchorText={activeThread?.anchor_text}
           userAvatarUrl={userAvatarUrl}
-          onMessageRef={onMessageRef}
           onTextSelect={wrappedTextSelect}
           onAnchorClick={onAnchorClick}
           onAnchorHover={onAnchorHover}
           onSendSuggestion={onSendSuggestion}
         />
 
-        {/* ── Select-mode FAB / 浮动「选区」按钮 ──
-            按一下：进入选区模式 → 整个气泡禁用 native scroll 在 AI 文字上，
-            手指 down→drag→up 直接圈选；释放后弹 PinMenu。Selection 抓到后自动退出。
+        {/* ── Select-mode floating button ──
             Floating select-mode toggle: tap once → bubble text becomes
             finger-trackable; touch-down→drag→release captures the selection;
             PinMenu fires; mode auto-exits. */}
@@ -407,7 +383,7 @@ export default function MobileChatLayout({
           aria-label="Selection mode"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-            {/* 「I-beam + 高亮」图标 */}
+            {/* "I-beam + highlight" icon. */}
             <path d="M7 5h4M7 19h4M9 5v14" />
             <path d="M14 8h6M14 16h6" strokeWidth={2.5} />
           </svg>
@@ -417,7 +393,7 @@ export default function MobileChatLayout({
         </button>
       </div>
 
-      {/* ── 输入栏 ── */}
+      {/* ── Input bar ── */}
       <div className="flex-shrink-0">
         <InputBar
           sessionId={sessionId}
@@ -430,10 +406,9 @@ export default function MobileChatLayout({
         />
       </div>
 
-      {/* ── 左 drawer：sessions + 固定底部（lang / account） ── */}
+      {/* ── Left drawer: sessions + pinned footer (lang / account) ── */}
       <Drawer open={leftOpen} onClose={() => setLeftOpen(false)} side="left">
-        {/* head —— BrandMark 点了回首页（关 drawer + router.push("/")）
-            BrandMark doubles as a home-link: closes drawer + routes to /. */}
+        {/* Head — BrandMark doubles as a home-link: closes drawer + routes to /. */}
         <div
           className="flex items-center justify-between px-4 h-12 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule)" }}
@@ -546,13 +521,13 @@ export default function MobileChatLayout({
           </button>
         </div>
 
-        {/* 底部固定栏：lang + account */}
+        {/* Pinned footer: lang + account. */}
         <div className="px-3 py-3 flex-shrink-0 flex items-center justify-between gap-2" style={{ borderTop: "1px solid var(--rule-soft)" }}>
-          {/* Lang selector — 直接 inline 一个 select */}
+          {/* Lang selector — inline select. */}
           <div className="flex-1 min-w-0">
             <LangSelector />
           </div>
-          {/* Account button (anon → sign in，已登录 → delete account) */}
+          {/* Account button (anon → sign in; signed-in → delete account). */}
           {isAnon && onSignIn ? (
             <button
               onClick={() => { setLeftOpen(false); onSignIn(); }}
@@ -574,7 +549,7 @@ export default function MobileChatLayout({
         </div>
       </Drawer>
 
-      {/* ── 右 drawer：list/graph + 底部固定 merge/flatten ── */}
+      {/* ── Right drawer: list/graph + pinned merge/flatten footer ── */}
       <Drawer open={rightOpen} onClose={() => setRightOpen(false)} side="right">
         {/* head */}
         <div
@@ -650,7 +625,7 @@ export default function MobileChatLayout({
           )}
         </div>
 
-        {/* 底部固定栏 — Merge / Flatten */}
+        {/* Pinned footer — Merge / Flatten. */}
         <div className="px-3 py-3 flex-shrink-0 flex items-center gap-2" style={{ borderTop: "1px solid var(--rule)" }}>
           <button
             onClick={() => { setRightOpen(false); onOpenMerge(); }}

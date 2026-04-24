@@ -1,15 +1,14 @@
 # backend/routers/sessions.py
 """
-Session 路由
 Session router — create and retrieve sessions.
 
-端点列表 / Endpoints:
-  GET    /api/sessions                          列出当前用户的所有 sessions
-  POST   /api/sessions                          创建 session（同时自动创建主线 thread）
-  GET    /api/sessions/{session_id}             获取 session 及其所有 active threads
-  DELETE /api/sessions/{session_id}             删除 session（CASCADE 删除所有 threads/messages/summaries）
-  GET    /api/sessions/{session_id}/messages    批量获取所有 thread 消息
-  POST   /api/sessions/{session_id}/flatten     将所有子线程按 preorder 合并回主线（不可逆）
+Endpoints:
+  GET    /api/sessions                          List all sessions for the current user
+  POST   /api/sessions                          Create a session (also auto-creates the main thread)
+  GET    /api/sessions/{session_id}             Get a session and all its active threads
+  DELETE /api/sessions/{session_id}             Delete a session (CASCADE deletes all threads/messages/summaries)
+  GET    /api/sessions/{session_id}/messages    Batch-fetch all thread messages
+  POST   /api/sessions/{session_id}/flatten     Merge all sub-threads back into the main thread in preorder (irreversible)
 """
 
 import asyncio
@@ -17,7 +16,6 @@ import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
-from db.supabase import get_supabase
 from dependencies.auth import CurrentUser, get_current_user, get_current_user_full
 from models.session import CreateSessionRequest, Session
 from services.flatten_service import compute_preorder, is_already_flattened
@@ -26,20 +24,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 匿名用户最多只能持有 1 个 session；登录/linkIdentity 后解除限制。
 # Anonymous users may hold at most 1 session; linking an identity removes the cap.
 ANON_MAX_SESSIONS = 1
 
 
 async def _db(fn):
-    """将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。"""
+    """Wrap synchronous Supabase calls in a thread pool to avoid blocking the asyncio event loop."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, fn)
 
 
 @router.get("/sessions")
 async def list_sessions(auth=Depends(get_current_user)):
-    """获取当前用户的所有 sessions，按创建时间倒序，最多返回 50 条。"""
+    """Return all sessions for the current user, ordered by creation time descending, capped at 50."""
     _user_id, sb = auth
     res = await _db(lambda: (
         sb.table("sessions")
@@ -56,9 +53,7 @@ async def create_session(
     body: CreateSessionRequest,
     user: CurrentUser = Depends(get_current_user_full),
 ):
-    """创建新 session，并自动创建对应的主线 thread（depth=0）。
-    匿名用户最多持有 1 个 session：超出直接 402，提示登录解除上限。
-    Anonymous users get at most 1 session; beyond that returns 402 and nudges sign-in."""
+    """    Anonymous users get at most 1 session; beyond that returns 402 and nudges sign-in."""
     user_id, sb = user.user_id, user.sb
 
     if user.is_anonymous:
@@ -102,7 +97,7 @@ async def create_session(
 
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
-    """获取指定 session 及其所有 threads（按创建时间升序）。RLS 自动过滤非本人数据。"""
+    """Return the given session and all its threads (ordered by creation time ascending). RLS filters out other users' data."""
     _user_id, sb = auth
 
     session_res = await _db(lambda: (
@@ -111,7 +106,6 @@ async def get_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
     if not session_res or not session_res.data:
         raise HTTPException(status_code=404, detail="Session 不存在 / Session not found")
 
-    # 仅返回 active 线程；扁平化吸收的子线程（status='flattened'）作为 tombstone 留在 DB 但不暴露给前端
     # Return only active threads; flattened sub-thread tombstones stay in DB but aren't exposed to the client
     threads_res = await _db(lambda: (
         sb.table("threads")
@@ -133,9 +127,7 @@ async def delete_session(
     session_id: uuid.UUID,
     user: CurrentUser = Depends(get_current_user_full),
 ):
-    """删除指定 session（RLS 保证只能删自己的）。CASCADE 自动清理 threads/messages/summaries。
-    匿名用户禁止删除 —— 否则可以「删除 + 重建」绕过生命期 20 轮配额。
-    Anonymous users can't delete — otherwise delete+recreate would reset the lifetime 20-turn cap."""
+    """    Anonymous users can't delete — otherwise delete+recreate would reset the lifetime 20-turn cap."""
     if user.is_anonymous:
         raise HTTPException(
             status_code=403,
@@ -158,10 +150,8 @@ async def delete_session(
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(session_id: uuid.UUID, auth=Depends(get_current_user)):
     """
-    批量获取该 session 下所有 active 线程的消息，按 thread_id 分组返回。
     Bulk-fetch all messages of active threads in this session, grouped by thread_id.
 
-    扁平化后：所有原子线程消息已迁到主线，主线消息按 (position NULLS LAST, created_at) 排序。
     Post-flatten: all sub-thread messages now live on the main thread, ordered by
     (position NULLS LAST, created_at) so future un-positioned messages append at the end.
     """
@@ -192,7 +182,6 @@ async def get_session_messages(session_id: uuid.UUID, auth=Depends(get_current_u
         if tid in result:
             result[tid].append(msg)
 
-    # position-aware 排序：有 position 的按 position 升序，无 position 的回落到 created_at
     # Position-aware sort: messages with position come first in ascending order; the rest fall back to created_at
     for tid in result:
         result[tid].sort(key=_message_sort_key)
@@ -202,7 +191,6 @@ async def get_session_messages(session_id: uuid.UUID, auth=Depends(get_current_u
 
 def _message_sort_key(m: dict) -> tuple:
     """
-    扁平化后排序键：先按 position（null 排最后），再按 created_at。
     Sort key after flatten: position first (nulls last), then created_at as tiebreaker.
     """
     pos = m.get("position")
@@ -212,36 +200,31 @@ def _message_sort_key(m: dict) -> tuple:
 @router.post("/sessions/{session_id}/flatten")
 async def flatten_session(session_id: uuid.UUID, auth=Depends(get_current_user)):
     """
-    把 session 下所有子线程的消息按 preorder DFS 合并回主线，并把子线程标记为 flattened。
     Merge all sub-thread messages into the main thread via preorder DFS, then mark
     sub-threads as flattened.
 
-    **不可逆**：原子线程消息会被改写 thread_id；子线程行保留为 status='flattened' tombstone。
     **Irreversible**: sub-thread messages have their thread_id rewritten; sub-thread rows
     are retained as status='flattened' tombstones.
 
-    幂等：若主线已有任何带 position 的消息，视为已扁平化，直接返回当前快照。
     Idempotent: if any main-thread message already has a position, treat as already
     flattened and return the current snapshot without changes.
 
-    返回 / Returns:
+    Returns:
       {
-        "main_thread_id": str,
-        "flattened_thread_count": int,        # 本次新标记为 flattened 的子线程数
-        "message_count": int,                  # 主线当前消息总数
+        "flattened_thread_count": int,   # Newly flattened sub-threads on this call
         "already_flattened": bool,
       }
     """
     _user_id, sb = auth
 
-    # 1. 校验 session 存在
+    # 1. Validate the session exists
     session_res = await _db(lambda: (
         sb.table("sessions").select("id").eq("id", str(session_id)).maybe_single().execute()
     ))
     if not session_res or not session_res.data:
         raise HTTPException(status_code=404, detail="Session 不存在 / Session not found")
 
-    # 2. 拉所有 active threads（含 anchor 信息）
+    # 2. Fetch all active threads (with anchor info)
     threads_res = await _db(lambda: (
         sb.table("threads")
         .select("id, parent_thread_id, anchor_message_id, depth, created_at")
@@ -256,7 +239,7 @@ async def flatten_session(session_id: uuid.UUID, auth=Depends(get_current_user))
         raise HTTPException(status_code=500, detail="主线不存在 / Main thread missing")
     main_thread_id = main_thread["id"]
 
-    # 3. 拉所有相关消息
+    # 3. Fetch all related messages
     thread_ids = [t["id"] for t in threads]
     msgs_res = await _db(lambda: (
         sb.table("messages")
@@ -276,19 +259,16 @@ async def flatten_session(session_id: uuid.UUID, auth=Depends(get_current_user))
         if tid == main_thread_id:
             main_msgs.append(m)
 
-    # 4. 幂等：主线已有 position 即认为已扁平化
+    # 4. Idempotency: main-thread messages already have positions -> already flattened
     if is_already_flattened(main_msgs):
         return {
-            "main_thread_id": main_thread_id,
             "flattened_thread_count": 0,
-            "message_count": len(main_msgs),
             "already_flattened": True,
         }
 
-    # 5. 计算 preorder 序列
+    # 5. Compute the preorder sequence
     orders = compute_preorder(main_thread_id, threads, messages_by_thread)
     if not orders:
-        # session 没有任何消息：仍然把子线程标记为 flattened（如果有），避免残留
         # Session has no messages: still flatten any empty sub-threads to clean state
         sub_count = sum(1 for t in threads if t["id"] != main_thread_id)
         if sub_count > 0:
@@ -301,13 +281,11 @@ async def flatten_session(session_id: uuid.UUID, auth=Depends(get_current_user))
                 .execute()
             ))
         return {
-            "main_thread_id": main_thread_id,
             "flattened_thread_count": sub_count,
-            "message_count": 0,
             "already_flattened": False,
         }
 
-    # 6. 调 RPC 一次性原子写入（messages 重写 + threads 标记 flattened）
+    # 6. Call RPC for a single atomic write (rewrite messages + mark threads flattened)
     try:
         await _db(lambda: sb.rpc("flatten_session", {
             "p_session_id": str(session_id),
@@ -320,8 +298,6 @@ async def flatten_session(session_id: uuid.UUID, auth=Depends(get_current_user))
 
     flattened_count = sum(1 for t in threads if t["id"] != main_thread_id)
     return {
-        "main_thread_id": main_thread_id,
         "flattened_thread_count": flattened_count,
-        "message_count": len(orders),
         "already_flattened": False,
     }

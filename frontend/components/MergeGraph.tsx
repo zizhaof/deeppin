@@ -1,9 +1,4 @@
 "use client";
-// components/MergeGraph.tsx
-// Merge 模态框里的线程选择图 —— 与 ThreadGraph 同一视觉语言：
-// 颜料色圆点 + bezier 连线 + Fraunces 标签。加上 "selected" 语义：
-// 勾选的节点实心填充对应 pigment，不勾选的空心只有描边。
-//
 // Thread-selection graph for the Merge modal. Same visual language as
 // ThreadGraph (pigment circles, bezier edges, Fraunces labels) but with
 // selected-state semantics: checked = filled pigment, unchecked = hollow
@@ -55,9 +50,6 @@ function layoutNodes(
   messagesByThread: Record<string, Message[] | undefined> | undefined,
   width: number,
 ): { nodes: Positioned[]; height: number } {
-  // 叶子数加权递归布局 —— 同 ThreadGraph。每棵子树拿到与叶子数成比例的
-  // 横向空间，每个节点居中于其区间。子节点永远在父节点的 [xLeft, xRight] 内部，
-  // 因此任意两条父子边都不会交叉。
   // Leaf-count-weighted recursive layout (matches ThreadGraph). Each subtree
   // claims horizontal space proportional to its leaves; children stay within
   // the parent's [xLeft, xRight] range — so parent→child edges never cross.
@@ -161,7 +153,7 @@ export default function MergeGraph({
   messagesByThread,
   compact,
 }: Props) {
-  // 容器宽度：compact=内嵌右栏 (~300)，否则 merge modal 里给 ~460
+  // Container width: compact = inline right rail (~300); otherwise ~460 inside the merge modal.
   // Container width — compact uses ~300 (rail embed), otherwise ~460 (modal).
   const width = compact ? 300 : 460;
   const { nodes, height } = useMemo(
@@ -189,7 +181,6 @@ export default function MergeGraph({
 
   const posById = new Map(nodes.map((n) => [n.thread.id, n]));
 
-  // 共享 zoom/pan —— 滚轮缩放 + 拖拽平移 + 自适应
   // Shared zoom/pan — wheel = cursor-anchored zoom, drag = pan, auto-fit.
   const zp = useGraphZoomPan({
     contentWidth: width,
@@ -218,8 +209,7 @@ export default function MergeGraph({
             const parent = posById.get(n.thread.parent_thread_id!);
             if (!parent) return null;
             const dy = n.y - parent.y;
-            // 父→子任一不选 → 连线变浅；否则用 rule 主色
-            // If either endpoint isn't selected, fade the edge.
+            // If either endpoint isn't selected, fade the edge; otherwise use the main rule color.
             const bothSelected = selected.has(n.thread.id) && selected.has(parent.thread.id);
             const d = `M ${parent.x} ${parent.y} C ${parent.x} ${parent.y + dy * 0.45}, ${n.x} ${n.y - dy * 0.45}, ${n.x} ${n.y}`;
             return (
@@ -255,7 +245,7 @@ export default function MergeGraph({
               style={{ cursor: "pointer" }}
               onClick={(e) => { e.stopPropagation(); onToggle(n.thread.id); }}
             >
-              {/* 选中时额外的 glow 圈 / glow halo when selected */}
+              {/* Glow halo when selected. */}
               {isSelected && (
                 <circle
                   cx={n.x}
@@ -273,7 +263,7 @@ export default function MergeGraph({
                 stroke={color}
                 strokeWidth={isSelected ? 0 : 1.5}
               />
-              {/* 选中打钩标记 */}
+              {/* Selected check mark. */}
               {isSelected && !isRoot && (
                 <path
                   d={`M ${n.x - 2.5} ${n.y + 0.3} L ${n.x - 0.5} ${n.y + 2.3} L ${n.x + 2.8} ${n.y - 1.7}`}

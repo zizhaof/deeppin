@@ -1,12 +1,11 @@
-// frontend/lib/api.ts
-// 后端 API 调用封装
+// Wrapper around backend API calls.
 
 import { createClient } from "./supabase";
 
-// rewrites 在 next.config.ts 里把 /api/* 代理到后端，浏览器无需直接访问后端
+// next.config.ts rewrites /api/* to the backend, so the browser never hits the backend directly.
 const BASE_URL = "";
 
-/** 获取带 Authorization header 的 JSON 请求头 */
+/** Build JSON request headers with the Authorization bearer token. */
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
@@ -18,7 +17,6 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * 带结构化 detail 的 API 错误（402/403 匿名配额相关路径用）。
  * API error carrying structured detail (used by 402/403 anon-quota paths).
  */
 export class ApiError extends Error {
@@ -33,10 +31,7 @@ export class ApiError extends Error {
 }
 
 /**
- * 检查响应状态，401 时跳转登录页（token 在长会话中过期时触发）。
  * Check response status; redirect to login on 401 (fires when token expires during a long session).
- * 读取 JSON body 中的 detail 字段。detail 可能是字符串，也可能是 {code, message, ...} 结构体
- * （匿名配额相关的 402/403 走后者）。
  * Reads the detail field; it may be a string or a {code, message, ...} object
  * (anon-quota 402/403 uses the object form).
  */
@@ -78,7 +73,6 @@ export interface Thread {
   anchor_start_offset: number | null;
   anchor_end_offset: number | null;
   title: string | null;
-  suggestions: string[] | null;
   depth: number;
   created_at: string;
 }
@@ -88,13 +82,12 @@ export interface Message {
   thread_id: string;
   role: "user" | "assistant";
   content: string;
-  token_count: number | null;
   created_at: string;
-  /** 生成该回复的 LLM 模型名（如 "groq/llama-3.3-70b-versatile"） */
+  /** Name of the LLM model that produced this reply (e.g. "groq/llama-3.3-70b-versatile"). */
   model?: string | null;
 }
 
-/** 获取所有 sessions 列表（按创建时间倒序） */
+/** List all sessions (newest first). */
 export async function listSessions(): Promise<Session[]> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
     headers: await getAuthHeaders(),
@@ -103,7 +96,7 @@ export async function listSessions(): Promise<Session[]> {
   return res.json();
 }
 
-/** 删除 session（级联删除所有 threads/messages/summaries） */
+/** Delete a session (cascades to all threads/messages/summaries). */
 export async function deleteSession(sessionId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}`, {
     method: "DELETE",
@@ -113,8 +106,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
   if (!res.ok) throw new Error(`删除 session 失败: ${res.status}`);
 }
 
-/** 创建新 session，后端自动创建对应主线 thread
- *  可传入客户端预生成的 { id } 以避免 DB 自动分配新 UUID。
+/** Create a new session; the backend auto-creates the corresponding main thread.
  *  Pass a client-pre-generated { id } to reuse a UUID without a prior DB write.
  */
 export async function createSession(opts?: string | { id?: string; title?: string }): Promise<Session> {
@@ -129,7 +121,7 @@ export async function createSession(opts?: string | { id?: string; title?: strin
   return res.json();
 }
 
-/** 获取 session 详情（含 threads 列表） */
+/** Get session detail (including its threads list). */
 export async function getSession(sessionId: string): Promise<Session> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}`, {
     headers: await getAuthHeaders(),
@@ -138,7 +130,7 @@ export async function getSession(sessionId: string): Promise<Session> {
   return res.json();
 }
 
-/** 创建子线程（插针） */
+/** Create a sub-thread (pin). */
 export async function createThread(params: {
   session_id: string;
   parent_thread_id?: string;
@@ -157,7 +149,7 @@ export async function createThread(params: {
   return res.json();
 }
 
-/** 获取针对该线程锚点的追问建议 */
+/** Get follow-up suggestions for this thread's anchor. */
 export async function getSuggestions(threadId: string): Promise<string[]> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/suggest`, {
     headers: await getAuthHeaders(),
@@ -167,23 +159,7 @@ export async function getSuggestions(threadId: string): Promise<string[]> {
   return data.questions ?? [];
 }
 
-export interface RelevanceItem {
-  thread_id: string;
-  selected: boolean;
-  reason: string;
-}
-
-/** 获取子线程与主线的相关性评估（用于合并输出节点默认选中）*/
-export async function getRelevance(sessionId: string): Promise<RelevanceItem[]> {
-  const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/relevance`, {
-    method: "POST",
-    headers: await getAuthHeaders(),
-  });
-  await assertOk(res, "Failed to get relevance");
-  return res.json();
-}
-
-/** 获取线程消息历史 */
+/** Get a thread's message history. */
 export async function getMessages(threadId: string): Promise<Message[]> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`, {
     headers: await getAuthHeaders(),
@@ -192,7 +168,7 @@ export async function getMessages(threadId: string): Promise<Message[]> {
   return res.json();
 }
 
-/** 批量获取 session 下所有线程的消息（一次请求替代 N 次串行请求） */
+/** Batch-fetch messages for every thread in a session (one request instead of N serial calls). */
 export async function getAllMessages(sessionId: string): Promise<Record<string, Message[]>> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/messages`, {
     headers: await getAuthHeaders(),
@@ -201,7 +177,7 @@ export async function getAllMessages(sessionId: string): Promise<Record<string, 
   return res.json();
 }
 
-/** 直接保存一条 assistant 消息到指定线程（不触发 AI，用于保存合并结果） */
+/** Save an assistant message directly to a thread (no AI call; used for merge results). */
 export async function saveAssistantMessage(threadId: string, content: string): Promise<Message> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}/messages`, {
     method: "POST",
@@ -212,16 +188,7 @@ export async function saveAssistantMessage(threadId: string, content: string): P
   return res.json();
 }
 
-/** 获取线程及所有后代的树结构（用于删除前预览） */
-export async function getThreadSubtree(threadId: string): Promise<{ id: string; title: string | null; children: unknown[] }> {
-  const res = await fetch(`${BASE_URL}/api/threads/${threadId}/subtree`, {
-    headers: await getAuthHeaders(),
-  });
-  await assertOk(res, "获取子树失败");
-  return res.json();
-}
-
-/** 删除线程及所有后代 */
+/** Delete a thread and all its descendants. */
 export async function deleteThread(threadId: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/threads/${threadId}`, {
     method: "DELETE",
@@ -231,7 +198,7 @@ export async function deleteThread(threadId: string): Promise<void> {
   if (!res.ok) throw new Error(`删除线程失败: ${res.status}`);
 }
 
-/** 删除当前用户账号及所有对话数据（不可撤销） */
+/** Delete the current user account and all conversation data (irreversible). */
 export async function deleteAccount(): Promise<void> {
   const res = await fetch(`${BASE_URL}/api/users/me`, {
     method: "DELETE",
@@ -245,14 +212,11 @@ export async function deleteAccount(): Promise<void> {
 }
 
 /**
- * 扁平化 session：把所有子线程消息按 preorder DFS 合并回主线，子线程标记为 flattened（tombstone）。
  * Flatten the session: merge all sub-thread messages back into the main thread via preorder DFS;
- * mark sub-threads as flattened (tombstone). **不可逆 / Irreversible.**
+ * mark sub-threads as flattened (tombstone). **Irreversible.**
  */
 export async function flattenSession(sessionId: string): Promise<{
-  main_thread_id: string;
   flattened_thread_count: number;
-  message_count: number;
   already_flattened: boolean;
 }> {
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/flatten`, {
@@ -263,7 +227,7 @@ export async function flattenSession(sessionId: string): Promise<{
   return res.json();
 }
 
-/** 上传附件，后端异步提取文本并向量化（不返回文本内容，通过 RAG 检索注入 context） */
+/** Upload an attachment; backend extracts text and vectorizes asynchronously (no text in response — RAG retrieval injects it into context). */
 export async function uploadAttachment(
   sessionId: string,
   file: File,
@@ -275,7 +239,7 @@ export async function uploadAttachment(
   if (!session) throw new Error("Not authenticated");
   const res = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/upload`, {
     method: "POST",
-    // headers: 只传 Authorization，不设 Content-Type（FormData 由浏览器自动处理 multipart boundary）
+    // headers: send Authorization only — do not set Content-Type so the browser picks the multipart boundary for FormData.
     headers: { Authorization: `Bearer ${session.access_token}` },
     body: form,
   });

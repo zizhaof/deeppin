@@ -1,10 +1,6 @@
 "use client";
-// app/articles/page.tsx — 文章列表页
-//
-// 设计风：Stripe-dev / letterpress。左侧过滤 tags + 中间按日期倒序的流 + 右侧小统计栏。
-// 每条文章：左边 mono 日期，右边 Fraunces 标题（带 § 前缀）+ 摘要 + tag chips。
-//
-// Stripe-dev / letterpress editorial style: left tag filters + center date-sorted stream + right stats rail.
+// Articles list page — Stripe-dev / letterpress editorial style:
+// left tag filters + center date-sorted stream + right stats rail.
 // Each entry: mono date on the left, Fraunces title (§ prefix) + summary + tag chips on the right.
 
 import Link from "next/link";
@@ -19,7 +15,7 @@ export default function ArticlesPage() {
   const contentLang = narrowToContentLang(lang);
   const [activeTag, setActiveTag] = useState<string | null>(null);
 
-  // 所有 tag 及其出现次数 / All tags + usage count
+  // All tags + usage count.
   const tagCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of articles) for (const t of a.tags) m.set(t, (m.get(t) ?? 0) + 1);
@@ -32,7 +28,7 @@ export default function ArticlesPage() {
   );
   const filtered = activeTag ? sorted.filter((a) => a.tags.includes(activeTag)) : sorted;
 
-  // 年份分组用于右侧统计
+  // Year grouping for the right-rail stats.
   const years = useMemo(() => {
     const map = new Map<string, number>();
     for (const a of articles) {

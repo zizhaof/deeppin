@@ -1,10 +1,10 @@
 # backend/tests/test_embedding_service.py
 """
-验证 embedding_service 在换模型后的正确性。
-确认：
-  1. 单条 / 批量 embed 返回 1024 维向量
-  2. 语义相近的句子余弦距离 < 语义不相关的句子
-  3. 中文输入正常工作
+Verify embedding_service correctness after the model swap.
+Asserts:
+  1. Single / batch embed returns 1024-dim vectors
+  2. Semantically close sentences have smaller cosine distance than unrelated ones
+  3. Chinese input works correctly
 """
 import math
 import pytest
@@ -22,7 +22,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 @pytest.fixture(autouse=True)
 def reset_model_singleton():
-    """每个测试前清空模型单例，避免测试间污染。"""
+    """Clear the model singleton before each test to avoid cross-test pollution."""
     import services.embedding_service as svc
     svc._model = None
     yield
@@ -31,7 +31,7 @@ def reset_model_singleton():
 
 @pytest.mark.asyncio
 async def test_embed_text_dimension():
-    """单条文本 embed 返回 1024 维向量。"""
+    """Single-text embed returns a 1024-dim vector."""
     from services.embedding_service import embed_text
     vec = await embed_text("attention mechanism in transformers")
     assert len(vec) == 1024, f"期望 1024 维，实际 {len(vec)} 维"
@@ -39,7 +39,7 @@ async def test_embed_text_dimension():
 
 @pytest.mark.asyncio
 async def test_embed_texts_batch():
-    """批量 embed 返回正确数量和维度。"""
+    """Batch embed returns the correct count and dimensionality."""
     from services.embedding_service import embed_texts
     texts = ["hello world", "你好世界", "machine learning"]
     vecs = await embed_texts(texts)
@@ -50,12 +50,12 @@ async def test_embed_texts_batch():
 
 @pytest.mark.asyncio
 async def test_semantic_similarity():
-    """语义相近的句子相似度 > 语义不相关的句子。"""
+    """Semantically close sentences have higher similarity than unrelated ones."""
     from services.embedding_service import embed_texts
     vecs = await embed_texts([
-        "multi-head attention mechanism",   # 查询
-        "self-attention in neural networks", # 语义相近
-        "the weather is nice today",         # 语义不相关
+        "multi-head attention mechanism",   # Query
+        "self-attention in neural networks", # Semantically close
+        "the weather is nice today",         # Unrelated
     ])
     query, similar, unrelated = vecs
     sim_close = cosine_similarity(query, similar)
@@ -67,7 +67,7 @@ async def test_semantic_similarity():
 
 @pytest.mark.asyncio
 async def test_chinese_embedding():
-    """中文输入正常返回 1024 维向量，且中文语义相近句相似度较高。"""
+    """Chinese input returns 1024-dim vectors and semantically close Chinese sentences score high."""
     from services.embedding_service import embed_texts
     vecs = await embed_texts([
         "注意力机制是 Transformer 的核心",
@@ -83,14 +83,14 @@ async def test_chinese_embedding():
 
 @pytest.mark.asyncio
 async def test_embed_empty_list():
-    """空列表输入返回空列表，不报错。"""
+    """Empty list input returns an empty list without raising."""
     from services.embedding_service import embed_texts
     result = await embed_texts([])
     assert result == []
 
 
 def test_format_vector():
-    """format_vector 输出正确的 pgvector 格式。"""
+    """format_vector outputs the correct pgvector format."""
     from services.embedding_service import format_vector
     v = [0.1, -0.2, 0.3]
     result = format_vector(v)

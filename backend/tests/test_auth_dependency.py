@@ -1,10 +1,9 @@
 # backend/tests/test_auth_dependency.py
 """
-FastAPI auth dependency 单元测试
 Unit tests for the Supabase-JWT FastAPI dependency.
 
-验证核心 token 解码逻辑在 get_current_user_full 上（带 is_anonymous），
-get_current_user 是薄封装走 Depends 拆 2-tuple；直接调用时传 CurrentUser 即可。
+Verify the core token decoding logic on get_current_user_full (with is_anonymous);
+get_current_user is a thin wrapper that splits the 2-tuple via Depends; pass CurrentUser when calling directly.
 
 The real token-decode logic lives on get_current_user_full (returns is_anonymous);
 get_current_user is a thin backward-compat wrapper that unpacks the tuple — calling
@@ -17,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_missing_credentials_raises_401():
-    """无 Authorization header → 401."""
+    """No Authorization header -> 401."""
     from dependencies.auth import get_current_user_full
     from fastapi import HTTPException
 
@@ -29,7 +28,7 @@ async def test_missing_credentials_raises_401():
 
 @pytest.mark.asyncio
 async def test_invalid_token_raises_401():
-    """Supabase 拒绝 token → 401."""
+    """Supabase rejects the token -> 401."""
     from dependencies.auth import get_current_user_full
     from fastapi import HTTPException
     from fastapi.security import HTTPAuthorizationCredentials
@@ -49,7 +48,7 @@ async def test_invalid_token_raises_401():
 
 @pytest.mark.asyncio
 async def test_valid_token_returns_user_id_and_client():
-    """有效 token → 返回 CurrentUser(user_id, is_anonymous=False, sb)。"""
+    """Valid token -> returns CurrentUser(user_id, is_anonymous=False, sb)."""
     from dependencies.auth import get_current_user_full
     from fastapi.security import HTTPAuthorizationCredentials
 
@@ -80,7 +79,7 @@ async def test_valid_token_returns_user_id_and_client():
 
 @pytest.mark.asyncio
 async def test_anonymous_user_flag_propagated():
-    """匿名 JWT → is_anonymous=True 传回调用方。"""
+    """Anonymous JWT -> is_anonymous=True propagated to the caller."""
     from dependencies.auth import get_current_user_full
     from fastapi.security import HTTPAuthorizationCredentials
 
@@ -106,12 +105,10 @@ async def test_anonymous_user_flag_propagated():
 
 @pytest.mark.asyncio
 async def test_missing_is_anonymous_defaults_false():
-    """Supabase-py 老版本或字段缺失 → is_anonymous 默认 False，不崩。
-    Older supabase-py versions may not expose is_anonymous; default to False."""
+    """    Older supabase-py versions may not expose is_anonymous; default to False."""
     from dependencies.auth import get_current_user_full
     from fastapi.security import HTTPAuthorizationCredentials
 
-    # 用普通 object（没有 is_anonymous 属性）代替 MagicMock，确保 getattr 走默认分支
     # Use a plain object (no is_anonymous attr) so getattr hits the default.
     class _User:
         id = "legacy-uid"
@@ -136,7 +133,7 @@ async def test_missing_is_anonymous_defaults_false():
 
 @pytest.mark.asyncio
 async def test_valid_token_creates_client_with_anon_key():
-    """user-scoped 客户端使用 ANON_KEY 而非 service_role key 创建。"""
+    """The user-scoped client is created with ANON_KEY rather than the service_role key."""
     from dependencies.auth import get_current_user_full
     from fastapi.security import HTTPAuthorizationCredentials
 
@@ -162,8 +159,7 @@ async def test_valid_token_creates_client_with_anon_key():
 
 @pytest.mark.asyncio
 async def test_get_user_returns_none_raises_401():
-    """user_response.user 为 None 时 → 401（token 对应用户不存在）。
-    user_response.user is None → 401 (user no longer exists)."""
+    """    user_response.user is None → 401 (user no longer exists)."""
     from dependencies.auth import get_current_user_full
     from fastapi import HTTPException
     from fastapi.security import HTTPAuthorizationCredentials

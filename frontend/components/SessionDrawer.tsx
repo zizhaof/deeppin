@@ -1,5 +1,5 @@
 "use client";
-// components/SessionDrawer.tsx — 历史会话侧边抽屉（主页和对话页共用）
+// Session-history side drawer (shared between the home and chat pages).
 // Paper-palette restyle — Fraunces session titles, mono dates, ink-on-paper
 // delete affordance that only shows on hover.
 
@@ -25,11 +25,9 @@ interface Props {
   currentSessionId?: string;
   t: T;
   onDelete?: (sessionId: string) => void;
-  /** 当前用户是否匿名；匿名点「新对话」时走 onAnonNewChat（通常弹登录引导）。
-   *  Anon flag — clicks on "new chat" delegate to onAnonNewChat (typically a sign-in modal). */
+  /** Anon flag — clicks on "new chat" delegate to onAnonNewChat (typically a sign-in modal). */
   isAnon?: boolean;
-  /** 匿名用户点「新对话」时的回调；不传则按默认逻辑新建（会撞 402）。
-   *  Handler for anon "new chat" clicks; falls through to default create if omitted. */
+  /** Handler for anon "new chat" clicks; falls through to default create if omitted (and may hit 402). */
   onAnonNewChat?: () => void;
 }
 
@@ -48,7 +46,7 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
 
   return (
     <>
-      {/* 遮罩 */}
+      {/* Backdrop. */}
       <div
         onClick={onClose}
         className={`fixed inset-0 z-40 [background:rgba(27,26,23,0.45)] backdrop-blur-sm transition-opacity duration-200 ${
@@ -56,12 +54,12 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
         }`}
       />
 
-      {/* 抽屉 */}
+      {/* Drawer. */}
       <div
         className={`fixed left-0 top-0 h-full w-[300px] z-50 flex flex-col transition-transform duration-200 ease-out ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{ background: "var(--card)", borderRight: "1px solid var(--rule)" }}
       >
-        {/* 头部 */}
+        {/* Header. */}
         <div
           className="flex items-center justify-between px-5 py-4 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule)" }}
@@ -82,7 +80,7 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
           </button>
         </div>
 
-        {/* 列表 */}
+        {/* List. */}
         <div className="flex-1 overflow-y-auto py-2 px-2 scrollbar-thin">
           {loading ? (
             <div className="flex items-center justify-center gap-1.5 py-10">
@@ -156,7 +154,7 @@ export default function SessionDrawer({ open, onClose, sessions, loading, curren
           )}
         </div>
 
-        {/* 底部：新对话按钮 */}
+        {/* Footer: new-chat button. */}
         <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: "1px solid var(--rule)" }}>
           <button
             onClick={handleNewChat}

@@ -1,7 +1,3 @@
-// lib/useDemoController.ts
-// 共享 demo 状态机：接收 phase 顺序 + 每 phase 延迟，自动推进，支持
-// 用户手动 prev/next/pause。PinDemo 和 MobilePinDemo 共用。
-//
 // Shared demo state machine: takes an ordered phase list + per-phase
 // delays, auto-advances, and exposes prev/next/pause controls so the
 // user can scrub. PinDemo and MobilePinDemo share this hook.
@@ -19,13 +15,13 @@ export interface DemoControl<P extends string> {
   pause: () => void;
   togglePlay: () => void;
   goTo: (index: number) => void;
-  /** 当前 phase 预设的延迟（ms）—— 进度环动画可用 */
+  /** Preset delay (ms) for the current phase — handy for progress-ring animations. */
   phaseDelay: number;
 }
 
 export interface UseDemoControllerOptions<P extends string> {
   startPhase?: P;
-  /** 循环到头回到开头，默认 true */
+  /** Loop back to the start when reaching the end. Defaults to true. */
   loop?: boolean;
 }
 
@@ -43,7 +39,6 @@ export function useDemoController<P extends string>(
   const [isPlaying, setIsPlaying] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 自动前进：每次 phase 或 isPlaying 改变时重置 timer。
   // Auto-advance: reset the timer whenever phase or play state changes.
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);

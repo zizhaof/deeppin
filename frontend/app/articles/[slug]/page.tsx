@@ -1,13 +1,8 @@
 "use client";
-// app/articles/[slug]/page.tsx — 文章详情页
-//
-// 三栏布局：左侧自动 TOC（h1/h2 + scroll-spy）+ 中央正文 + 右侧元信息栏。
-// Stripe-dev 编辑风：h1 带顶部 indigo 细条 + § N 编号、note 有 i 圆徽章、
-// code block 左边 indigo 条、diagram 包成 figure + Fig. N caption。
-//
-// 3-col: left auto-TOC (h1/h2 + scroll-spy), center prose, right metadata rail.
-// Stripe-dev editorial: h1 with indigo top-rule + § N eyebrow, note with "i" badge,
-// code blocks with indigo left-border, diagrams wrapped as figure + Fig. N caption.
+// 3-column article detail: left auto-TOC (h1/h2 + scroll-spy), center prose,
+// right metadata rail. Stripe-dev editorial: h1 with indigo top-rule + § N
+// eyebrow, note with "i" badge, code blocks with indigo left-border, diagrams
+// wrapped as figure + Fig. N caption.
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -24,8 +19,7 @@ interface TocEntry {
   level: 1 | 2;
 }
 
-/** 给每个 h1/h2 block 生成稳定的 id + § N 编号
- *  Stable IDs + § N counter for each h1/h2. */
+/** Stable IDs + § N counter for each h1/h2 block. */
 function buildAnchors(body: Block[]): {
   anchorById: Map<number, { id: string; level: 1 | 2; h1Index: number | null }>;
   toc: TocEntry[];
@@ -179,7 +173,6 @@ function RenderBlock({
 }
 
 function estimateReadingMin(body: Block[]): number {
-  // 粗略：中文每分钟 400 字 / 英文每分钟 220 词。混合取较慢者。
   // Rough: 400 CJK-char/min or 220 words/min, whichever is slower.
   let chars = 0;
   const collect = (s?: string) => { if (s) chars += s.length; };
@@ -201,10 +194,10 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
 
   const c = article.content[contentLang];
 
-  // TOC + 锚点 ID
+  // TOC + anchor IDs.
   const { anchorById, toc } = useMemo(() => buildAnchors(c.body), [c.body]);
 
-  // Fig 编号 — 给所有 diagram block 分配连续 Fig. N
+  // Fig numbering — assign every diagram block a sequential Fig. N.
   const figNumberById = useMemo(() => {
     const map = new Map<number, number>();
     let n = 0;
@@ -212,7 +205,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
     return map;
   }, [c.body]);
 
-  // 上/下篇
+  // Previous / next article.
   const { prev, next } = useMemo(() => {
     const sorted = [...articles].sort((a, b) => a.date.localeCompare(b.date));
     const i = sorted.findIndex((a) => a.slug === slug);
@@ -222,7 +215,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
     };
   }, [slug]);
 
-  // 滚动高亮 TOC 当前节
+  // Scroll-spy: highlight the current TOC section.
   const [activeId, setActiveId] = useState<string | null>(toc[0]?.id ?? null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -231,7 +224,6 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
     if (ids.length === 0) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        // 取最靠近顶部（top 最小但 ≥ 80 阈值内）的节 id
         // Pick the section closest to the top viewport edge (within 80px threshold).
         const visible = entries
           .filter((e) => e.isIntersecting)

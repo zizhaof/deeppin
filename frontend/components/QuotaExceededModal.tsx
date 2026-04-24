@@ -1,7 +1,6 @@
 "use client";
-// components/QuotaExceededModal.tsx — 匿名额度用尽或创建 session 超限时的引导弹窗
-// Modal shown when an anonymous user hits the trial quota (402) or session cap (403):
-// primary action is Google sign-in via linkIdentity so the conversation carries over.
+// Modal shown when an anonymous user hits the trial quota (402) or session cap (403).
+// Primary action is Google sign-in via linkIdentity so the conversation carries over.
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -11,9 +10,9 @@ import { useT } from "@/stores/useLangStore";
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** 可选：后端返回的 detail.message；没有则用 i18n 默认文案。 */
+  /** Optional backend `detail.message`; falls back to the i18n default copy. */
   message?: string;
-  /** "quota" = 20 轮用尽；"session" = 1 session 上限。影响标题 / 描述文案。 */
+  /** "quota" = 20-turn trial exhausted; "session" = 1-session cap hit. Drives title/description copy. */
   variant?: "quota" | "session";
 }
 
@@ -32,7 +31,6 @@ export default function QuotaExceededModal({ open, onClose, message, variant = "
   const title = variant === "session" ? t.anonSessionLimitTitle : t.anonQuotaTitle;
   const desc = message || (variant === "session" ? t.anonSessionLimitDesc : t.anonQuotaDesc);
 
-  // linkIdentity 将当前匿名用户与 Google 账号绑定，保留 user_id；RLS 下历史消息自动可见。
   // linkIdentity binds the current anonymous user to Google while preserving user_id,
   // so existing messages stay visible under RLS without a data migration.
   const handleSignIn = async () => {
@@ -63,7 +61,7 @@ export default function QuotaExceededModal({ open, onClose, message, variant = "
         }}
       >
         <div className="px-6 pt-5 pb-4 flex items-start gap-3" style={{ borderBottom: "1px solid var(--rule-soft)" }}>
-          {/* brand 小徽章 */}
+          {/* Brand badge. */}
           <span
             className="mt-0.5 flex-shrink-0 w-7 h-7 rounded-full grid place-items-center"
             style={{ background: "var(--accent)", color: "var(--paper)" }}

@@ -1,28 +1,23 @@
-// lib/i18n/zh.ts — 中文翻译
 // Chinese translations. Must satisfy T (shape defined by en.ts).
 
 import type { T } from "./en";
 
 export const zh: T = {
-  // 导航
+  // Navigation
   back: "后退",
   forward: "前进",
   mainThread: "主线",
-  noTitle: "新对话",
-  switchThread: "切换线程",
-  // 侧边栏标题
+  // Sidebar headings
   subQuestions: "子问题",
   overview: "概览",
   viewList: "列表",
   viewGraph: "节点图",
-  // 空状态
-  selectToPin: "选中文字开启子问题",
+  // Empty states
   noThreads: "暂无线程",
   // Welcome
   welcomeTitle: "深度思考，从这里开始",
   welcomeSub: "向 Deeppin 提问，选中回复中的任意文字可开启子问题深入探讨",
   chooseQuestion: "选择一个问题开始追问",
-  tagline: "选中任意文字，插针深挖",
   // InputBar
   inputPlaceholder: "输入消息… (Enter 发送，Shift+Enter 换行)",
   webSearchPlaceholder: "联网搜索…",
@@ -31,30 +26,27 @@ export const zh: T = {
   longTextLabel: "长文本",
   fileParseError: "文件解析失败，无法提取文字内容",
   fileUploadError: "文件上传失败",
-  // 会话列表页
+  // Session list page
   newChat: "新对话",
   recentSessions: "最近的对话",
   noSessions: "还没有对话，点击右上角开始",
   untitled: "未命名对话",
   yesterday: "昨天",
   daysAgo: "天前",
-  // 状态
+  // Status
   loading: "加载中…",
-  creating: "正在创建会话…",
   errorPrefix: "出错了：",
   processing: "正在处理…",
   streamError: "[错误]",
-  // 线程
-  mainConversation: "主线对话",
+  // Threads
   subThread: "子线程",
-  // 插针菜单
+  // Pin menu
   pinAction: "子问题",
   copy: "复制",
-  goToThread: "跳到子问题",
-  // 推荐问题
+  // Suggested questions
   suggestedQuestions: "推荐问题",
   customQuestion: "或者自己写一个问题…",
-  // 消息气泡
+  // Message bubble
   collapse: "收起",
   expandFull: "展开全文",
   chars: "字",
@@ -62,19 +54,16 @@ export const zh: T = {
   mdMode: "MD",
   showRaw: "显示原始文本",
   showMd: "渲染 Markdown",
-  // 附件
+  // Attachments
   extracting: "正在提取文本…",
-  // 合并输出
+  // Merge output
   mergeButton: "合并",
   mergeTitle: "合并输出",
   mergeAngles: "个子问题",
   mergeHint: "选择格式后点击生成，将所有插针内容合并为一份报告",
-  mergePreparing: "正在准备…",
   mergeCopyMd: "复制 Markdown",
   mergeDownload: "下载 .md",
   mergeGenerating: "生成中…",
-  mergeRegenerate: "重新生成",
-  mergeGenerate: "生成",
   mergeFormatFree: "自由总结",
   mergeFormatFreeDesc: "流畅叙述，融合各角度洞察",
   mergeFormatBullets: "要点列表",
@@ -86,34 +75,18 @@ export const zh: T = {
   mergeFormatTranscript: "对话原文",
   mergeFormatTranscriptDesc: "直接输出原始对话内容",
   mergeCustomPromptPlaceholder: "描述你想要的总结方式，例如：用一封信的口吻写给团队，重点突出行动项…",
-  // 首页问题陈述
-  problemSetup: "和 AI 对话时，想深挖某个细节，你只有两条路：",
-  badChoice1Label: "开新对话",
-  badChoice1Desc: "上下文全没了，还得重新解释一遍",
-  badChoice2Label: "当前对话里追问",
-  badChoice2Desc: "主线被打断，话题越聊越乱",
-  solutionLabel: "Deeppin",
-  solutionDesc: "选中那个细节，插一根针，一路往下挖，想挖多深就挖多深。主线，一个字都没有被打断。",
-  // 使用说明
-  howToUseTitle: "怎么用",
-  step1Title: "随便问",
-  step1Desc: "向 AI 提出任何问题，得到详尽回答",
-  step2Title: "选中插针",
-  step2Desc: "选中回复里任意文字，点击「子问题」，开启独立追问，主线完全不受影响",
-  step3Title: "想挖多深挖多深",
-  step3Desc: "子问题里还可以继续插针，无论嵌套多少层都没问题",
-  step4Title: "一键整合",
-  step4Desc: "探索完了？把所有线程合并成一份完整报告，随时导出",
-  // 文章
+  // Landing problem statement
+  // How to use
+  // Articles
   articles: "文章",
-  // 账号
+  // Account
   logout: "退出",
   deleteAccount: "删除账号",
-  // 错误消息
+  // Error messages
   deleteError: "删除失败：",
   unknownError: "未知错误",
   confirmDelete: "确定删除这个会话吗？删除后无法恢复。",
-  // 删除线程弹窗
+  // Delete thread dialog
   deleteThread: "删除线程",
   deleteThreadTitle: "删除此线程及其所有子线程？",
   deleteSessionTitle: "删除整个对话？",
@@ -122,10 +95,7 @@ export const zh: T = {
   deleteCta: "删除",
   deleting: "删除中…",
   deleteResetView: "自适应",
-  // MergeDemo
-  pinsReady: "根针已就绪",
-  mergeOutput: "合并输出",
-  // 扁平化
+  // Flatten
   flattenButton: "扁平化",
   flattenConfirmTitle: "扁平化此会话？",
   flattenConfirmBody: "所有子线程的对话将按 preorder 合并回主线，所有插针会被移除。\n\n此操作无法撤销。",
@@ -135,7 +105,7 @@ export const zh: T = {
   flattenSuccess: "扁平化完成：合并 {count} 条针",
   flattenAlready: "已扁平化，无需重复操作",
   flattenError: "扁平化失败：",
-  // 匿名试用
+  // Anonymous trial
   anonQuotaTitle: "免费试用已达上限",
   anonQuotaDesc: "登录后即可继续对话，已有消息会保留。",
   anonSessionLimitTitle: "试用仅支持 1 个对话",
@@ -143,13 +113,13 @@ export const zh: T = {
   signInGoogle: "用 Google 登录",
   signIn: "登录",
   later: "稍后",
-  // 语言选择器
+  // Language selector
   languageLabel: "语言",
-  // 锚点 hover popover
+  // Anchor hover popover
   newReply: "新",
   enterThread: "进入",
   generatingSuggestions: "正在生成追问…",
-  // 输入框配额计数器
+  // Input bar quota counter
   quotaFree: "剩余",
   quotaFull: "试用已达上限",
   you: "我",
@@ -158,7 +128,6 @@ export const zh: T = {
   flattenPreviewAfter: "扁平后",
   flattenPreviewEmpty: "只有主线 — 没有可扁平化的子线程。",
   mergeHintSelect: "选择要合并的子问题 · 点击节点反选",
-  mergeHintDrag: "滚轮平移 · 拖拽移动",
   mergeSelectAll: "全选",
   mergeSelectNone: "全不选",
   mergeCta: "合并 {n} 个子问题",

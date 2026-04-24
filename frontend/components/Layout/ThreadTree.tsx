@@ -1,9 +1,5 @@
 "use client";
-// components/Layout/ThreadTree.tsx
-// 右栏 list 视图 — 按设计 .node 模式：
-//   左侧 3×N 颜料色条 + Fraunces 标题 + mono 元信息（N msgs · M pins）
-//   + 脉动未读章 + active 反色（ink 底 / paper 字）+ 嵌套 branch 左 rule 线
-// Right-rail list view — design's .node pattern:
+// Right-rail list view — uses the design's .node pattern:
 //   3×N pigment color-bar + Fraunces title + mono meta + pulsing unread badge
 //   + active = inverted (ink bg / paper text) + nested branch with left rule line.
 
@@ -11,18 +7,17 @@ import React, { useMemo } from "react";
 import type { Thread, Message } from "@/lib/api";
 import { useT } from "@/stores/useLangStore";
 
-/** 5 色锚点颜料 — 与 MessageBubble.ANCHOR_COLORS 对齐
- *  Pigment palette — matches MessageBubble's ANCHOR_COLORS index order. */
+/** Pigment palette — matches MessageBubble's ANCHOR_COLORS index order. */
 const PIG_VAR = ["var(--pig-1)", "var(--pig-2)", "var(--pig-3)", "var(--pig-4)", "var(--pig-5)"];
 
 interface TreeNode {
   thread: Thread;
   children: TreeNode[];
-  /** 该线程在「同一锚点消息」内的兄弟序号 → pigment index */
+  /** This thread's sibling index within the same anchor message → pigment index. */
   pigmentIndex: number;
 }
 
-/** 按 anchor 顺序排序兄弟 sub-thread —— 顺序决定 pigment 颜色 */
+/** Sort sibling sub-threads by anchor order — order determines pigment color. */
 function sortSiblings(siblings: Thread[], parentMessages: Message[]): Thread[] {
   const msgOrder: Record<string, number> = {};
   parentMessages.forEach((m, i) => { msgOrder[m.id.toLowerCase()] = i; });
@@ -57,7 +52,7 @@ function buildTree(
   return sorted.map((thr, idx) => ({
     thread: thr,
     children: buildTree(threads, thr.id, messagesByThread),
-    // 主线 (parentId === null) 不上色；其余按兄弟顺序循环 5 色
+    // Main thread (parentId === null) gets no color; siblings cycle through the 5 pigments by index.
     pigmentIndex: parentId === null ? -1 : idx % PIG_VAR.length,
   }));
 }
@@ -94,7 +89,7 @@ function NodeRow({ node, activeThreadId, unreadCounts, messagesByThread, onSelec
         }`}
         style={active ? { background: "var(--ink)" } : undefined}
       >
-        {/* 颜料色条 / pigment color bar */}
+        {/* pigment color bar */}
         <span
           className="flex-shrink-0 mt-0.5 w-[3px] h-8 rounded-[2px]"
           style={{
@@ -103,7 +98,7 @@ function NodeRow({ node, activeThreadId, unreadCounts, messagesByThread, onSelec
           aria-hidden
         />
 
-        {/* 标题 + 元信息 */}
+        {/* title + meta */}
         <span className="flex-1 min-w-0">
           <span
             className="block font-serif text-[13.5px] leading-tight truncate"
@@ -125,7 +120,7 @@ function NodeRow({ node, activeThreadId, unreadCounts, messagesByThread, onSelec
           </span>
         </span>
 
-        {/* 脉动未读章 / pulsing unread badge */}
+        {/* pulsing unread badge */}
         {unread > 0 && (
           <span
             className="flex-shrink-0 mt-[3px] inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full font-mono text-[10px] font-semibold tree-node-unread"
@@ -140,7 +135,7 @@ function NodeRow({ node, activeThreadId, unreadCounts, messagesByThread, onSelec
         )}
       </button>
 
-      {/* 嵌套子节点 — 左侧 1px rule 线 */}
+      {/* Nested children — 1px rule line on the left. */}
       {node.children.length > 0 && (
         <div className="relative pl-4 ml-2">
           <span

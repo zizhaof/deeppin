@@ -25,9 +25,6 @@ kreuzberg>=0.1.0
 # 向量嵌入
 sentence-transformers>=2.7.0
 
-# 文本分块
-langchain-text-splitters>=0.2.0
-
 # 监控指标 / Metrics
 prometheus-client>=0.20.0
 prometheus-fastapi-instrumentator>=7.0.0

@@ -1,7 +1,7 @@
 "use client";
-// components/PinMenu.tsx — 选中文字后出现的操作菜单
-// 桌面端：浮动 popup（选区正上方）
-// 移动端：底部 action bar（不遮挡原生 Copy/Search 菜单，二者共存）
+// Action menu shown after the user selects text.
+// Desktop: floating popup directly above the selection.
+// Mobile: rendered inline by MessageBubble (this component is a no-op on mobile).
 
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -11,7 +11,6 @@ export interface SelectionInfo {
   text: string;
   messageId: string;
   rect: DOMRect;
-  anchorContentY: number;
   startOffset: number;
   endOffset: number;
 }
@@ -26,7 +25,7 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // 桌面端：点击菜单外关闭
+  // Desktop: close on outside click.
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
@@ -35,16 +34,16 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // 选区消失时自动关闭
-  // 加双重保护：
-  //  1. 挂载后 800ms 内忽略 collapse（React re-render 导致的瞬态清除）
-  //  2. 之后每次 collapse 延迟 400ms 再验证，防止拖动 handle 短暂空选区
+  // Auto-close when the selection collapses, with two safeguards:
+  //  1. Ignore collapses within 800ms of mount (transient clears caused by React re-render).
+  //  2. After that, defer each collapse check by 400ms to avoid closing on
+  //     transient empty selections during drag-handle adjustments.
   useEffect(() => {
     if (!selection) return;
     const mountedAt = Date.now();
     let closeTimer: ReturnType<typeof setTimeout>;
     const handler = () => {
-      // 挂载初期忽略：handleSelection → setState → re-render 常导致原生选区瞬间消失
+      // Ignore early after mount: handleSelection → setState → re-render often makes the native selection blink out.
       if (Date.now() - mountedAt < 800) return;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {
@@ -81,15 +80,14 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
     onClose();
   };
 
-  // 桌面端浮动位置
+  // Desktop floating position.
   const floatTop = rect.top + window.scrollY - 48;
   const floatLeft = rect.left + window.scrollX + rect.width / 2;
 
   return createPortal(
     <>
-      {/* ── 桌面端：浮动 popup — ink 底 + 朝下小三角 + accent Pin seg
-           Desktop floating popover — ink background with a downward-pointing
-           tail, accent-highlighted Pin segment (matches design's .selpop). ── */}
+      {/* ── Desktop floating popover — ink background with a downward-pointing
+           tail, accent-highlighted Pin segment (matches the design's .selpop). ── */}
       <div
         ref={menuRef}
         style={{
@@ -124,7 +122,7 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
           </svg>
           <span>{t.pinAction}</span>
         </button>
-        {/* 朝下小三角 — 用旋转的方形 */}
+        {/* Downward-pointing tail — rendered as a rotated square. */}
         <span
           aria-hidden
           className="absolute left-1/2 -bottom-1 w-2 h-2 rotate-45 -translate-x-1/2"
@@ -132,15 +130,12 @@ export default function PinMenu({ selection, onPin, onClose }: Props) {
         />
       </div>
 
-      {/* ── 移动端底部 action bar 已删除 —— MessageBubble 在 mobile select-mode
-           下用就地 portal 渲染 Copy/Pin 弹层，触发 onSelect 时 PinMenu 也会被
-           Chat page 拉起，但 md:hidden 这条路径不再渲染任何东西，避免出现
-           「就地一个 + 底部一个」两套 action sheet 的重复。
-           Mobile bottom action bar removed — MessageBubble in mobile select-
-           mode already renders its own inline portal sheet (Copy / Pin /
-           Cancel) right next to the selection. PinMenu is still mounted by
-           the chat page when onSelect fires, but its mobile branch is now
-           a no-op so the user doesn't see two duplicate sheets. ── */}
+      {/* ── Mobile bottom action bar removed — MessageBubble in mobile
+           select-mode already renders its own inline portal sheet (Copy /
+           Pin / Cancel) right next to the selection. PinMenu is still
+           mounted by the chat page when onSelect fires, but its mobile
+           branch is now a no-op so the user doesn't see two duplicate
+           sheets. ── */}
     </>,
     document.body
   );

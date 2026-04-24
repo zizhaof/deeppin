@@ -1,15 +1,11 @@
 # tests/test_merge_router.py
 """
-合并输出路由单元测试
 Unit tests for the merge output router.
 
-覆盖 / Covers:
-  - MergeRequest.validate_format：合法值 / 非法值 / 默认值
+Covers:
     MergeRequest.validate_format: valid values / invalid values / default
-  - _sse：SSE 事件序列化格式
     _sse: SSE event serialization format
-  - generate()：无子线程 → error 事件；有子线程 → 走 merge_threads；content 来自 thread_summaries 缓存；
-                 缓存缺失时降级为消息拼接；子线程全空 → error 事件
+  - generate(): no sub-threads -> error event; sub-threads -> go through merge_threads; content from thread_summaries cache;
     generate(): no sub-threads → error event; sub-threads present → calls merge_threads;
                 content from thread_summaries cache; cache miss falls back to message concat;
                 all threads empty → error event
@@ -27,19 +23,19 @@ class TestMergeRequestValidation:
         return MergeRequest(format=format_value)
 
     def test_default_format_is_free(self):
-        """默认 format 为 free / Default format is 'free'."""
+        """Default format is 'free'."""
         from routers.merge import MergeRequest
         r = MergeRequest()
         assert r.format == "free"
 
     def test_valid_formats_accepted(self):
-        """五种合法格式均被接受 / All five valid formats are accepted."""
+        """All five valid formats are accepted."""
         for fmt in ("free", "bullets", "structured", "custom", "transcript"):
             r = self._make(fmt)
             assert r.format == fmt
 
     def test_invalid_format_raises(self):
-        """非法格式触发 ValidationError / Invalid format raises ValidationError."""
+        """Invalid format raises ValidationError."""
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             self._make("invalid_format")
@@ -49,7 +45,7 @@ class TestMergeRequestValidation:
 
 class TestSseHelper:
     def test_ping_event(self):
-        """ping 事件序列化正确 / ping event serializes correctly."""
+        """ping event serializes correctly."""
         from routers.merge import _sse
         line = _sse("ping", {})
         assert line.startswith("data: ")
@@ -57,7 +53,7 @@ class TestSseHelper:
         assert payload["type"] == "ping"
 
     def test_status_event_includes_text(self):
-        """status 事件包含 text 字段 / status event includes the text field."""
+        """status event includes the text field."""
         from routers.merge import _sse
         line = _sse("status", {"text": "hello"})
         payload = json.loads(line[6:])
@@ -65,7 +61,7 @@ class TestSseHelper:
         assert payload["text"] == "hello"
 
     def test_chunk_event_includes_content(self):
-        """chunk 事件包含 content 字段 / chunk event includes the content field."""
+        """chunk event includes the content field."""
         from routers.merge import _sse
         line = _sse("chunk", {"content": "abc"})
         payload = json.loads(line[6:])
@@ -73,7 +69,7 @@ class TestSseHelper:
         assert payload["content"] == "abc"
 
     def test_event_ends_with_double_newline(self):
-        """每个 SSE 事件以 \\n\\n 结尾 / Every SSE event ends with \\n\\n."""
+        """Every SSE event ends with \\n\\n."""
         from routers.merge import _sse
         assert _sse("done", {}).endswith("\n\n")
 
@@ -82,7 +78,6 @@ class TestSseHelper:
 
 def _make_db_mock(*responses):
     """
-    构造按调用顺序依次返回值的 _db mock（async）。
     Build an async _db mock that returns each response in order.
     """
     results = list(responses)
@@ -148,7 +143,7 @@ SESSION_ID = "00000000-0000-0000-0000-000000000001"
 class TestMergeGenerate:
     @pytest.mark.asyncio
     async def test_session_not_found_raises_404(self):
-        """session 不存在返回 404 / Non-existent session raises 404."""
+        """Non-existent session raises 404."""
         from fastapi import HTTPException
         from routers.merge import merge as merge_endpoint, MergeRequest
         import uuid
@@ -163,8 +158,7 @@ class TestMergeGenerate:
 
     @pytest.mark.asyncio
     async def test_no_sub_threads_yields_error_event(self):
-        """没有子线程（depth > 0）时产生 error 事件
-        No sub-threads (depth > 0) yields an error event."""
+        """        No sub-threads (depth > 0) yields an error event."""
         sb = MagicMock()
         fake_db = _make_db_mock(_session_exists(), _no_threads())
         with patch("routers.merge._db", side_effect=fake_db):
@@ -175,11 +169,9 @@ class TestMergeGenerate:
 
     def _make_sb(self, sub_threads=None, main_messages=None, sub_messages=None):
         """
-        构造通用 Supabase mock，按表名路由：
-        - sessions → session 存在
-        - threads (gt/order) → sub_threads 列表
-        - threads (eq depth=0 / maybe_single) → 主线 id
-        - messages → 按调用顺序返回 main_messages 再返回 sub_messages
+        Build a generic Supabase mock routed by table name:
+        - sessions -> session exists
+        - threads (gt/order) -> sub_threads list
         Build a Supabase mock that routes by table name.
         """
         if sub_threads is None:
@@ -216,8 +208,7 @@ class TestMergeGenerate:
 
     @pytest.mark.asyncio
     async def test_uses_full_messages_for_content(self):
-        """合并时使用全部消息原文，包含主线和子线程
-        Merge uses full message history for both main and sub-threads."""
+        """        Merge uses full message history for both main and sub-threads."""
         sb = self._make_sb(
             sub_messages=[{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}]
         )
@@ -238,8 +229,8 @@ class TestMergeGenerate:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_messages_on_cache_miss(self):
-        """子线程消息格式正确（用户/AI 标签）
-        Sub-thread messages are formatted with correct 用户/AI labels."""
+        """Sub-thread messages are formatted with correct user/AI labels.
+        Sub-thread messages are formatted with correct user/AI labels."""
         sb = self._make_sb(
             sub_messages=[{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
         )
@@ -258,8 +249,7 @@ class TestMergeGenerate:
 
     @pytest.mark.asyncio
     async def test_all_empty_threads_yields_error(self):
-        """所有子线程内容为空时产生 error 事件
-        Yields an error event when all sub-threads have empty content."""
+        """        Yields an error event when all sub-threads have empty content."""
         sb = self._make_sb(
             sub_threads=[{"id": "t1", "title": "", "anchor_text": "", "depth": 1}],
             sub_messages=[],
@@ -269,8 +259,7 @@ class TestMergeGenerate:
 
     @pytest.mark.asyncio
     async def test_streams_chunks_and_done(self):
-        """正常路径：产生 chunk 事件 + done 事件
-        Happy path: yields chunk events followed by a done event."""
+        """        Happy path: yields chunk events followed by a done event."""
         sb = self._make_sb(
             sub_messages=[{"role": "assistant", "content": "some content"}]
         )
@@ -289,8 +278,7 @@ class TestMergeGenerate:
 
     @pytest.mark.asyncio
     async def test_truncates_when_content_exceeds_budget(self):
-        """内容超出单线程字符预算时截断（不调 summarize）
-        Truncates content when it exceeds the char budget (no summarizer call)."""
+        """        Truncates content when it exceeds the char budget (no summarizer call)."""
         long_content = "A" * 100_000
         sb = self._make_sb(sub_messages=[{"role": "assistant", "content": long_content}])
 
@@ -304,7 +292,7 @@ class TestMergeGenerate:
             events = await _collect_generate(SESSION_ID, sb=sb)
 
         assert any(e["type"] == "done" for e in events)
-        # 内容应被截断而非完整传递 / Content should be truncated, not passed in full
+        # Content should be truncated, not passed in full
         if captured:
             sub_content = captured[0].get("content", "")
             assert len(sub_content) < 100_000, "Expected content to be truncated"
@@ -313,13 +301,13 @@ class TestMergeGenerate:
 
 class TestMergeRequestThreadIds:
     def test_thread_ids_defaults_to_none(self):
-        """thread_ids 默认为 None（合并全部）/ thread_ids defaults to None (merge all)."""
+        """thread_ids defaults to None (merge all)."""
         from routers.merge import MergeRequest
         r = MergeRequest()
         assert r.thread_ids is None
 
     def test_thread_ids_accepts_list(self):
-        """thread_ids 接受字符串列表 / thread_ids accepts a list of strings."""
+        """thread_ids accepts a list of strings."""
         from routers.merge import MergeRequest
         r = MergeRequest(thread_ids=["abc", "def"])
         assert r.thread_ids == ["abc", "def"]

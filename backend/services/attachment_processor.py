@@ -1,13 +1,10 @@
 # backend/services/attachment_processor.py
 """
-附件处理流水线
 Attachment processing pipeline.
 
-流程 / Flow:
-  上传字节 → 文本提取（Kreuzberg / fallback）→ 分块 → 向量化 → 存库
+Flow:
   Raw bytes → text extraction (Kreuzberg / fallback) → chunking → embedding → DB storage
 
-原始文件字节在函数执行完后自动释放，不写磁盘。
 Raw file bytes are released after the function returns; nothing is written to disk.
 """
 from __future__ import annotations
@@ -21,31 +18,21 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ── 分块参数 / Chunking parameters ───────────────────────────────────
-CHUNK_SIZE    = 350   # 固定切分的 fallback chunk 大小 / Chunk size for fixed-size fallback
-CHUNK_OVERLAP = 50    # 固定切分块间重叠字符数 / Overlap for fixed-size fallback
-BATCH_INSERT  = 100   # Supabase PostgREST 单次 payload 上限 / Max rows per Supabase PostgREST insert
+# Chunking parameters ───────────────────────────────────
+CHUNK_SIZE    = 350   # Chunk size for fixed-size fallback
+CHUNK_OVERLAP = 50    # Overlap for fixed-size fallback
+BATCH_INSERT  = 100   # Max rows per Supabase PostgREST insert
 
-# 语义切分参数 / Semantic chunking parameters
-SEMANTIC_THRESHOLD = 0.75   # 相邻句子余弦相似度低于此值时切断 / Cut when adjacent-sentence cosine similarity drops below this
-MAX_CHUNK_CHARS    = 600    # 单个 chunk 最大字符数（防止合并过长）/ Max chars per chunk to avoid oversized chunks
-MIN_CHUNK_CHARS    = 50     # chunk 最小字符数，过短则继续合并 / Min chars; shorter chunks are merged into the next
+# Semantic chunking parameters
+SEMANTIC_THRESHOLD = 0.75   # Cut when adjacent-sentence cosine similarity drops below this
+MAX_CHUNK_CHARS    = 600    # Max chars per chunk to avoid oversized chunks
+MIN_CHUNK_CHARS    = 50     # Min chars; shorter chunks are merged into the next
 
-# 内联阈值：提取文本不超过此长度时直接作为消息 context，不进 RAG
 # Inline threshold: text shorter than this is passed as message context, not fed into RAG
-INLINE_THRESHOLD = 3_000  # 与 context_builder._MAX_SINGLE_MSG_CHARS 保持一致
+INLINE_THRESHOLD = 3_000  # Keep aligned with context_builder._MAX_SINGLE_MSG_CHARS
 
-# 可直接 UTF-8 解码的纯文本扩展名
-# File extensions that can be decoded directly as UTF-8 text
-_TEXT_EXTS = {
-    "txt", "md", "csv", "json", "xml", "html", "htm",
-    "py", "ts", "tsx", "js", "jsx", "css",
-    "yaml", "yml", "toml", "ini", "sh", "sql",
-}
-
-# 图片扩展名 → MIME，走 vision 模型生成文本描述
 # Image extensions → MIME; routed to the vision model for text description
-# key 必须与 _sniff_format 返回的规范化名一致 / Keys must match _sniff_format's canonical names
+# Keys must match _sniff_format's canonical names
 _IMAGE_MIME = {
     "png":  "image/png",
     "jpeg": "image/jpeg",
@@ -54,14 +41,13 @@ _IMAGE_MIME = {
     "bmp":  "image/bmp",
 }
 
-# 图片描述提示词 / Prompt for image description
+# Prompt for image description
 _IMAGE_DESCRIBE_PROMPT = (
     "请详细描述这张图片的内容，包括：可见的文字（逐字转录）、图表/表格中的数据、"
     "主要物体与布局、风格与氛围。如果是文档或屏幕截图，优先完整转录所有文字。"
     "只输出描述本身，不要加任何前言或结语。"
 )
 
-# Kreuzberg MIME 类型映射表（按扩展名路由）
 # MIME type map for Kreuzberg (keyed by file extension)
 _MIME_MAP = {
     "pdf":  "application/pdf",
@@ -79,17 +65,15 @@ _MIME_MAP = {
 
 def _sniff_format(content: bytes) -> Optional[str]:
     """
-    从文件字节首部嗅探真实格式，返回规范化扩展名。
     Sniff the real format from file header bytes and return a canonical ext.
 
-    用于补救文件名没有扩展名、或扩展名撒谎的情况。
     Handles files with missing or misleading extensions.
-    Returns one of: png, jpeg, gif, webp, bmp, pdf, zip (DOCX/XLSX/PPTX 内层), None
+    Returns one of: png, jpeg, gif, webp, bmp, pdf, zip (DOCX/XLSX/PPTX inner format), None
     """
     if len(content) < 4:
         return None
     head = content[:12]
-    # 图片 / Images
+    # Images
     if head.startswith(b"\x89PNG\r\n\x1a\n"):
         return "png"
     if head.startswith(b"\xff\xd8\xff"):
@@ -100,25 +84,22 @@ def _sniff_format(content: bytes) -> Optional[str]:
         return "webp"
     if head[:2] == b"BM":
         return "bmp"
-    # 文档 / Documents
+    # Documents
     if head[:4] == b"%PDF":
         return "pdf"
     if head[:4] == b"PK\x03\x04":
-        # DOCX / XLSX / PPTX / ODF 都是 zip；由 Kreuzberg 按 MIME 或 zip 内层结构进一步识别
+        # DOCX / XLSX / PPTX
         # DOCX/XLSX/PPTX/ODF are zip containers; Kreuzberg inspects inner structure
         return "zip"
     return None
 
 
-# ── 文本提取 / Text extraction ────────────────────────────────────────
+# Text extraction ────────────────────────────────────────
 
 async def extract_text(content: bytes, filename: str) -> str:
     """
-    从文件字节提取纯文本。
     Extract plain text from raw file bytes.
 
-    优先按字节嗅探真实格式（不信任扩展名），图片走 vision 模型；其余走 Kreuzberg
-    → pypdf / python-docx fallback，最后保底 UTF-8 解码。
     Sniffs the real format from header bytes first (does not trust the filename).
     Images are routed to the vision model; other binaries go through Kreuzberg with
     pypdf / python-docx fallbacks, ultimately falling back to UTF-8 decode.
@@ -126,13 +107,10 @@ async def extract_text(content: bytes, filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     sniffed = _sniff_format(content)
 
-    # 0. 图片（以字节嗅探为准，扩展名可能撒谎）→ vision 模型描述
     #    Images (trust byte sniff, not the extension) → vision model description
     if sniffed in _IMAGE_MIME:
         return await _extract_image(content, sniffed)
 
-    # 1. Kreuzberg（支持 PDF / Office / 邮件等复杂格式）
-    #    嗅探结果优先用于推断 MIME，filename 扩展名次之；DOCX/XLSX/PPTX 等 zip 容器需要精确 MIME
     #    Kreuzberg (PDF / Office / email); prefer sniffed MIME; zip-based formats need the exact MIME
     mime_type = (
         _MIME_MAP.get(ext) if sniffed == "zip" and ext in _MIME_MAP
@@ -145,24 +123,21 @@ async def extract_text(content: bytes, filename: str) -> str:
         if result.content and result.content.strip():
             return result.content.strip()
     except ImportError:
-        pass  # kreuzberg 未安装，走 fallback / kreuzberg not installed; use fallback
+        pass  # kreuzberg not installed; use fallback
     except Exception as e:
         logger.warning("Kreuzberg 提取失败 %s，走 fallback / Kreuzberg extraction failed, falling back: %s", filename, e)
 
-    # 2. Fallback：优先用嗅探结果，其次扩展名
     #    Fallback: prefer sniffed format, then filename extension
     if sniffed == "pdf" or ext == "pdf":
         return _extract_pdf(content)
     if ext in ("docx", "doc"):
         return _extract_docx(content)
-    # 纯文本 / 未知格式：尝试 UTF-8 解码（二进制会乱码但不抛异常）
     # Text or unknown format: attempt UTF-8 decode (garbled but safe for binary)
     return content.decode("utf-8", errors="replace")
 
 
 def _extract_pdf(content: bytes) -> str:
     """
-    使用 pypdf 从 PDF 字节提取文本（Kreuzberg fallback）。
     Extract text from PDF bytes using pypdf (Kreuzberg fallback).
     """
     try:
@@ -176,7 +151,6 @@ def _extract_pdf(content: bytes) -> str:
 
 def _extract_docx(content: bytes) -> str:
     """
-    使用 python-docx 从 DOCX 字节提取文本（Kreuzberg fallback）。
     Extract text from DOCX bytes using python-docx (Kreuzberg fallback).
     """
     try:
@@ -190,11 +164,9 @@ def _extract_docx(content: bytes) -> str:
 
 async def _extract_image(content: bytes, ext: str) -> str:
     """
-    用 vision 模型把图片转成文本描述，返回后走与普通附件相同的长度分流。
     Ask the vision model to describe the image, then feed the result through the
     same length-based branching as regular attachments.
 
-    失败时返回空串 → process_attachment 会将其视为提取失败。
     Returns an empty string on failure, which process_attachment treats as an
     extraction failure (chunk_count=0, inline_text=null).
     """
@@ -221,19 +193,16 @@ async def _extract_image(content: bytes, ext: str) -> str:
         return ""
 
 
-# ── 文本分块 / Text chunking ──────────────────────────────────────────
+# Text chunking ──────────────────────────────────────────
 
-# 句子切分正则：中英文句末标点后切断
 # Sentence-splitting regex: cut after Chinese/English sentence-ending punctuation
 _SENT_SPLIT_RE = re.compile(r'(?<=[。！？.!?])\s*')
 
 
 def _split_sentences(text: str) -> list[str]:
     """
-    将文本按段落和句子边界切成句子列表（中英文混合）。
     Split text into sentences at paragraph and sentence-ending punctuation boundaries.
 
-    先按空行分段，再在每段内按句末标点切句，过滤空串。
     First splits on blank lines (paragraph breaks), then on sentence-ending punctuation within each paragraph.
     """
     sentences: list[str] = []
@@ -250,16 +219,14 @@ def _split_sentences(text: str) -> list[str]:
 
 async def chunk_text_semantic(text: str) -> list[str]:
     """
-    基于 embedding 余弦相似度的语义切分。
     Semantic chunking based on embedding cosine similarity.
 
-    流程 / Flow:
-      1. 按句子边界切分 → sentences
-      2. 一次批量 embed 所有句子（bge-m3 已 normalize，点积 = 余弦相似度）
-      3. 相邻句子相似度 < SEMANTIC_THRESHOLD 时视为语义断点，切断
-      4. 合并句子成 chunk，控制最大长度 MAX_CHUNK_CHARS
+    Flow:
+      1. Split by sentence boundaries -> sentences
+      2. Batch-embed all sentences once (bge-m3 is normalized; dot product = cosine similarity)
+      3. When adjacent-sentence similarity < SEMANTIC_THRESHOLD, treat as a semantic break and cut
+      4. Merge sentences into chunks while keeping length under MAX_CHUNK_CHARS
 
-    出错时 fallback 到固定大小切分。
     Falls back to fixed-size chunking on any error.
     """
     from services.embedding_service import embed_texts
@@ -271,7 +238,6 @@ async def chunk_text_semantic(text: str) -> list[str]:
         return [sentences[0]] if len(sentences[0]) >= MIN_CHUNK_CHARS else []
 
     try:
-        # 一次调用批量 embed，避免多次 executor 调度开销
         # Single batch embed call — avoids repeated executor dispatch overhead
         embeddings = await embed_texts(sentences)
 
@@ -283,11 +249,9 @@ async def chunk_text_semantic(text: str) -> list[str]:
             sent = sentences[i]
             sent_len = len(sent)
 
-            # 点积即余弦相似度（向量已 L2 归一化）
             # Dot product equals cosine similarity because vectors are L2-normalized
             sim: float = sum(a * b for a, b in zip(embeddings[i - 1], embeddings[i]))
 
-            # 语义跳跃 或 chunk 会超长 → 切断（但当前 chunk 需达到最小长度才切）
             # Break on semantic jump or size overflow (only if current chunk meets MIN_CHUNK_CHARS)
             should_break = (
                 sim < SEMANTIC_THRESHOLD or current_len + sent_len > MAX_CHUNK_CHARS
@@ -303,7 +267,6 @@ async def chunk_text_semantic(text: str) -> list[str]:
 
         if current:
             tail = "".join(current)
-            # 尾部 chunk 过短时合并到前一块，避免孤立的碎片进入向量库
             # Merge a too-short tail chunk into the previous one to avoid tiny orphan chunks
             if chunks and len(tail) < MIN_CHUNK_CHARS:
                 chunks[-1] += tail
@@ -319,7 +282,6 @@ async def chunk_text_semantic(text: str) -> list[str]:
 
 def _chunk_fixed(text: str) -> list[str]:
     """
-    固定大小滑动窗口切分（语义切分的 fallback）。
     Fixed-size sliding-window chunker (fallback for semantic chunking).
     """
     if len(text) <= CHUNK_SIZE:
@@ -337,11 +299,10 @@ def _chunk_fixed(text: str) -> list[str]:
     return [c for c in chunks if c]
 
 
-# ── 存库 / Database storage ───────────────────────────────────────────
+# Database storage ───────────────────────────────────────────
 
 async def _db(fn):
     """
-    将同步 Supabase 调用包入线程池，避免阻塞 asyncio 事件循环。
     Wrap a synchronous Supabase call in a thread-pool executor to avoid blocking the event loop.
     """
     loop = asyncio.get_running_loop()
@@ -355,10 +316,8 @@ async def _store_chunks(
     embeddings: list[list[float]],
 ) -> None:
     """
-    将文本块和对应向量分批写入 attachment_chunks 表。
     Batch-insert text chunks and their embeddings into the attachment_chunks table.
 
-    分批大小由 BATCH_INSERT 控制，避免超过 PostgREST payload 限制。
     Batch size is controlled by BATCH_INSERT to stay within PostgREST payload limits.
     """
     from db.supabase import get_supabase
@@ -376,14 +335,13 @@ async def _store_chunks(
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings))
     ]
 
-    # 分批写入，避免超过 PostgREST payload 限制
     # Insert in batches to avoid exceeding the PostgREST payload limit
     for i in range(0, len(rows), BATCH_INSERT):
         batch = rows[i : i + BATCH_INSERT]
         await _db(lambda b=batch: sb.table("attachment_chunks").insert(b).execute())
 
 
-# ── 主入口 / Main entry point ─────────────────────────────────────────
+# Main entry point ─────────────────────────────────────────
 
 async def process_attachment(
     session_id: str,
@@ -391,18 +349,17 @@ async def process_attachment(
     content: bytes,
 ) -> dict:
     """
-    完整处理流水线，根据提取文本长度决定走内联还是 RAG。
     Full processing pipeline; routes to inline or RAG based on extracted text length.
 
-    返回值 / Return value:
+    Return value:
       {
-        "chunk_count": int,          # RAG 模式写入的块数；内联/失败时为 0
-        "inline_text": str | None,   # 内联模式时为完整提取文本；RAG 模式或失败时为 None
+        "chunk_count": int,          # Chunks written in RAG mode; 0 for inline / failure
+        "inline_text": str
       }
 
-    判断逻辑 / Decision logic:
-      len(text) <= INLINE_THRESHOLD  → inline：文本直接作为消息 context，不进向量库
-      len(text) >  INLINE_THRESHOLD  → RAG：分块 → 向量化 → 存库，由检索注入 context
+    Decision logic:
+      len(text) <= INLINE_THRESHOLD  -> inline: text used directly as message context, not stored in vector DB
+      len(text) >  INLINE_THRESHOLD  -> RAG: chunk -> embed -> persist; injected into context via retrieval
     """
     try:
         text = await extract_text(content, filename)
@@ -410,13 +367,11 @@ async def process_attachment(
             logger.warning("附件提取文本为空 / Attachment yielded empty text: %s", filename)
             return {"chunk_count": 0, "inline_text": None}
 
-        # 短文本直接内联，无需向量化
         # Short text: pass inline as context, skip chunking/embedding
         if len(text) <= INLINE_THRESHOLD:
             logger.info("附件内联模式 / Attachment inline: %s (%d chars)", filename, len(text))
             return {"chunk_count": 0, "inline_text": text.strip()}
 
-        # 长文本：语义分块 → 向量化 → 存库
         # Long text: semantic chunk → embed → store
         chunks = await chunk_text_semantic(text)
         if not chunks:

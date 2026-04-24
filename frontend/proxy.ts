@@ -1,5 +1,4 @@
-// frontend/proxy.ts
-// 保护 /chat/* 路由，自动刷新过期 token
+// Protect /chat/* routes; auto-refresh expired tokens.
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
@@ -36,7 +35,7 @@ export async function proxy(request: NextRequest) {
 
   const isChatRoute = request.nextUrl.pathname.startsWith("/chat");
   if (isChatRoute && !user) {
-    // 用 new URL 构造干净的 /login URL，避免携带原始请求的 query params
+    // Build a clean /login URL via `new URL` so we don't drag the request's query params along.
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }
@@ -46,7 +45,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // 匹配除静态资源和 API 代理之外的所有路径
+    // Match every path except static assets and the API proxy.
     "/((?!_next/static|_next/image|favicon.ico|api/).*)",
   ],
 };

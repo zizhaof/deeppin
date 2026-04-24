@@ -1,8 +1,5 @@
-"""匿名用户试用额度 + session 限制 + delete 禁令的单测。
-Unit tests for anon trial quota, 1-session limit, and delete gating.
+"""Unit tests for anon trial quota, 1-session limit, and delete gating.
 
-只测路由层 gate（依赖 override 注入 CurrentUser）。stream_and_save 内部的
-RPC 递增在下方 test_stream_manager_increments_turn_count 里验证。
 Router-level gate only (injects CurrentUser via dependency_overrides). The
 stream_and_save turn_count RPC increment is verified separately below.
 """
@@ -18,7 +15,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def app_and_deps(monkeypatch):
-    """加载 app 并返回 (app, get_current_user_full) 便于 override。"""
+    """Load the app and return (app, get_current_user_full) for easy override."""
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon-key")
@@ -37,17 +34,17 @@ def _override_user(app, dep, current_user):
 
 
 def test_chat_blocks_anon_at_quota(app_and_deps):
-    """匿名 + turn_count==20 → 402 anon_quota_exceeded。"""
+    """Anonymous + turn_count==20 -> 402 anon_quota_exceeded."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
     # thread_res (maybe_single)
     thread_chain = MagicMock()
     thread_chain.data = {"id": "t1", "depth": 0, "title": None, "session_id": "s1"}
-    # session_res (maybe_single) — turn_count 已达上限
+    # session_res (maybe_single)
     session_chain = MagicMock()
     session_chain.data = {"turn_count": 20}
-    # 两次 execute 依次返回上述
+    # The two execute calls return the above values in sequence
     sb.table.return_value = sb
     sb.select.return_value = sb
     sb.eq.return_value = sb
@@ -71,7 +68,7 @@ def test_chat_blocks_anon_at_quota(app_and_deps):
 
 
 def test_chat_allows_anon_below_quota(app_and_deps):
-    """匿名 + turn_count<20 → 不 gate，走到 StreamingResponse。"""
+    """Anonymous + turn_count<20 -> not gated, falls through to StreamingResponse."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
@@ -88,7 +85,7 @@ def test_chat_allows_anon_below_quota(app_and_deps):
     _override_user(app, get_full, CurrentUser(user_id="anon-u", is_anonymous=True, sb=sb))
     client = TestClient(app, raise_server_exceptions=False)
 
-    # patch stream_and_save 本身，避免真跑 LLM 链
+    # Patch stream_and_save itself to avoid actually running the LLM chain
     async def fake_stream(*args, **kwargs):
         yield 'data: {"type":"ping"}\n\n'
     try:
@@ -105,7 +102,7 @@ def test_chat_allows_anon_below_quota(app_and_deps):
 
 
 def test_chat_signed_in_never_gated(app_and_deps):
-    """登录用户 turn_count 任意值都不 gate。"""
+    """Authenticated users are not gated regardless of turn_count."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
@@ -115,7 +112,7 @@ def test_chat_signed_in_never_gated(app_and_deps):
     sb.select.return_value = sb
     sb.eq.return_value = sb
     sb.maybe_single.return_value = sb
-    # 只会查一次（thread_res），session_res 路径被 is_anonymous=False 跳过
+    # Only one query (thread_res); the session_res path is skipped because is_anonymous=False
     sb.execute.side_effect = [thread_chain]
 
     _override_user(app, get_full, CurrentUser(user_id="signed-u", is_anonymous=False, sb=sb))
@@ -135,11 +132,11 @@ def test_chat_signed_in_never_gated(app_and_deps):
     assert resp.status_code == 200
 
 
-# ── 2. /sessions POST 匿名 1-session 上限 ─────────────────────────────
+# 2. /sessions POST anonymous 1-session limit ─────────────────────────────
 
 
 def test_create_session_blocks_second_anon(app_and_deps):
-    """匿名已有 1 个 session → 再建返回 402 anon_session_limit。"""
+    """Anonymous already has 1 session -> creating another returns 402 anon_session_limit."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
@@ -147,7 +144,7 @@ def test_create_session_blocks_second_anon(app_and_deps):
     sb.select.return_value = sb
     sb.limit.return_value = sb
     count_chain = MagicMock()
-    count_chain.count = 1  # 已有 1 个 session
+    count_chain.count = 1  # Already has 1 session
     sb.execute.side_effect = [count_chain]
 
     _override_user(app, get_full, CurrentUser(user_id="anon-u", is_anonymous=True, sb=sb))
@@ -162,7 +159,7 @@ def test_create_session_blocks_second_anon(app_and_deps):
 
 
 def test_create_session_first_anon_ok(app_and_deps):
-    """匿名首个 session → 允许创建。"""
+    """Anonymous first session -> creation allowed."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
@@ -172,7 +169,7 @@ def test_create_session_first_anon_ok(app_and_deps):
     sb.insert.return_value = sb
     sb.delete.return_value = sb
     sb.eq.return_value = sb
-    # execute 顺序：count(sessions)=0 / insert session / insert main thread
+    # insert main thread
     sb.execute.side_effect = [
         MagicMock(count=0),  # count
         MagicMock(data=[{
@@ -193,12 +190,12 @@ def test_create_session_first_anon_ok(app_and_deps):
     assert resp.status_code == 201
 
 
-# ── 3. /sessions DELETE 匿名禁令 ───────────────────────────────────────
+# 3. /sessions DELETE anonymous prohibition ───────────────────────────────────────
 
 
 def test_delete_session_forbidden_for_anon(app_and_deps):
-    """匿名试删 → 403 anon_cannot_delete。
-    防止「删了再建」绕过 20 turn 配额。"""
+    """Anonymous attempts to delete -> 403 anon_cannot_delete.
+    Prevents the "delete-then-recreate" workaround for the 20-turn quota."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
@@ -211,12 +208,12 @@ def test_delete_session_forbidden_for_anon(app_and_deps):
 
     assert resp.status_code == 403
     assert resp.json()["detail"]["code"] == "anon_cannot_delete"
-    # 关键：sb.delete 不该被调用过
+    # Key: sb.delete must not have been called
     sb.table.assert_not_called()
 
 
 def test_delete_session_allowed_for_signed(app_and_deps):
-    """登录用户 delete 走正常 SQL 路径。"""
+    """Authenticated user delete takes the normal SQL path."""
     app, get_full, CurrentUser = app_and_deps
 
     sb = MagicMock()
@@ -235,19 +232,18 @@ def test_delete_session_allowed_for_signed(app_and_deps):
     assert resp.status_code == 204
 
 
-# ── 4. stream_and_save 的 RPC 记账 ────────────────────────────────────
+# 4. stream_and_save RPC accounting ────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_stream_and_save_calls_turn_count_rpc():
-    """session_id 给了就调 RPC increment_session_turn_count。
-    RPC 失败也不应该中断主流程。"""
+    """When session_id is provided, RPC increment_session_turn_count is called.
+    RPC failure must not interrupt the main flow."""
     sb = MagicMock()
     for attr in ("table", "insert", "select", "update", "upsert", "eq",
                  "order", "limit", "single", "maybe_single", "rpc"):
         getattr(sb, attr).return_value = sb
 
-    # execute 顺序：
     # 1. user insert, 2. rpc increment, 3. assistant insert, 4. count embed
     sb.execute.side_effect = [
         MagicMock(data=None),
@@ -259,7 +255,7 @@ async def test_stream_and_save_calls_turn_count_rpc():
     async def fake_chat_stream(*args, **kwargs):
         yield "AI 回复"
 
-    # _wrap_fake_stream 的最小等价实现（避免 import 测试用 helper）
+    # Minimal equivalent of _wrap_fake_stream (avoids importing the test helper)
     class _Streamer:
         def __init__(self, gen):
             self._gen = gen
@@ -280,7 +276,7 @@ async def test_stream_and_save_calls_turn_count_rpc():
 
         from services.stream_manager import stream_and_save
 
-        # 传 thread_meta 省一次 DB 查线程
+        # Pass thread_meta to skip one DB thread query
         events = []
         async for ev in stream_and_save(
             "thread-1", "用户问题",
@@ -289,13 +285,13 @@ async def test_stream_and_save_calls_turn_count_rpc():
         ):
             events.append(ev)
 
-    # 验证 rpc 被调用，参数正确
+    # Verify rpc was called with the correct args
     sb.rpc.assert_any_call("increment_session_turn_count", {"p_session_id": "s1"})
 
 
 @pytest.mark.asyncio
 async def test_stream_and_save_skips_rpc_without_session():
-    """不传 session_id（老调用方兼容）→ 不调 RPC。"""
+    """Not passing session_id (legacy caller compatibility) -> RPC is not called."""
     sb = MagicMock()
     for attr in ("table", "insert", "select", "update", "upsert", "eq",
                  "order", "limit", "single", "maybe_single", "rpc"):
@@ -331,7 +327,7 @@ async def test_stream_and_save_skips_rpc_without_session():
         async for _ in stream_and_save(
             "thread-1", "问题",
             thread_meta={"depth": 0, "title": None, "session_id": "s1"},
-            # 故意不传 session_id
+            # Intentionally do not pass session_id
         ):
             pass
 

@@ -1,9 +1,7 @@
 # backend/db/supabase.py
 """
-Supabase 客户端单例
 Supabase client singleton.
 
-使用双重检查锁保证线程安全，整个进程只创建一个连接实例。
 Uses double-checked locking for thread safety; only one client instance per process.
 """
 
@@ -15,13 +13,12 @@ from supabase import create_client, Client
 _client: Client | None = None
 _lock = threading.Lock()
 
-# httpx/httpcore 连接断开错误特征字符串 / Connection-reset error tags.
+# Connection-reset error tags.
 _CONN_ERR_TAGS = ("Server disconnected", "RemoteProtocolError", "ConnectionReset", "ConnectError")
 
 
 def get_supabase() -> Client:
     """
-    获取 Supabase 客户端单例（线程安全的双重检查锁）。
     Return the Supabase client singleton using thread-safe double-checked locking.
     """
     global _client
@@ -36,8 +33,6 @@ def get_supabase() -> Client:
 
 def reset_supabase() -> None:
     """
-    清除 Supabase 客户端单例，下次 get_supabase() 调用时重建连接。
-    用于连接断开（Server disconnected）后的自动恢复。
     Clear the singleton so the next get_supabase() call recreates the connection.
     Used for automatic recovery after a 'Server disconnected' error.
     """
@@ -48,10 +43,8 @@ def reset_supabase() -> None:
 
 async def run_db(fn, *, table: str = "unknown"):
     """
-    统一 Supabase 调用封装：线程池执行 + 连接断开重试 + Prometheus 指标。
     Canonical Supabase call wrapper: thread-pool execution + connection retry + Prometheus metrics.
 
-    table 作为 Prometheus label 拆分每张表的调用量和延迟。
     `table` is used as a Prometheus label to break down calls & latency per table.
     """
     from services.metrics import SUPABASE_CALLS, SUPABASE_DURATION

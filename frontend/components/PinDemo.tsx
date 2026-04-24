@@ -1,14 +1,11 @@
 "use client";
-// components/PinDemo.tsx
-// 欢迎页 desktop 演示：三层 walkthrough —— L0 两针 → L1 一针 → L2 到底 →
-// graph 跳转 → 合并输出。整个过程自动播放，底栏可 prev/pause/next。
-//
 // Landing-page desktop demo: 3-layer walkthrough — 2 pins at L0 → 1 pin
 // inside sub-thread (L1) → deepest reply (L2) → click root to jump on the
 // graph → merge output. Auto-plays; the bottom strip exposes prev/pause/next.
 //
-// 共享文案 & phase 列表在 components/demoFlow/{types,content}.ts；
-// 播放控制在 lib/useDemoController.ts；UI 控件在 components/DemoTransport.tsx。
+// Shared copy + phase list live in components/demoFlow/{types,content}.ts;
+// playback control is in lib/useDemoController.ts; UI controls are in
+// components/DemoTransport.tsx.
 
 import { useEffect, useRef, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
@@ -18,9 +15,8 @@ import { DEMO_CONTENT, type DemoContent } from "@/components/demoFlow/content";
 import { DEMO_PHASES, type DemoPhase } from "@/components/demoFlow/types";
 
 // ── Delays ──────────────────────────────────────────────────────────────
-// 读字多的 phase（main-stream、*-dialog、l*-stream、*-underline 提示
-// 两处变化的那几帧）给够时长；纯过渡（pick、enter）短一点。单位 ms。
 // Phases with lots of reading get more time; pure transitions stay snappy.
+// Units: ms.
 const DELAYS: Record<DemoPhase, number> = {
   blank: 1500,
   "main-stream": 5500,
@@ -54,8 +50,8 @@ const DELAYS: Record<DemoPhase, number> = {
   "merge-done": 5500,
 };
 
-// ── Phase order helpers —— 按序号判断是否过了某个关键点
-// Ordinal lookup so "has phase X already happened" is a simple comparison.
+// ── Phase order helpers — ordinal lookup so "has phase X already happened"
+// becomes a simple comparison.
 const PHASE_IDX: Record<DemoPhase, number> = DEMO_PHASES.reduce(
   (acc, p, i) => {
     acc[p] = i;
@@ -74,12 +70,9 @@ const inMainView = (p: DemoPhase) =>
   p === "l1-hover" ||
   p === "l1-enter" ||
   p === "graph-navigated" ||
-  // merge-hint 不单独显示视图 —— 保留刚才的 MainView 做背景，
-  // 合并 modal 在下一个 phase 才淡入覆盖。否则 Merge 按钮脉冲时
-  // 左边对话区会空白一段。
-  // merge-hint keeps MainView as backdrop so the left side doesn't go
-  // blank while the top-right Merge button is pulsing. The modal fades
-  // in on the next phase (merge-modal) and covers MainView then.
+  // merge-hint keeps MainView as the backdrop so the left side doesn't go
+  // blank while the top-right Merge button is pulsing. The modal fades in
+  // on the next phase (merge-modal) and covers MainView then.
   p === "merge-hint";
 const inSub1View = (p: DemoPhase) =>
   p === "l1-stream" ||
@@ -104,7 +97,7 @@ export default function PinDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
-  // transport 可见性 —— hover 盒子时 active
+  // Transport visibility — active when the user is hovering the demo box.
   const [hoverActive, setHoverActive] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nudgeHover = () => {
@@ -119,7 +112,7 @@ export default function PinDemo() {
     [],
   );
 
-  // Sweep 百分比：三次 sweep phase 都从 0 → 1，在进入 selpop 之前保持 1。
+  // Sweep percentage: each of the three sweep phases runs from 0 → 1, then stays at 1 until selpop.
   // Sweep pct animates 0→1 during a sweep phase and stays at 1 afterwards
   // so the selection highlight persists through selpop / dialog / pick.
   const [sweepPct, setSweepPct] = useState(0);
@@ -145,10 +138,11 @@ export default function PinDemo() {
     };
   }, [phase]);
 
-  // ── 流式打字 / Streaming typewriter ──────────────────────────────────
-  // main-stream 和 merge-stream 填满 ~80% 的 phase duration（跨语言 ok，
-  // 因为基于文本长度计算速度）；l1-stream / l2-stream 不流式 —— 用户
-  // 之前在主线等过，回答已经 ready，进入即完整。
+  // ── Streaming typewriter ──────────────────────────────────────────
+  // main-stream and merge-stream each fill ~80% of their phase duration
+  // (works across languages — speed is derived from text length).
+  // l1-stream / l2-stream don't stream: the user already waited on the
+  // main thread, so the reply is "ready" the moment they enter.
   // main-stream and merge-stream fill ~80% of their phase duration
   // (language-agnostic: rate derives from length). l1-stream and l2-stream
   // don't stream because by the time the user "enters" the sub-thread,
@@ -166,7 +160,7 @@ export default function PinDemo() {
   const sub1FullLen =
     c.sub1Before.length + c.sub1Anchor.length + c.sub1After.length;
 
-  // 跑一次 typewriter。fullMs 是这段流式应该跑多久；setter 按 tickMs 推进。
+  // Run one typewriter pass. fullMs is how long the stream should take; setter advances every tickMs.
   // Run one typewriter animation. fullMs is how long streaming should last;
   // setter advances per tick, chars-per-tick derives from the length.
   const runStream = (
@@ -194,8 +188,9 @@ export default function PinDemo() {
     };
   };
 
-  // 主线 AI 回复：blank 时清空，其它所有 phase 直接满长显示。
-  // 用户反馈打字机让他们等 —— 主线回复第一眼就直接给整段。
+  // Main AI reply: empty during `blank`, full-length in every other phase.
+  // User feedback: a typewriter on the main reply made the first frame feel slow —
+  // show the entire main response at once.
   // Main reply: empty on `blank`, full length everywhere else.
   // Per user feedback the typewriter on the first reply felt like waiting —
   // render the full paragraph immediately so the viewer can start reading.
@@ -204,7 +199,7 @@ export default function PinDemo() {
     setMainLen(phase === "blank" ? 0 : mainFullLen);
   }, [phase, mainFullLen]);
 
-  // 子线程 1 —— 直接满长，不流式
+  // Sub-thread 1 — full length straight away, no typewriter.
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
     if (
@@ -219,7 +214,7 @@ export default function PinDemo() {
     }
   }, [phase, sub1FullLen]);
 
-  // 深层回复 —— 也不流式，进 L2 时已经 ready
+  // Deepest reply — also not streamed; ready by the time the user enters L2.
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
     if (inDeepestView(phase) || inMergeView(phase)) {
@@ -229,7 +224,7 @@ export default function PinDemo() {
     }
   }, [phase, c.sub2Reply]);
 
-  // Merge 报告流式
+  // Merge report streaming.
   useEffect(() => {
     if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
     if (phase === "merge-stream") {
@@ -247,7 +242,7 @@ export default function PinDemo() {
     setMergeLen(0);
   }, [phase, c.mergeReport]);
 
-  // ── 派生状态 ────────────────────────────────────────────────────────
+  // ── Derived state ──────────────────────────────────────────────────
   const viewMain = inMainView(phase);
   const viewSub1 = inSub1View(phase);
   const viewDeep = inDeepestView(phase);
@@ -264,7 +259,7 @@ export default function PinDemo() {
   const dialogPicked =
     phase === "p1-pick" || phase === "p2-pick" || phase === "p3-pick";
 
-  // 选区高亮持续：sweep + selpop + dialog + pick 都保留 accent 底色。
+  // Selection highlight stays accent-tinted across sweep + selpop + dialog + pick.
   // Selection bg persists through sweep → selpop → dialog → pick.
   const anchor1Selecting =
     phase === "p1-sweep" || phase === "p1-selpop" ||
@@ -276,24 +271,25 @@ export default function PinDemo() {
     phase === "p3-sweep" || phase === "p3-selpop" ||
     phase === "p3-dialog" || phase === "p3-pick";
 
-  // 锚点 visibility / breathing（按 phase 顺序判定，落笔后就一直在）
+  // Anchor visibility / breathing (decided by phase order; once an anchor lands, it stays).
   // Anchor visibility / breathing by phase ordinal — once planted, stays.
   const anchor1Visible = atOrAfter(phase, "p1-underline");
   const anchor2Visible = atOrAfter(phase, "p2-underline");
   const sub1AnchorVisible = atOrAfter(phase, "p3-underline");
-  // Breathing 在 hover phase 之前停止 —— popover 是 anchor span 的子元素，
-  // 会继承 .anchor-breathing 的 opacity 动画（50% 时降到 0.78），导致后面
-  // 的对话文字时隐时现。hover 时关掉呼吸，popover 就能稳定不透明地覆盖。
+  // Stop breathing before the hover phase: the popover is a child of the
+  // anchor span and would inherit .anchor-breathing's opacity dip (down to
+  // 0.78 at 50%), making chat text behind it flicker. Disabling breathing on
+  // hover lets the popover sit stably and fully opaque on top.
   // Stop breathing at hover: the popover is nested inside the anchor span
   // and inherits .anchor-breathing's 0.78 opacity dip, which makes the
   // conversation behind the popover blink through. Disabling breathing on
   // hover lets the popover sit opaque and fully cover what's underneath.
   const anchor1Breathing = anchor1Visible && PHASE_IDX[phase] < PHASE_IDX["l1-hover"];
-  const anchor2Breathing = anchor2Visible; // 从不进入 —— 保持未读
+  const anchor2Breathing = anchor2Visible; // never entered — keep it unread
   const sub1AnchorBreathing =
     sub1AnchorVisible && PHASE_IDX[phase] < PHASE_IDX["l2-hover"];
 
-  // *-underline phase：对应图节点上加"刚落针"脉冲
+  // *-underline phase: add a "just pinned" pulse to the matching graph node.
   // On *-underline phases, pulse the graph node that just appeared.
   const nodePulse: "sub1" | "sub2" | "deep" | null =
     phase === "p1-underline" ? "sub1" :
@@ -324,9 +320,10 @@ export default function PinDemo() {
   const mergeDone = phase === "merge-done";
 
   const rootTapHint = phase === "graph-nav-root";
-  // hereNode —— 当前停留层的"你在这里"指示：l1-stream 在 sub1，l2-stream
-  // 在 deep，graph-navigated 回到 root。这几帧会画一圈脉冲环 + 节点上方
-  // 的"◉ you are here"文字，帮用户在 graph 上确认自己当前的深度。
+  // hereNode — "you are here" indicator on the current depth: l1-stream → sub1,
+  // l2-stream → deep, graph-navigated → root. These frames draw a pulsing ring
+  // around the node plus a "◉ you are here" label above it, so the user can
+  // confirm their current depth on the graph.
   // hereNode anchors the "you are here" cue to the node that matches where
   // the user currently sits: sub1 during l1-stream, deep during l2-stream,
   // main after graph-navigated. Rendered as a gentle ring + label so the
@@ -336,7 +333,7 @@ export default function PinDemo() {
     phase === "l1-stream" ? "sub1" :
     phase === "l2-stream" ? "deep" : null;
 
-  // 固定盒子尺寸（保持原版）
+  // Fixed box dimensions (original sizing preserved).
   const GRID_H = 420;
   const RIGHT_W = 320;
   const TOTAL_H = 38 + GRID_H + 40;
@@ -359,7 +356,7 @@ export default function PinDemo() {
             height: TOTAL_H,
           }}
         >
-          {/* 标题栏 + Merge 按钮 */}
+          {/* Title bar + Merge button. */}
           <div
             className="flex items-center gap-2 px-4 h-[38px]"
             style={{ borderBottom: "1px solid var(--rule)" }}
@@ -380,16 +377,12 @@ export default function PinDemo() {
               deeppin — live demo
             </span>
             <span className="flex-1" />
-            {/* Merge 提示：更粗的 halo + 比 tap-press 更大更慢的脉冲
-                Merge hint: thicker halo + slower, bigger pulse. */}
-            {/* demo-merge-hint 本身就是外扩 halo + 轻微 scale（不遮文字），
-                所以内部不挂 demo-tap-print/ring —— 那两个是 40px 实心圆，
-                会把 "Merge" 完全盖住，造成按钮看起来空白。
+            {/* Merge hint: thicker halo + slower, bigger pulse than tap-press.
                 demo-merge-hint is already an outward halo + gentle scale and
-                does not obscure the label. We intentionally skip the nested
-                tap-print / tap-ring here because those are a 40px filled
-                disc that covers the button center and makes the "Merge"
-                label read as blank. */}
+                does not obscure the label, so we intentionally skip the nested
+                tap-print / tap-ring here — those are 40px filled discs that
+                would cover the button center and make the "Merge" label read
+                as blank. */}
             <span
               className={`relative inline-flex items-center gap-1 h-6 px-2.5 rounded-md font-medium text-[10.5px] transition-all ${
                 mergeBtnPulse ? "demo-merge-hint" : ""
@@ -414,7 +407,7 @@ export default function PinDemo() {
             </span>
           </div>
 
-          {/* 两栏 */}
+          {/* Two-column layout. */}
           <div
             className="grid"
             style={{
@@ -587,7 +580,7 @@ export default function PinDemo() {
   );
 }
 
-// ── MainView —— L0 主线（带两个锚点）─────────────────────────────────────
+// ── MainView — L0 main thread (with two anchors) ──────────────────────
 function MainView({
   c, phase, sweepPct, mainLen,
   anchor1Visible, anchor2Visible,
@@ -903,7 +896,7 @@ function DeepestView({
   phase: DemoPhase;
   sub2Len: number;
 }) {
-  // l2-stream 阶段我们其实直接给 full 长度（不流式），所以 streaming=false
+  // We render the full length during l2-stream (no typewriter), so streaming = false here.
   // l2-stream no longer streams — answer was ready while user was elsewhere.
   void phase;
   return (
@@ -1003,8 +996,9 @@ function DeepestView({
 }
 
 // ── AnchorSpan ───────────────────────────────────────────────────────────
-// selecting 参数覆盖 sweep + selpop + dialog + pick 四个阶段 —— 高亮一路保持
-// 到下划线落下为止。sweepPct 只在 sweeping 时动画，否则定格在 1.
+// `selecting` covers all four stages — sweep + selpop + dialog + pick — so the
+// highlight stays on screen all the way until the underline lands. sweepPct
+// only animates while sweeping; otherwise it stays at 1.
 // `selecting` covers sweep + selpop + dialog + pick so the selection bg
 // persists until the underline drops.
 function AnchorSpan({
@@ -1110,7 +1104,7 @@ function SelPop({
   );
 }
 
-// ── PinDialog —— 含自定义输入框，模仿真实 PinStartDialog ───────────────
+// ── PinDialog — includes the custom-question input, mimicking the real PinStartDialog ──
 // Matches the real PinStartDialog: anchor quote + 3 suggestion buttons +
 // divider + textarea (with placeholder) + send button.
 function PinDialog({
@@ -1240,7 +1234,7 @@ function PinDialog({
   );
 }
 
-// ── AnchorPopover —— 模仿 AnchorPreviewPopover：显示 Question + Answer
+// ── AnchorPopover — mimics AnchorPreviewPopover: shows Question + Answer ──
 // Mirrors AnchorPreviewPopover: title row → YOU question → AI answer → Enter.
 function AnchorPopover({
   c, title, pigment, question, answer, showNew, enterPulse,
@@ -1253,8 +1247,8 @@ function AnchorPopover({
   showNew: boolean;
   enterPulse: boolean;
 }) {
-  // 改到锚点上方显示（bottom: calc(100%+6px)）—— 避免被 MainView 的
-  // overflow-hidden 在底部切掉。整体压缩到 ~130px 高以确保装得下。
+  // Render above the anchor (bottom: calc(100% + 6px)) so MainView's
+  // overflow-hidden doesn't clip the bottom. Compressed to ~130px tall so it always fits.
   // Renders above the anchor (bottom: calc(100%+6px)) so the nested
   // overflow-hidden containers don't clip its bottom. Compressed to ~130px.
   return (
@@ -1287,7 +1281,7 @@ function AnchorPopover({
           </span>
         )}
       </div>
-      {/* YOU question + AI answer —— 并排紧凑显示 */}
+      {/* YOU question + AI answer — compact, side-by-side. */}
       <div
         className="px-2.5 py-1.5"
         style={{ borderTop: "1px solid var(--rule-soft)" }}
@@ -1377,9 +1371,9 @@ function AnchorPopover({
 }
 
 // ── RightRail (graph) ───────────────────────────────────────────────────
-// 四节点：main → sub1 / sub2；sub1 → deep。nodePulse 标记哪个节点刚落笔，
-// 渲染一圈更大的 accent 脉冲环。rootTapHint 在 graph-nav-root 时给 root
-// 套一圈显眼的脉冲 + 下方 "tap" 提示泡。
+// Four nodes: main → sub1 / sub2; sub1 → deep. nodePulse marks which node
+// just received a pin and draws an extra accent pulse ring. rootTapHint adds a
+// prominent pulse on root plus a "tap" tooltip below it during graph-nav-root.
 // 4 nodes: main → sub1 / sub2; sub1 → deep. nodePulse marks which node
 // just appeared so we draw a large accent ring around it. rootTapHint at
 // graph-nav-root wraps the root in an emphatic pulse + "tap" label so the
@@ -1809,7 +1803,7 @@ function trunc(s: string, n: number) {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-// ── MergeOverlay —— 用实际 graph 替代 flat list 选线程
+// ── MergeOverlay — uses the real graph for thread selection instead of a flat list ──
 // Uses the actual graph tree for branch selection — matches the narrative
 // "the tree shows all your pins". All nodes render in their pigment-filled
 // "selected" state.
@@ -1847,7 +1841,7 @@ function MergeOverlay({
           transition: "transform 300ms cubic-bezier(0.16,1,0.3,1)",
         }}
       >
-        {/* 顶栏：dot + 标题 + 数量 + 关闭 —— 对齐真实 MergeOutput
+        {/* Top bar: dot + title + count + close — mirrors the real MergeOutput.
             Header mirroring MergeOutput: dot + title + count + close. */}
         <div
           className="flex items-center gap-2.5 px-4 py-2.5"
@@ -1880,7 +1874,7 @@ function MergeOverlay({
           </span>
         </div>
 
-        {/* 格式选择行 —— 跟真实 UI 一样的卡片（label 加一行小描述） */}
+        {/* Format-picker row — same card style as the real UI (label + one-line description). */}
         <div
           className="flex gap-1.5 px-4 py-2.5 flex-shrink-0"
           style={{ borderBottom: "1px solid var(--rule-soft)" }}
@@ -1904,7 +1898,7 @@ function MergeOverlay({
         </div>
 
         <div className="flex flex-1" style={{ height: 240 }}>
-          {/* 左：graph tree 选择（全选 pigment）*/}
+          {/* Left: graph tree selection (all selected, pigment fills). */}
           <div
             className="flex-shrink-0 flex flex-col"
             style={{ width: 230, borderRight: "1px solid var(--rule-soft)" }}
@@ -1925,7 +1919,7 @@ function MergeOverlay({
             </div>
           </div>
 
-          {/* 右：输出 */}
+          {/* Right: output. */}
           <div className="flex-1 px-4 py-3 overflow-hidden relative">
             {!contentShown ? (
               <div className="h-full flex items-center justify-center">
@@ -2015,7 +2009,7 @@ function MergeOverlay({
   );
 }
 
-// ── MergeGraphPreview —— 合并弹窗左侧的缩略 graph，四节点都是"选中"态
+// ── MergeGraphPreview — thumbnail graph on the left of the merge modal; all four nodes shown selected ──
 // Thumbnail graph for the merge modal — all 4 nodes render in their
 // pigment-filled "selected" state with a checkmark overlay.
 function MergeGraphPreview({ c }: { c: DemoContent }) {

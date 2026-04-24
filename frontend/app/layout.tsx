@@ -13,15 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 /**
- * Fraunces 只用于少量「editorial」场合 —— brand mark、hero 标题、popover 标题。
- * 不作为全局默认，正文依然是 Geist（UI chrome）。
  * Fraunces is reserved for editorial moments only — brand mark, hero titles,
  * popover titles. Body copy stays Geist (UI chrome).
  */
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
-  // 变量字体，不指定 weight；opsz 开启 optical-size 轴，小号字自动收紧
   // Variable font; opsz axis enables automatic optical sizing.
   axes: ["opsz"],
 });
@@ -42,11 +39,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       {/*
-        首屏前根据浏览器语言预填 localStorage，zustand 水合时就是浏览器语言。
-        无存储值 → 从 navigator.languages 选最接近的支持 locale，命中写入；未命中默认 en。
         Prime localStorage with the detected browser locale before first render so zustand
         rehydrates into it. If no stored value, pick the best-matching supported locale from
-        navigator.languages; otherwise leave default "en".
+        navigator.languages; otherwise leave the default "en".
       */}
       <script
         dangerouslySetInnerHTML={{

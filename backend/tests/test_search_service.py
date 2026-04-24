@@ -1,22 +1,18 @@
 # tests/test_search_service.py
 """
-搜索服务单元测试
 Unit tests for the search service.
 
-覆盖 / Covers:
   - inject_search_results：
-      空结果直接返回原 context
-      插入位置在最后一条 system 消息之后
-      无 system 消息时插在开头
-      content 截断到 200 字符
-      多条结果全部出现在注入消息中
+      Empty results return the original context unchanged
+      Insertion point is after the last system message
+      When there is no system message, insert at the beginning
+      content is truncated to 200 characters
     inject_search_results:
       Empty results return context unchanged
       Insertion after the last system message
       Inserted at index 0 when no system messages exist
       Content truncated to 200 characters
       All results appear in the injected message
-  - search：超时返回空列表、HTTP 错误返回空列表、正常结果解析
     search: timeout returns empty list, HTTP error returns empty list, normal result parsing
 """
 import json
@@ -28,7 +24,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 class TestInjectSearchResults:
     def test_empty_results_returns_context_unchanged(self):
-        """空结果直接返回原 context，不插入任何消息 / Empty results return context unchanged."""
+        """Empty results return context unchanged."""
         from services.search_service import inject_search_results
         context = [
             {"role": "system", "content": "系统提示"},
@@ -38,7 +34,7 @@ class TestInjectSearchResults:
         assert result == context
 
     def test_inserts_after_last_system_message(self):
-        """搜索结果插在最后一条 system 消息之后 / Search results are inserted after the last system message."""
+        """Search results are inserted after the last system message."""
         from services.search_service import inject_search_results
         context = [
             {"role": "system", "content": "系统一"},
@@ -48,14 +44,13 @@ class TestInjectSearchResults:
         results = [{"title": "标题", "url": "http://example.com", "content": "内容"}]
         output = inject_search_results(context, results)
 
-        # 找到注入消息的位置 / Find where the injected message was placed
+        # Find where the injected message was placed
         injected_idx = next(i for i, m in enumerate(output) if "联网搜索结果" in m["content"])
-        # 应该在第二条 system 消息（index 1）之后，即 index 2
         # Should be after the second system message (index 1), i.e., at index 2
         assert injected_idx == 2
 
     def test_inserts_at_start_when_no_system_messages(self):
-        """无 system 消息时搜索结果插在开头（index 0）/ Search results inserted at index 0 when no system messages exist."""
+        """Search results inserted at index 0 when no system messages exist."""
         from services.search_service import inject_search_results
         context = [
             {"role": "user", "content": "问题"},
@@ -67,19 +62,18 @@ class TestInjectSearchResults:
         assert "联网搜索结果" in output[0]["content"]
 
     def test_content_truncated_to_300_chars(self):
-        """content 超过 300 字符时截断 / Content longer than 300 characters is truncated."""
+        """Content longer than 300 characters is truncated."""
         from services.search_service import inject_search_results
         long_content = "X" * 500
         results = [{"title": "标题", "url": "http://example.com", "content": long_content}]
         output = inject_search_results([], results)
         injected = output[0]["content"]
-        # 截断后 content 部分最多 300 字符
         # Truncated content should be at most 300 characters
         assert "X" * 301 not in injected
         assert "X" * 300 in injected
 
     def test_multiple_results_all_appear(self):
-        """多条结果全部出现在注入的 system 消息中 / All multiple results appear in the injected system message."""
+        """All multiple results appear in the injected system message."""
         from services.search_service import inject_search_results
         results = [
             {"title": "结果一", "url": "http://one.com", "content": "内容一"},
@@ -93,7 +87,7 @@ class TestInjectSearchResults:
         assert "结果三" in injected
 
     def test_result_without_content_still_shows_title_and_url(self):
-        """content 为空的结果只展示标题和 URL / Results with empty content still show title and URL."""
+        """Results with empty content still show title and URL."""
         from services.search_service import inject_search_results
         results = [{"title": "只有标题", "url": "http://example.com", "content": ""}]
         output = inject_search_results([], results)
@@ -102,7 +96,7 @@ class TestInjectSearchResults:
         assert "http://example.com" in injected
 
     def test_empty_context_with_results(self):
-        """空 context 注入后产生单条 system 消息 / Empty context with results produces a single system message."""
+        """Empty context with results produces a single system message."""
         from services.search_service import inject_search_results
         results = [{"title": "T", "url": "http://u.com", "content": "C"}]
         output = inject_search_results([], results)
@@ -110,7 +104,7 @@ class TestInjectSearchResults:
         assert output[0]["role"] == "system"
 
     def test_original_context_messages_preserved(self):
-        """注入后原 context 消息顺序和内容不变 / Original context messages are preserved in order after injection."""
+        """Original context messages are preserved in order after injection."""
         from services.search_service import inject_search_results
         context = [
             {"role": "system", "content": "系统提示"},
@@ -119,10 +113,9 @@ class TestInjectSearchResults:
         ]
         results = [{"title": "T", "url": "http://u.com", "content": "C"}]
         output = inject_search_results(context, results)
-        # 原 3 条消息全部保留，加上注入的 1 条 = 4 条
         # Original 3 messages + 1 injected = 4 messages total
         assert len(output) == 4
-        # 用户和 AI 消息仍在 / User and AI messages still present
+        # User and AI messages still present
         assert any(m["role"] == "user" for m in output)
         assert any(m["role"] == "assistant" for m in output)
 
@@ -132,7 +125,7 @@ class TestInjectSearchResults:
 class TestSearch:
     @pytest.mark.asyncio
     async def test_timeout_returns_empty_list(self):
-        """请求超时时返回空列表 / Returns empty list on request timeout."""
+        """Returns empty list on request timeout."""
         import httpx
         from services.search_service import search
 
@@ -149,7 +142,7 @@ class TestSearch:
 
     @pytest.mark.asyncio
     async def test_http_error_returns_empty_list(self):
-        """HTTP 错误时返回空列表 / Returns empty list on HTTP error."""
+        """Returns empty list on HTTP error."""
         import httpx
         from services.search_service import search
 
@@ -171,7 +164,7 @@ class TestSearch:
 
     @pytest.mark.asyncio
     async def test_successful_search_parses_results(self):
-        """正常响应解析出结果列表 / Successful response is parsed into result list."""
+        """Successful response is parsed into result list."""
         from services.search_service import search
 
         fake_response_data = {
@@ -201,10 +194,10 @@ class TestSearch:
 
     @pytest.mark.asyncio
     async def test_max_results_limits_output(self):
-        """max_results 参数限制返回条数 / max_results parameter limits the number of returned results."""
+        """max_results parameter limits the number of returned results."""
         from services.search_service import search
 
-        # 生成 10 条结果 / Generate 10 results
+        # Generate 10 results
         fake_response_data = {
             "results": [
                 {"title": f"标题{i}", "url": f"http://site{i}.com", "content": f"内容{i}"}
@@ -229,7 +222,7 @@ class TestSearch:
 
     @pytest.mark.asyncio
     async def test_results_without_url_excluded(self):
-        """无 URL 的结果被过滤掉 / Results without a URL are filtered out."""
+        """Results without a URL are filtered out."""
         from services.search_service import search
 
         fake_response_data = {
@@ -258,7 +251,7 @@ class TestSearch:
 
     @pytest.mark.asyncio
     async def test_empty_results_key_returns_empty_list(self):
-        """响应中 results 为空列表时返回空列表 / Returns empty list when response results is empty."""
+        """Returns empty list when response results is empty."""
         from services.search_service import search
 
         with patch("httpx.AsyncClient") as MockClient:

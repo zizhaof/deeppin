@@ -1,18 +1,16 @@
 # backend/tests/integration/test_api.py
 """
-集成测试：打真实部署的 API 端点
 Integration tests against the live deployed API.
 
-运行方式 / How to run:
   TEST_BASE_URL=https://deeppin.duckdns.org \
   SUPABASE_URL=https://xxx.supabase.co \
   SUPABASE_ANON_KEY=... \
   SUPABASE_SERVICE_ROLE_KEY=... \
   pytest tests/integration/ -v
 
-TestHealth   — 无需认证，验证所有组件连通
-TestAuth     — 无需认证，验证认证中间件生效
-TestSession  — 需要 Supabase 凭证，动态创建/删除临时测试用户，不依赖任何真实账号
+TestHealth
+TestAuth
+TestSession
 """
 from __future__ import annotations
 
@@ -25,14 +23,14 @@ import httpx
 BASE_URL = os.getenv("TEST_BASE_URL", "https://deeppin.duckdns.org").rstrip("/")
 
 
-# ── 工具 ──────────────────────────────────────────────────────────────────
+# Helpers ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
 def auth_headers():
     """
-    用 service_role_key 通过 admin API 动态创建临时测试用户，获取 JWT。
-    测试结束后自动删除该用户（yield fixture）。
-    未配置凭证时跳过（不算失败）。
+    Use service_role_key via the admin API to dynamically create a temporary test user and obtain a JWT.
+    Automatically deletes the user after the test (yield fixture).
+    Skipped when credentials are not configured (not counted as a failure).
 
     Dynamically creates a temporary test user via the Supabase admin API using the
     service_role_key, obtains a JWT, then deletes the user after the session ends.
@@ -51,7 +49,6 @@ def auth_headers():
         "Content-Type": "application/json",
     }
 
-    # 创建临时测试用户（随机 email + 强密码，email 直接标记为已验证）
     # Create a temporary test user with a random email; mark email as confirmed immediately
     test_email = f"ci-{uuid.uuid4().hex[:8]}@deeppin-ci.test"
     test_password = secrets.token_urlsafe(24)
@@ -65,7 +62,6 @@ def auth_headers():
     assert create_r.status_code == 200, f"Failed to create test user: {create_r.text}"
     user_id = create_r.json()["id"]
 
-    # 用 email/password 登录获取 JWT
     # Sign in with email/password to obtain a JWT
     signin_r = httpx.post(
         f"{supabase_url}/auth/v1/token?grant_type=password",
@@ -81,7 +77,6 @@ def auth_headers():
         "Content-Type": "application/json",
     }
 
-    # 测试结束后删除临时用户（无论测试成功失败）
     # Delete the temporary user after all tests finish (success or failure)
     httpx.delete(
         f"{supabase_url}/auth/v1/admin/users/{user_id}",
@@ -93,11 +88,10 @@ def auth_headers():
 # ── TestHealth ─────────────────────────────────────────────────────────────
 
 class TestHealth:
-    """验证 /health 聚合端点 — 无需认证。"""
+    """Verify the /health aggregate endpoint -- no authentication required."""
 
     def test_is_reachable(self):
-        """端点可达且返回合法的健康检查响应（200 = 全部正常，503 = 部分降级）。
-        Endpoint is reachable and returns a valid health-check response.
+        """        Endpoint is reachable and returns a valid health-check response.
         200 = all healthy, 503 = degraded (e.g. Groq rate-limited in CI).
         """
         r = httpx.get(f"{BASE_URL}/health", timeout=10)
@@ -107,8 +101,7 @@ class TestHealth:
         assert "status" in r.json(), "Response body missing 'status' field"
 
     def test_status_field_present(self):
-        """响应体包含 status 字段，值为 'ok' 或 'degraded'。
-        Response body contains a valid 'status' field.
+        """        Response body contains a valid 'status' field.
         """
         r = httpx.get(f"{BASE_URL}/health", timeout=10)
         assert r.json().get("status") in ("ok", "degraded"), (
@@ -125,7 +118,7 @@ class TestHealth:
 # ── TestAuth ───────────────────────────────────────────────────────────────
 
 class TestAuth:
-    """验证认证中间件 — 无需认证。"""
+    """Verify the auth middleware -- no authentication required."""
 
     def test_no_token_returns_401(self):
         r = httpx.get(f"{BASE_URL}/api/sessions", timeout=10)
@@ -152,8 +145,8 @@ class TestAuth:
 
 class TestSession:
     """
-    验证 session CRUD — 需要真实 JWT（依赖 auth_headers fixture）。
-    无凭证时整个 class 跳过。
+    Verify session CRUD -- requires a real JWT (depends on the auth_headers fixture).
+    Skips the entire class when credentials are not configured.
     """
 
     def test_list_sessions(self, auth_headers):
@@ -162,8 +155,8 @@ class TestSession:
         assert isinstance(r.json(), list)
 
     def test_session_lifecycle(self, auth_headers):
-        """创建 → 出现在列表 → 删除 → 消失。"""
-        # 创建 / Create
+        """Create -> appears in list -> delete -> disappears."""
+        # Create
         r = httpx.post(
             f"{BASE_URL}/api/sessions",
             headers=auth_headers,
@@ -174,20 +167,20 @@ class TestSession:
         session_id = r.json()["id"]
 
         try:
-            # 出现在列表 / Appears in list
+            # Appears in list
             r = httpx.get(f"{BASE_URL}/api/sessions", headers=auth_headers, timeout=10)
             assert r.status_code == 200
             ids = [s["id"] for s in r.json()]
             assert session_id in ids, f"Session {session_id} not in list"
 
-            # 获取详情 / Fetch detail
+            # Fetch detail
             r = httpx.get(f"{BASE_URL}/api/sessions/{session_id}",
                           headers=auth_headers, timeout=10)
             assert r.status_code == 200
             assert r.json()["id"] == session_id
 
         finally:
-            # 清理（无论断言是否成功）/ Cleanup regardless of assertion outcome
+            # Cleanup regardless of assertion outcome
             httpx.delete(
                 f"{BASE_URL}/api/sessions/{session_id}",
                 headers=auth_headers,
@@ -207,13 +200,12 @@ class TestSession:
 
 class TestProviders:
     """
-    零 quota provider 校验 — 无需认证。
     Zero-quota provider validation — no auth required.
 
-    通过 provider 的 /v1/models 端点校验：
-      - 每个 key 合法（非 401/403）
-      - 配置里声明的 model_id 仍挂在 provider 的模型清单上（无 drift）
-    真实推理验证由 daily-provider-check workflow 每日跑一次，不放这里。
+    Validate via each provider's /v1/models endpoint:
+      - Every key is valid (not 401/403)
+      - Every model_id declared in config is still in the provider's catalog (no drift)
+    Real inference validation is run daily by the daily-provider-check workflow, not here.
 
     Validates via each provider's /v1/models endpoint that keys are legitimate and
     configured model_ids still appear in the upstream catalog. Actual inference
@@ -221,15 +213,14 @@ class TestProviders:
     """
 
     def test_keys_and_model_catalog(self):
-        """每个 (provider, key) 的 key 合法 + 配置的模型仍在清单上。
-        Every (provider, key) has a valid key AND all configured models are in its catalog."""
+        """        Every (provider, key) has a valid key AND all configured models are in its catalog."""
         r = httpx.get(f"{BASE_URL}/health/providers/keys", timeout=30)
         assert r.status_code in (200, 503), f"Unexpected status: {r.status_code}"
         data = r.json()
 
         assert data["total"] > 0, "No provider/key pairs configured"
 
-        # 打印每个结果方便 CI 调试 / Print each result for CI debugging
+        # Print each result for CI debugging
         for result in data["results"]:
             if result["ok"]:
                 print(f"  {result['provider']} [{result['key']}] → OK "

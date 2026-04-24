@@ -1,6 +1,6 @@
-// scripts/gen-favicon.mjs — 生成 Deeppin favicon
-// 方案 A：Indigo 圆角方形底 + 白色四角星
-// 输出：app/favicon.ico（16/32/48 三尺寸）+ app/icon.svg
+// Generate the Deeppin favicon.
+// Design A: indigo rounded-square background + white four-pointed star.
+// Outputs: app/favicon.ico (16/32/48 px) + app/icon.svg.
 
 import sharp from "sharp";
 import { writeFileSync } from "fs";
@@ -10,24 +10,25 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appDir = join(__dirname, "../app");
 
-// ── SVG 模板（参数化尺寸）──────────────────────────────────────────────
+// ── SVG template (size-parameterized) ────────────────────────────────
 function makeSVG(size) {
-  const r = size * 0.219;   // 圆角半径 ≈ 3.5/16
-  // 四角星路径：中心 C，臂长 42% 和 21% 的 size
+  const r = size * 0.219;   // corner radius ≈ 3.5/16
+  // Four-pointed star path: center C, arm lengths 42% and 21% of size.
   const c = size / 2;
-  const outer = size * 0.42;  // 从中心到顶点
-  const inner = size * 0.21;  // 从中心到腰部
+  const outer = size * 0.42;  // center to tip
+  const inner = size * 0.21;  // center to waist
 
-  // 四角星八个点（上、右上腰、右、右下腰、下、左下腰、左、左上腰）
+  // Eight star points (top, top-right waist, right, bottom-right waist,
+  // bottom, bottom-left waist, left, top-left waist).
   const pts = [
-    [c,        c - outer],   // 上
-    [c + inner, c - inner],  // 右上腰
-    [c + outer, c],          // 右
-    [c + inner, c + inner],  // 右下腰
-    [c,        c + outer],   // 下
-    [c - inner, c + inner],  // 左下腰
-    [c - outer, c],          // 左
-    [c - inner, c - inner],  // 左上腰
+    [c,        c - outer],   // top
+    [c + inner, c - inner],  // top-right waist
+    [c + outer, c],          // right
+    [c + inner, c + inner],  // bottom-right waist
+    [c,        c + outer],   // bottom
+    [c - inner, c + inner],  // bottom-left waist
+    [c - outer, c],          // left
+    [c - inner, c - inner],  // top-left waist
   ];
   const d = `M${pts.map((p) => p.join(",")).join("L")}Z`;
 
@@ -37,18 +38,18 @@ function makeSVG(size) {
 </svg>`;
 }
 
-// ── 1. 写 app/icon.svg（可缩放，现代浏览器直接用）────────────────────
+// ── 1. Write app/icon.svg (scalable, used directly by modern browsers) ──
 const svgContent = makeSVG(32);
 writeFileSync(join(appDir, "icon.svg"), svgContent, "utf8");
 console.log("✓ app/icon.svg written");
 
-// ── 2. 用 sharp 渲染 PNG（16/32/48）─────────────────────────────────
+// ── 2. Render PNGs via sharp (16/32/48) ──────────────────────────────
 async function renderPNG(size) {
   const svg = Buffer.from(makeSVG(size));
   return sharp(svg).png().toBuffer();
 }
 
-// ── 3. 构造 ICO 二进制（支持多尺寸）────────────────────────────────
+// ── 3. Build the ICO binary (multi-size) ─────────────────────────────
 async function buildICO(sizes) {
   const pngs = await Promise.all(sizes.map(renderPNG));
 
@@ -57,7 +58,7 @@ async function buildICO(sizes) {
   const entrySize = 16;
   const dataOffset = headerSize + entrySize * count;
 
-  // 计算各图片在文件中的偏移
+  // Compute each image's offset in the output file.
   const offsets = [];
   let offset = dataOffset;
   for (const png of pngs) {
@@ -80,7 +81,7 @@ async function buildICO(sizes) {
   // ICONDIRENTRY × count
   for (let i = 0; i < count; i++) {
     const s = sizes[i];
-    const w = s >= 256 ? 0 : s;   // 256 编码为 0
+    const w = s >= 256 ? 0 : s;   // 256 is encoded as 0
     const h = s >= 256 ? 0 : s;
     buf.writeUInt8(w, pos);        pos += 1;  // Width
     buf.writeUInt8(h, pos);        pos += 1;  // Height
@@ -92,7 +93,7 @@ async function buildICO(sizes) {
     buf.writeUInt32LE(offsets[i], pos);      pos += 4;  // ImageOffset
   }
 
-  // 图片数据
+  // Image payloads.
   for (const png of pngs) {
     png.copy(buf, pos);
     pos += png.length;
@@ -101,7 +102,7 @@ async function buildICO(sizes) {
   return buf;
 }
 
-// ── 主流程 ──────────────────────────────────────────────────────────
+// ── Main ────────────────────────────────────────────────────────────
 const ico = await buildICO([16, 32, 48]);
 writeFileSync(join(appDir, "favicon.ico"), ico);
 console.log("✓ app/favicon.ico written (16/32/48px)");
