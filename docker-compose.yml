@@ -7,6 +7,9 @@ services:
     env_file: ./backend/.env
     environment:
       - SEARXNG_URL=${SEARXNG_INTERNAL}
+      # Let HuggingFace tokenizers fork for parallel encode (small speedup during
+      # bge-m3 encode's tokenize step; safe since we don't fork post-import).
+      - TOKENIZERS_PARALLELISM=true
     volumes:
       - ./logs:/app/logs                  # persist logs to host
       - hf-cache:/root/.cache/huggingface # shared HF model cache (prod & staging reuse the same bge-m3 copy)

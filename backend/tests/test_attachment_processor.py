@@ -118,16 +118,90 @@ class TestChunkTextSemantic:
 
     @pytest.mark.asyncio
     async def test_embed_failure_falls_back_to_fixed(self):
-        """Falls back to fixed chunking on embed failure."""
-        from services.attachment_processor import chunk_text_semantic, CHUNK_SIZE
+        """Falls back to fixed chunking on semantic-pass embed failure."""
+        from services.attachment_processor import chunk_text_semantic
 
-        # Text needs sentence punctuation so _split_sentences yields >1 sentence and embed_texts is called
         single_sent = "这是一个用于测试的句子，内容并不重要只是用来触发分块逻辑。"
         text = single_sent * 20   # Repeated 20 times; each ends with a period, totaling 20 sentences
-        with patch("services.embedding_service.embed_texts", new=AsyncMock(side_effect=Exception("model error"))):
+
+        # First call (sentence embed for semantic-boundary detection) blows up;
+        # fallback path does a second embed on the fixed chunks, which succeeds.
+        calls: list[int] = []
+        async def fake_embed(texts):
+            calls.append(len(texts))
+            if len(calls) == 1:
+                raise Exception("model error")
+            return [[0.1] * 1024 for _ in texts]
+
+        with patch("services.embedding_service.embed_texts", new=fake_embed):
             result = await chunk_text_semantic(text)
 
         assert len(result) > 1  # Fallback fixed-split still produces multiple chunks
+
+
+# ── chunk_and_embed ───────────────────────────────────────────────────
+
+class TestChunkAndEmbed:
+    @pytest.mark.asyncio
+    async def test_returns_aligned_lists(self):
+        """chunks and embeddings are same length and per-chunk."""
+        from services.attachment_processor import chunk_and_embed
+        text = (
+            "First sentence about dogs. Second about dogs too. "
+            "Totally unrelated topic: quantum computing basics. "
+            "More on quantum. Yet more on quantum theory."
+        ) * 10
+        # Two clusters of sentences — embeddings differ per cluster to trigger a break
+        dog_vec = [1.0, 0.0] + [0.0] * 1022
+        qc_vec = [0.0, 1.0] + [0.0] * 1022
+        sent_embs = [dog_vec, dog_vec, qc_vec, qc_vec, qc_vec] * 10
+        with patch("services.embedding_service.embed_texts",
+                   new=AsyncMock(return_value=sent_embs)):
+            chunks, embs = await chunk_and_embed(text)
+        assert len(chunks) == len(embs) > 0
+
+    @pytest.mark.asyncio
+    async def test_chunk_embeddings_are_unit_norm(self):
+        """Pooled chunk embeddings are L2-normalized (unit length)."""
+        from services.attachment_processor import chunk_and_embed
+        # Two similar sentences → one chunk covering both. Vectors unit-norm but not identical.
+        text = "Alpha statement. Beta statement."
+        v1 = [1.0, 0.0] + [0.0] * 1022
+        v2 = [0.8, 0.6] + [0.0] * 1022  # unit length
+        with patch("services.embedding_service.embed_texts",
+                   new=AsyncMock(return_value=[v1, v2])):
+            chunks, embs = await chunk_and_embed(text)
+        assert len(embs) == 1
+        norm_sq = sum(x * x for x in embs[0])
+        assert abs(norm_sq - 1.0) < 1e-6
+
+    @pytest.mark.asyncio
+    async def test_fallback_reembeds_fixed_chunks(self):
+        """On semantic-embed failure, falls back to fixed chunks + a re-embed call."""
+        from services.attachment_processor import chunk_and_embed
+        text = "Sentence one. Sentence two. Sentence three." * 200
+
+        call_log: list[str] = []
+
+        async def fake_embed(texts):
+            # First call (sentence embed during semantic path) fails;
+            # second call (fallback chunk embed) succeeds and returns one vec per chunk.
+            call_log.append("call")
+            if len(call_log) == 1:
+                raise RuntimeError("embed model exploded")
+            return [[0.1] * 1024 for _ in texts]
+
+        with patch("services.embedding_service.embed_texts", new=fake_embed):
+            chunks, embs = await chunk_and_embed(text)
+        assert len(chunks) == len(embs) > 0
+        assert len(call_log) == 2  # Sentence pass failed, fallback pass succeeded
+
+    @pytest.mark.asyncio
+    async def test_empty_text_returns_empty(self):
+        """Empty / whitespace-only text returns ([], [])."""
+        from services.attachment_processor import chunk_and_embed
+        assert await chunk_and_embed("") == ([], [])
+        assert await chunk_and_embed("   \n   ") == ([], [])
 
 
 # ── _chunk_fixed ──────────────────────────────────────────────────────
@@ -355,9 +429,9 @@ class TestProcessAttachment:
         fake_embeddings = [[0.1] * 1024] * 3
 
         with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value=long_text)), \
-             patch("services.attachment_processor.chunk_text_semantic", new=AsyncMock(return_value=fake_chunks)), \
-             patch("services.attachment_processor._store_chunks", new=AsyncMock()), \
-             patch("services.embedding_service.embed_texts", new=AsyncMock(return_value=fake_embeddings)):
+             patch("services.attachment_processor.chunk_and_embed",
+                   new=AsyncMock(return_value=(fake_chunks, fake_embeddings))), \
+             patch("services.attachment_processor._store_chunks", new=AsyncMock()):
             result = await process_attachment("session-1", "doc.pdf", b"pdf bytes")
 
         assert result["chunk_count"] == len(fake_chunks)
@@ -371,7 +445,8 @@ class TestProcessAttachment:
         long_text = "X" * (INLINE_THRESHOLD + 100)
 
         with patch("services.attachment_processor.extract_text", new=AsyncMock(return_value=long_text)), \
-             patch("services.attachment_processor.chunk_text_semantic", new=AsyncMock(return_value=[])):
+             patch("services.attachment_processor.chunk_and_embed",
+                   new=AsyncMock(return_value=([], []))):
             result = await process_attachment("session-1", "file.txt", b"content")
 
         assert result == {"chunk_count": 0, "inline_text": None}
