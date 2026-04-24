@@ -25,6 +25,8 @@ interface Props {
   isAnon?: boolean;
   /** Handler for the anon-only "Sign in" button; triggers linkIdentity. */
   onSignIn?: () => void;
+  /** Google OAuth avatar URL (from user_metadata.avatar_url); falls back to a person icon when null. */
+  userAvatarUrl?: string | null;
 }
 
 export default function ThreadNav({
@@ -39,6 +41,7 @@ export default function ThreadNav({
   onNewChat,
   isAnon = false,
   onSignIn,
+  userAvatarUrl = null,
 }: Props) {
   const t = useT();
   const router = useRouter();
@@ -210,15 +213,25 @@ export default function ThreadNav({
           <button
             onClick={() => setUserMenuOpen((v) => !v)}
             disabled={deleting}
-            className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-all disabled:opacity-50"
+            className="w-[30px] h-[30px] flex items-center justify-center rounded-full transition-all disabled:opacity-50 overflow-hidden"
             title={t.languageLabel}
             style={{ border: "1px solid var(--rule)", color: "var(--ink-4)" }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--ink-5)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--rule)"; (e.currentTarget as HTMLElement).style.color = "var(--ink-4)"; }}
           >
-            <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-            </svg>
+            {userAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={userAvatarUrl}
+                alt="avatar"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+              </svg>
+            )}
           </button>
 
           {userMenuOpen && (
