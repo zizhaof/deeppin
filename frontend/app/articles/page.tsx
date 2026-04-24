@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
 import { narrowToContentLang } from "@/lib/i18n";
 import LangSelector from "@/components/LangSelector";
+import GitHubLink from "@/components/GitHubLink";
 import { articles } from "./data";
 
 export default function ArticlesPage() {
@@ -55,7 +56,10 @@ export default function ArticlesPage() {
               <span className="font-mono text-[11px] text-faint ml-2">/ articles</span>
             </div>
           </div>
-          <LangSelector />
+          <div className="flex items-center gap-2">
+            <GitHubLink />
+            <LangSelector />
+          </div>
         </div>
       </header>
 

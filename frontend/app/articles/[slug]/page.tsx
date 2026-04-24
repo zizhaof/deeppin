@@ -10,6 +10,7 @@ import { use, useEffect, useMemo, useRef, useState } from "react";
 import { useLangStore } from "@/stores/useLangStore";
 import { narrowToContentLang } from "@/lib/i18n";
 import LangSelector from "@/components/LangSelector";
+import GitHubLink from "@/components/GitHubLink";
 import { articles, type Article, type Block } from "../data";
 import { DIAGRAMS } from "../ArticleDiagrams";
 
@@ -258,7 +259,10 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
               </Link>
             </div>
           </div>
-          <LangSelector />
+          <div className="flex items-center gap-2">
+            <GitHubLink />
+            <LangSelector />
+          </div>
         </div>
       </header>
 

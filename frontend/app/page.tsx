@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useT } from "@/stores/useLangStore";
 import SessionDrawer from "@/components/SessionDrawer";
 import LangSelector from "@/components/LangSelector";
+import GitHubLink from "@/components/GitHubLink";
 import PinDemo from "@/components/PinDemo";
 import MobilePinDemo from "@/components/MobilePinDemo";
 
@@ -221,6 +222,7 @@ export default function HomePage() {
             </svg>
             <span className="hidden md:inline">{t.articles}</span>
           </Link>
+          <GitHubLink />
           <LangSelector />
           {/* Welcome page topbar CTA shows Sign in for unauthenticated + anon
            *  users, Logout only for genuinely signed-in users. New chat is
