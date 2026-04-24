@@ -150,6 +150,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
 
 Deeppin LLC — Washington State
 
+## License
+
+[FSL-1.1-MIT](LICENSE.md) — Functional Source License with MIT Future grant.
+
+You may freely use, fork, modify, and self-host Deeppin for personal use, internal company use, education, and research. You may **not** offer Deeppin (or a substantially similar product) as a competing commercial service. Two years after each release, that release automatically converts to the MIT license.
+
+If you want to host Deeppin commercially, contact us — we are happy to talk.
+
 ---
 
 *Built for thinkers who refuse to choose between depth and flow.*
