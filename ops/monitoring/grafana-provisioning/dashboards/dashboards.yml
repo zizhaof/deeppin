@@ -1,5 +1,5 @@
-# Grafana dashboard provisioning：自动加载本目录下的 JSON
-# Auto-load dashboard JSONs from this directory.
+# Grafana dashboard provisioning — auto-load dashboard JSON files from
+# this directory.
 apiVersion: 1
 
 providers:
