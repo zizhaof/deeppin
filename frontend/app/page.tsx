@@ -128,15 +128,23 @@ export default function HomePage() {
     setSessions([]);
   };
 
-  // Anon users manually trigger Google linkIdentity (preserves user_id + history).
+  // Two paths share the same Sign-in button:
+  //   - Anon user (has a JWT with is_anonymous=true) → linkIdentity preserves
+  //     their user_id + history.
+  //   - Fully signed-out user (no session at all) → linkIdentity would fail with
+  //     "invalid claim: missing sub claim" because there's no JWT to attach the
+  //     new identity to. Fall back to a regular OAuth sign-in.
   const handleSignIn = async () => {
     const supabase = createClient();
     const redirectTo =
       typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
-    const { error } = await supabase.auth.linkIdentity({
-      provider: "google",
-      options: { redirectTo },
-    });
+    const { data: { session } } = await supabase.auth.getSession();
+    const isAnonSession = Boolean(
+      session?.user && (session.user as { is_anonymous?: boolean }).is_anonymous,
+    );
+    const { error } = isAnonSession
+      ? await supabase.auth.linkIdentity({ provider: "google", options: { redirectTo } })
+      : await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
     if (error) alert(error.message);
   };
 
