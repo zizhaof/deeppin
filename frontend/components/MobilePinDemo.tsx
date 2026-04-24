@@ -336,7 +336,16 @@ export default function MobilePinDemo() {
   return (
     <div
       className="w-full select-none"
-      style={{ maxWidth: 380 }}
+      style={{
+        maxWidth: 380,
+        // Pin text at the designed size — this demo card behaves like a
+        // video/screenshot, not readable prose. Without this, Android
+        // Chrome's Text Scaling and iOS font boost can enlarge the
+        // px-based bubble text, which then overflows the fixed-height
+        // body (340px) + overflow-hidden and crops the last line.
+        textSizeAdjust: "100%",
+        WebkitTextSizeAdjust: "100%",
+      }}
       onTouchStart={nudgeTouch}
       onPointerDown={nudgeTouch}
     >

@@ -341,7 +341,15 @@ export default function PinDemo() {
   return (
     <div
       className="w-full select-none mx-auto"
-      style={{ maxWidth: 1080 }}
+      style={{
+        maxWidth: 1080,
+        // Pin text at the designed size — this demo behaves like a
+        // video/screenshot, not readable prose. Needed so Android-tablet
+        // Chrome Text Scaling / other accessibility font inflation can't
+        // overflow the fixed-height body + overflow-hidden and crop rows.
+        textSizeAdjust: "100%",
+        WebkitTextSizeAdjust: "100%",
+      }}
       onMouseMove={nudgeHover}
       onMouseEnter={nudgeHover}
     >
