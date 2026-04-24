@@ -10,9 +10,15 @@ on:
       - 'searxng/**'
       - 'nginx/**'
       - 'scripts/**'
-      # 改 deploy workflow 自身（如新增 secret 同步）也要触发部署
       # Self-include so workflow edits (e.g. new secret sync line) actually run.
       - '.github/workflows/deploy-backend.yml'
+
+# Serialize prod deploys. Two merges landing within seconds of each other
+# would otherwise race on the same SSH session against the same workdir.
+# cancel-in-progress=false so every merged commit still gets its turn.
+concurrency:
+  group: deploy-backend-prod
+  cancel-in-progress: false
 
 jobs:
   # ── Job 1: 单元测试（在 GitHub runner 上跑，不需要真实外部依赖）────────
@@ -80,7 +86,22 @@ jobs:
           script: |
             set -e
             cd /home/ubuntu/deeppin
-            git pull origin main
+
+            # The searxng container chowns its mounted config dir to its own
+            # internal UID (977). When the dir is owned by 977, ubuntu can't
+            # unlink files inside it during a checkout — that aborts the
+            # working-tree update mid-way and leaves the repo half-applied.
+            # See PR #20 → PR #21 → PR #22 chain failure (2026-04-24).
+            sudo chown -R ubuntu:ubuntu searxng/
+
+            # Atomic update. `git pull` = fetch + merge, and merge updates
+            # working-tree files one at a time — if one file fails (e.g.
+            # permission), earlier files stay updated while HEAD does not
+            # advance, leaving the repo in a half-applied state that blocks
+            # every subsequent deploy. `reset --hard` either advances
+            # everything or fails cleanly with the working tree untouched.
+            git fetch origin main
+            git reset --hard origin/main
 
             # backend + searxng 先启动（nginx 等它们 healthy 才起）
             docker compose --env-file compose.env up -d --build backend searxng
