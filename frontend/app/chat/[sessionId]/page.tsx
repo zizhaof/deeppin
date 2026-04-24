@@ -546,7 +546,12 @@ export default function ChatPage() {
       // Backend /suggest polls server-side (up to 3s). Merge 3 placeholders with up to 3 LLM
       // follow-ups; dedup on normalized form to avoid collisions with sync_gen's template fallback.
       const normalize = (s: string) => s.replace(/\s+/g, "").toLowerCase();
-      getSuggestions(threadId).then((questions) => {
+      getSuggestions(threadId).then(({ questions, title }) => {
+        // Swap the anchor-truncated placeholder for the LLM title so the tree
+        // and graph show the contextual name instead of raw anchor text. The
+        // background _generate_and_patch task is what actually produced this;
+        // /suggest just relays it inline.
+        if (title) updateThreadTitle(threadId, title);
         let next = placeholders;
         if (questions.length > 0) {
           const seen = new Set(placeholders.map(normalize));

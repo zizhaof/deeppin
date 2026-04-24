@@ -162,19 +162,25 @@ async def _generate_and_patch(
 @router.get("/threads/{thread_id}/suggest")
 async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)):
     """
-    Return suggested follow-up questions for a sub-thread (up to 3).
+    Return suggested follow-up questions for a sub-thread (up to 3) plus the
+    LLM-generated title.
 
-    Prefers the DB-cached suggestions written at creation time to avoid redundant LLM calls.
+    Prefers the DB-cached values written at creation time to avoid redundant LLM calls.
 
-    On cache miss (fallback for historical threads): wait 300ms and re-check
-    (_generate_and_patch is usually done by then); if still missing, generate and write back in real time.
+    On cache miss (fallback for historical threads): poll every 200ms up to 3s
+    (_generate_and_patch is usually done by then); if still missing, generate
+    and write back in real time.
+
+    Title is bundled into this response (instead of a separate endpoint) so the
+    frontend can swap the anchor-truncated placeholder for the LLM title in the
+    same poll cycle that already runs after pin creation.
     """
     _user_id, sb = auth
     t0 = time.monotonic()
 
     thread_res = await _db(lambda: (
         sb.table("threads")
-        .select("anchor_text, parent_thread_id, suggestions")
+        .select("anchor_text, anchor_message_id, parent_thread_id, suggestions, title")
         .eq("id", str(thread_id))
         .maybe_single()
         .execute()
@@ -183,6 +189,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         raise HTTPException(status_code=404, detail="线程不存在 / Thread not found")
 
     thread = thread_res.data
+    title: str | None = thread.get("title")
 
     # Return cached suggestions immediately if available
     cached = thread.get("suggestions")
@@ -193,7 +200,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
                 "[suggest] thread=%s path=cache_hit elapsed=%.2fs n=%d",
                 thread_id, time.monotonic() - t0, len(questions[:3]),
             )
-            return {"questions": questions[:3]}
+            return {"questions": questions[:3], "title": title}
         except Exception:
             pass  # Cache corrupt; fall through to real-time generation
 
@@ -202,12 +209,15 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         await asyncio.sleep(0.2)
         thread_res2 = await _db(lambda: (
             sb.table("threads")
-            .select("suggestions")
+            .select("suggestions, title")
             .eq("id", str(thread_id))
             .maybe_single()
             .execute()
         ))
-        cached2 = (thread_res2.data or {}).get("suggestions") if thread_res2 else None
+        row2 = (thread_res2.data or {}) if thread_res2 else {}
+        if row2.get("title"):
+            title = row2["title"]
+        cached2 = row2.get("suggestions")
         if cached2:
             try:
                 questions = cached2 if isinstance(cached2, list) else json.loads(cached2)
@@ -215,7 +225,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
                     "[suggest] thread=%s path=poll_hit attempts=%d elapsed=%.2fs n=%d",
                     thread_id, i + 1, time.monotonic() - t0, len(questions[:3]),
                 )
-                return {"questions": questions[:3]}
+                return {"questions": questions[:3], "title": title}
             except Exception:
                 break  # Cache corrupt; fall through to real-time generation
 
@@ -238,16 +248,23 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
 
     sync_llm_ok = True
     try:
-        _, questions = await generate_title_and_suggestions(anchor, context_summary)
+        new_title, questions = await generate_title_and_suggestions(anchor, context_summary)
+        if new_title:
+            title = new_title
     except Exception as e:
         sync_llm_ok = False
         # On LLM failure, return an empty list; the frontend renders a localized placeholder — no hard-coded Chinese fallback.
         questions = []
         logger.warning("[suggest] sync LLM 失败 thread=%s err=%s", thread_id, e)
 
-    # Write back to cache to avoid regenerating next time
+    # Write back to cache to avoid regenerating next time. Update title only
+    # when the row's title was previously empty so we never clobber a value
+    # an earlier successful background run had already written.
     try:
-        await _db(lambda: sb.table("threads").update({"suggestions": questions}).eq("id", str(thread_id)).execute())
+        update: dict = {"suggestions": questions or None}
+        if not thread.get("title") and title:
+            update["title"] = title
+        await _db(lambda: sb.table("threads").update(update).eq("id", str(thread_id)).execute())
     except Exception:
         pass
 
@@ -255,7 +272,7 @@ async def suggest_questions(thread_id: uuid.UUID, auth=Depends(get_current_user)
         "[suggest] thread=%s path=sync_gen llm_ok=%s elapsed=%.2fs n=%d",
         thread_id, sync_llm_ok, time.monotonic() - t0, len(questions[:3]),
     )
-    return {"questions": questions[:3]}
+    return {"questions": questions[:3], "title": title}
 
 
 @router.get("/threads/{thread_id}/messages")
