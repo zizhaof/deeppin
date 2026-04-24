@@ -63,6 +63,13 @@ export default function ThreadNav({
     }
   };
 
+  const handleLogout = async () => {
+    setUserMenuOpen(false);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+
   function buildBreadcrumb(threadId: string | null): Thread[] {
     if (!threadId) return [];
     const map = new Map(threads.map((thr) => [thr.id, thr]));
@@ -82,9 +89,25 @@ export default function ThreadNav({
       className="h-14 flex items-center gap-3 flex-shrink-0 px-6"
       style={{ borderBottom: "1px solid var(--rule)", background: "var(--paper)" }}
     >
-      {/* Brand mark matches the welcome-page top-left exactly:
-          paper square box + deep-ink 8-point star + Fraunces "Deeppin". */}
-      <Link href="/" className="flex items-center gap-2 flex-shrink-0 group" title={t.newChat}>
+      {/* Top-left order mirrors the welcome page: session drawer → brand →
+          new chat → back/forward. Welcome shows only [drawer, brand]; the
+          chat-only actions (new chat, history) extend that same sequence. */}
+      <button
+        onClick={onOpenSessions}
+        className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-colors flex-shrink-0"
+        title={t.recentSessions}
+        style={{ color: "var(--ink-3)" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-3)"; }}
+      >
+        <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      <Link href="/" className="flex items-center gap-2 flex-shrink-0 group" title="Deeppin">
         <span
           className="w-6 h-6 rounded-md flex items-center justify-center transition-colors"
           style={{ background: "var(--card)", border: "1px solid var(--rule)" }}
@@ -100,23 +123,7 @@ export default function ThreadNav({
 
       <span className="w-px h-5 flex-shrink-0" style={{ background: "var(--rule)" }} />
 
-      {/* Left cluster: session drawer / new chat / back / forward. */}
       <div className="flex items-center gap-0.5">
-        <button
-          onClick={onOpenSessions}
-          className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-colors flex-shrink-0"
-          title={t.recentSessions}
-          style={{ color: "var(--ink-3)" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--paper-2)"; (e.currentTarget as HTMLElement).style.color = "var(--ink)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "var(--ink-3)"; }}
-        >
-          <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-
         <button
           onClick={onNewChat}
           className="w-[30px] h-[30px] flex items-center justify-center rounded-md transition-colors flex-shrink-0"
@@ -241,6 +248,16 @@ export default function ThreadNav({
                 className="absolute right-0 top-full mt-2 z-50 min-w-[160px] overflow-hidden rounded-lg"
                 style={{ background: "var(--card)", border: "1px solid var(--rule)", boxShadow: "0 10px 32px rgba(27,26,23,0.14), 0 2px 6px rgba(27,26,23,0.06)" }}
               >
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-3 py-2 text-[12.5px] transition-colors"
+                  style={{ color: "var(--ink)" }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "var(--paper-2)")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
+                >
+                  {t.logout}
+                </button>
+                <div className="h-px" style={{ background: "var(--rule)" }} />
                 <button
                   onClick={handleDeleteAccount}
                   className="w-full text-left px-3 py-2 text-[12.5px] transition-colors"
