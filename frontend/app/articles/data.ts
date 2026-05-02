@@ -3106,4 +3106,220 @@ export const articles: Article[] = [
     },
   },
 
+  {
+    slug: "tpm-stress-empirical",
+    title: {
+      zh: "SmartRouter 实测：理论 2.59M TPM，真实场景能拿多少？",
+      en: "Stress-Testing SmartRouter: 2.59M Theoretical TPM — How Much Do We Actually Get?",
+    },
+    date: "2026-05-01",
+    summary: {
+      zh: "给 SmartRouter 4 个 group（chat / merge / summarizer / vision）同时打满，对比理论上限和实测峰值。普通对话场景（~600 tok/req）实测峰值 275K TPM（理论的 11%，RPM 先撞顶）；长 context（~5500 tok/req）822K TPM（32%，TPM 先撞顶）。意外发现三个结构性瓶颈：vision 没 fallback chain、SambaNova 高并发下 p50 延迟爆炸到 100 秒、Gemini 在 score 路由里被严重欠权。",
+      en: "Drive all four SmartRouter groups (chat / merge / summarizer / vision) in parallel and the gap between theoretical and realized capacity becomes very visible. At ~600 tok/req: 275K TPM (11% of theoretical, RPM-bound). At ~5500 tok/req: 822K TPM (32%, TPM-bound). Three structural bottlenecks surfaced: vision has no fallback chain, SambaNova latency explodes to 100s under load, and Gemini is severely under-weighted in score routing.",
+    },
+    tags: ["SmartRouter", "stress-test", "benchmarks", "capacity"],
+    content: {
+      zh: {
+        title: "SmartRouter 实测：理论 2.59M TPM，真实场景能拿多少？",
+        body: [
+          { type: "p", text: "之前写过 free-tier-capacity，按 ModelSpec 里的 TPM × num_keys 加出来全系统理论 ~2.59M TPM。这个数听着很爽，但它是「每个 slot 同时打满」的极端假设。真实场景下会被 RPM 先撞顶、跨 group 抢同一个 slot、provider 高并发延迟爆炸、score 路由偏好等等因素压低。所以写了个压测脚本压一下，看 SmartRouter 实际能拿到多少。" },
+
+          { type: "h1", text: "一、理论上限怎么算" },
+          { type: "p", text: "全系统去重 slot 求和——同一个 (provider, model) 跨多个 group 时只算一次，因为 UsageBucket 是共享的（一个 Slot 实例同时挂在 chat / merge / vision 等多个 _slots_by_group[group] 列表里，记账和 score 是同一份）。" },
+          { type: "code", text: "全系统 ceiling = Σ over unique (provider, model) :  spec.tpm × num_keys[provider]" },
+          { type: "p", text: "当前生产配置 keys：groq=3, cerebras=3, sambanova=3, gemini=2, openrouter=3。算出来：" },
+          { type: "code", text: "provider     单 key TPM   × keys    贡献\ngroq         70K          × 3       210K\ncerebras     120K         × 3       360K\nsambanova    300K         × 3       900K\ngemini       500K         × 2       1,000K\nopenrouter   40K          × 3       120K\n────────────────────────────────────────\n合计                                 2,590K TPM\n\n对应 RPM ceiling：1,280" },
+          { type: "p", text: "关键观察：要让 TPM 和 RPM 同时打满，平均每请求需要 2,023 tokens（2.59M / 1,280）。Gemini 单 slot 配比最离谱——250K TPM 对 10 RPM，要单请求 25K tokens 才能同步打满。普通对话才几百 token，意味着 Gemini 永远先撞 RPM。" },
+          { type: "note", text: "Gemini 同 project 折扣：如果两个 GEMINI_API_KEYS 来自同一个 GCP project，quota 是 project 级共享，不会乘 num_keys。理论上限会从 2.59M 降到 ~2.09M。生产环境视配置而定。" },
+
+          { type: "h1", text: "二、测试方法" },
+          { type: "p", text: "脚本 stress_tpm.py，~260 行。三个模式：theoretical（零 quota，纯打印配置）、single（每个 slot 单独绕过 SmartRouter 直打 litellm）、aggregate / total（通过 router.completion 走 SmartRouter）。这次测的是 total 模式：4 个 group 同时并行打，各维持 30 in-flight 请求，持续 90 秒。" },
+          { type: "p", text: "几个关键设计决策：" },
+          { type: "ul", items: [
+            "复用 prod SmartRouter 单例：脚本 import services.llm_client.router，slot 选择 / 评分 / 429 重试 / fallback chain 全是 prod 同款逻辑。docker exec 是新进程所以 UsageBucket 状态独立，但 provider 端真实 quota 共享",
+            "Token 计数用真实数：直接读 response.usage.prompt_tokens + completion_tokens（provider 自己算的、用于计 quota 的同一份数），不靠任何估算",
+            "请求大小控制是估算：发出去前按 ~4 chars/token 拼英文 padding，回来 usage 看到的 prompt_tokens 会有 ±20% 误差，但这只影响「我们以为发出去了多少」，不影响「实际计入 TPM 多少」",
+            "TPM 桶按完成时刻归类：m = int(t // 60)，每个分钟桶累加 prompt_tokens + completion_tokens，只算成功请求；429 / error 不入 token 计数",
+          ]},
+          { type: "p", text: "为了同时探 RPM-bound 和 TPM-bound 两种边界，跑了两组配置：" },
+          { type: "ul", items: [
+            "Config A：input=400 / output=200，~600 tok/req — 模拟普通对话",
+            "Config B：input=4000 / output=1500，~5500 tok/req — 模拟长 context（attachment、merge 等场景）",
+          ]},
+
+          { type: "h1", text: "三、Config A — 普通对话场景" },
+          { type: "code", text: "min  rpm   in_tpm    out_tpm   total_tpm   429\n  0  691   249,751    25,606    275,357   473\n  1  248    87,524     6,217     93,741   264\n  2   95    35,807     4,287     40,094     0\n  3   10     3,583       217      3,800     0\n  4   14     5,022       491      5,513     0\n  6   30    10,880       983     11,863     0\n\n  peak TPM observed: 275,357   (11% of theoretical 2,590,000)\n  peak RPM observed:     691   (54% of theoretical 1,280)" },
+          { type: "p", text: "Peak TPM 275K（理论 11%），peak RPM 691（理论 54%）。**RPM 才是真正的瓶颈**，TPM 利用率只有 11%。符合直觉：600 tok/req × 1,280 RPM = 768K TPM 物理上限，远小于理论 2.59M——小请求下永远先撞 RPM。" },
+          { type: "p", text: "另外有几个不那么明显的发现：" },
+          { type: "ul", items: [
+            "m=0 → m=2 急剧衰减：691 → 248 → 95 RPM。前 60s 突发用掉了大量 slot 的 60s 滚动窗口配额，第二、三分钟没完全恢复",
+            "Vision 全军覆没：737 个 429，0 成功。chat / merge 在并行抢 Gemini-flash + Groq-scout 的 quota，vision 没 fallback chain（FALLBACK_CHAIN[\"vision\"] = []）所以直接全挂",
+            "Gemini 严重欠利用：50 reqs / 21K tokens，明显低于 25 RPM × 1.5min ≈ 37 reqs 的理论上限。SmartRouter 把 Gemini 选了，但偶发 503 + 长延迟拉低了它的 score",
+            "SambaNova published RPD=20，实测能跑 84 reqs。要么文档过时，要么 SN 端是 org-level 计数而不是 key-level",
+          ]},
+
+          { type: "h2", text: "Per-slot 实际贡献（前 8）" },
+          { type: "code", text: "slot                                  reqs   tokens   p50_ms\ncerebras/llama3.1-8b                   226   85,626      351\ngroq/llama-4-scout                     234   83,285      506\ngroq/llama-3.1-8b-instant              109   41,247      395\ngroq/llama-3.3-70b                      85   32,202      306\nsambanova/Meta-Llama-3.3                84   31,920      709\nsambanova/DeepSeek-V3.2                 55   21,120      863\nsambanova/Llama-4-Maverick              55   19,195      776\ngroq/openai/gpt-oss-20b                 38   21,778      442\ngemini/gemini-2.5-flash                 25   13,099    2,250  ← 欠利用\ngemini/gemini-2.5-flash-lite            25    8,481      607  ← 欠利用\ncerebras/qwen-3-235b                     8    2,820  226,931  ← 延迟爆炸" },
+
+          { type: "h1", text: "四、Config B — 长 context 场景" },
+          { type: "code", text: "min  rpm   in_tpm     out_tpm   total_tpm   429\n  0  258   812,546     9,978    822,524   407\n  1   63   191,476     1,232    192,708   269\n  2  112   346,489     3,893    350,382     0\n  3   18    54,752       289     55,041     0\n  4   12    36,501       646     37,147     0\n  5    2     6,066        26      6,092     0\n  6   36   109,657       398    110,055     0\n\n  peak TPM observed: 822,524   (32% of theoretical 2,590,000)\n  peak RPM observed:     258   (20% of theoretical 1,280)" },
+          { type: "p", text: "Peak TPM 822K（理论 32%，相比 A 提升 3 倍），peak RPM 258（更低，因为单请求耗时更长）。终于轮到 **TPM 是瓶颈**，但仍只到理论 1/3。" },
+          { type: "p", text: "几个意外：" },
+          { type: "ul", items: [
+            "m=2 反弹到 350K TPM：m=0 突发把 fast slot 的 60s 滚动窗口烧光了，到 m=2 它们的窗口完全重置，长尾请求才重新涌入。这是「真实稳态 TPM」更接近的数",
+            "SambaNova p50 = 104 秒：内容能跑通，但单请求要 100s 才返回。真实用户场景早就 timeout 了，SambaNova 的 quota 在大请求下其实是「不可用容量」",
+            "Cerebras qwen-3-235b p50 = 107 秒：和 SN 同样问题，疑似 cerebras 内部排队",
+            "Vision 仍然全军覆没：676 个 429。fallback 缺失这事在 A 和 B 都复现",
+            "Gemini 仍欠利用：20 reqs / 64K tokens，本来 250K TPM × 90s × 2 keys / 60 = 750K tokens 物理上限，实际利用率 8.5%",
+          ]},
+
+          { type: "h1", text: "五、三个结构性瓶颈" },
+
+          { type: "h2", text: "5.1 Vision 没 fallback chain" },
+          { type: "code", text: "# backend/services/llm_client.py\nFALLBACK_CHAIN: dict[str, list[str]] = {\n    \"chat\": [\"summarizer\"],\n    \"merge\": [\"chat\", \"summarizer\"],\n    \"summarizer\": [\"chat\"],\n    \"vision\": [],     # ← 这里\n}" },
+          { type: "p", text: "vision 群组只有 2 个 slot：gemini-2.5-flash 和 groq/llama-4-scout。这俩同时也在 chat 和 merge 里。一旦 chat / merge 抢光它们的 quota，vision 没地方去。FALLBACK_CHAIN[\"vision\"] = [\"chat\"] 一行改动就能解锁 ~3M TPM 的后备容量（chat group 里的 Gemini / Groq 等其他 vision-capable slot）。" },
+          { type: "note", text: "需要顺手验证：chat group 里除了 gemini-2.5-flash + scout，是不是其他 slot（如 groq 70b / sambanova 70b）真的支持 image input？如果不支持，加 fallback 后会 400 而不是工作。这个修复要配合 ModelSpec.groups 里 vision 标签的精确审视。" },
+
+          { type: "h2", text: "5.2 SambaNova 高并发延迟爆炸" },
+          { type: "p", text: "Config B 里 SambaNova/Meta-Llama-3.3 的 p50 是 104 秒。p50！不是 p99！意味着一半的请求要等 100+ 秒才回来。SambaNova 内部对高并发显然有排队（推理节点不够），但它不返回 429，而是无限期等待。" },
+          { type: "p", text: "SmartRouter 当前的 score 函数只看 quota 维度（rpm / tpm / rpd），没有 latency 维度：" },
+          { type: "code", text: "def score(self, spec):\n    rpm_r = max(0, spec.rpm - self.rpm_used) / spec.rpm\n    tpm_r = max(0, spec.tpm - self.tpm_used) / spec.tpm\n    rpd_r = max(0, spec.rpd - self.rpd_used) / spec.rpd\n    return min(rpm_r, tpm_r, rpd_r)" },
+          { type: "p", text: "结果就是：SN 看起来 quota 还很多（rpd 大、tpm 大），SmartRouter 持续派单过去，但每个请求都得等 100s。修复方向是 UsageBucket 加 p95 latency 追踪，超过阈值（比如 10s）就在 score 上乘个惩罚。但 latency 阈值这个事得小心——慢启动的 cold model 第一请求可能就是 5-10s，不能一杆子打死。" },
+
+          { type: "h2", text: "5.3 Gemini 在 score 路由里被欠权" },
+          { type: "p", text: "Gemini 单 slot 容量最大（250K TPM × 2 keys = 500K，占全系统 19%），但两次测试里都只跑出全系统贡献的 2-3%。原因不是 quota 用完——它的 RPD 250-1000 在 90s 测试里根本用不光——是 SmartRouter 的 score 把它排在了后面。" },
+          { type: "p", text: "三个因素叠加：" },
+          { type: "ul", items: [
+            "Gemini 偶发 503 high-demand：record_failure 把 _last_fail_ts 设成现在，30s 半衰期内 score 会乘个惩罚",
+            "Gemini 延迟天生比 Cerebras / Groq 高（2-3s vs 300-700ms）",
+            "10 RPM 的硬上限：1 分钟塞满 10 个就 score=0，剩下 50s 完全闲置",
+          ]},
+          { type: "p", text: "结果：Gemini 偶尔被选中后跑得慢，回报 score 不稳，再加上极低 RPM，SmartRouter 的「主动选最优」机制把大量流量推向了 Cerebras/Groq——但这俩远没 Gemini 容量大。改进方向：高 TPM slot 的 fail penalty 衰减更快（比如 10s 半衰期而不是 30s），或者按「容量等级」分层加 grace period。" },
+
+          { type: "h1", text: "六、怎么解读这些数" },
+          { type: "p", text: "「800K TPM 实测峰值」 ≠ 「线上能扛 800K TPM 稳态流量」。三个换算需要做：" },
+          { type: "ul", items: [
+            "突发 vs 稳态：m=0 是 60 秒突发峰值，m=2 之后才是真稳态。Config B 里 m=2 的 350K TPM 才是「持续 1 分钟以上能维持的」上限",
+            "测试场景 vs 真实场景：测试 4 个 group 同时打满，但真实流量 chat 占 90%+，merge / summarizer / vision 几乎不会同时高负载",
+            "可用容量 vs 名义容量：SambaNova 在大负载下名义贡献 318K tokens，但 p50 = 104s，对真实用户基本是「不可用容量」",
+          ]},
+          { type: "p", text: "实际可用估算：" },
+          { type: "code", text: "实际可持续 TPM ≈\n  全系统稳态 350K (Config B m=2)\n  × 0.7 (扣除 SambaNova 不可用部分)\n  × 0.9 (修完 vision fallback 后)\n  ≈ 220K TPM 持续可用\n\n按 ~2.5K tok/msg：~5,300 msg/min sustained\n按 6 turn/user/day, peak hour 占 20%：~440 DAU peak hour" },
+          { type: "p", text: "和 free-tier-capacity 文章里估的 9000-15000 DAU 看起来差很多——但那是按 daily quota 算的，所有用户均匀摊到 24 小时。这里算的是 peak hour 突发能扛住的并发用户，更保守也更现实。两个数都对，只是看的维度不同。" },
+
+          { type: "h1", text: "七、下一步" },
+          { type: "ul", items: [
+            "立即（一行代码）：FALLBACK_CHAIN[\"vision\"] = [\"chat\"]，配合验证 chat group 的 vision-capable slot 列表",
+            "短期：UsageBucket 加 latency tracking + score 函数加 latency 维度，治 SambaNova 排队问题",
+            "短期：Gemini 等高 TPM slot 的 fail penalty 衰减时间从 30s 降到 10s，提升它的实际利用率",
+            "中期：跑一次 daily check 复测 SambaNova 实际 RPD，把 ModelSpec 配置从 published 20 调到实测值（如果 SN 文档真的过时）",
+            "中期：按 group 类型给 score 加权（chat 等延迟敏感 group 倾向 fast slot；merge 等 batch group 倾向 high-TPM slot）",
+            "长期：本地推理（llama.cpp 量化）做最终兜底；付费 Gemini key 独立 GCP project 突破 250K 上限",
+          ]},
+          { type: "p", text: "几个观察值得单独成文：「为什么 SmartRouter 知道一个 slot 慢但没法降级」（latency-blindness 是 score 的结构盲点）、「provider 文档和实测的 RPD 差异有多大」（compliance-as-published vs compliance-as-enforced）、以及最反直觉的一条——「理论容量越大的 slot，实际利用率往往越低」（Gemini 的悖论）。下一篇再写。" },
+        ],
+      },
+      en: {
+        title: "Stress-Testing SmartRouter: 2.59M Theoretical TPM — How Much Do We Actually Get?",
+        body: [
+          { type: "p", text: "An earlier post (free-tier-capacity) summed up ModelSpec.tpm × num_keys across all slots and got ~2.59M TPM — a satisfying number, but it assumes every slot is maxed out simultaneously. In reality RPM saturates first, groups compete for the same shared slot, providers degrade under load, score routing has its own preferences. Time to actually run a load test and see what SmartRouter delivers." },
+
+          { type: "h1", text: "1. How the Theoretical Ceiling Is Computed" },
+          { type: "p", text: "Sum over unique slots — a (provider, model) that lives in multiple groups (e.g., gemini-2.5-flash sits in chat / merge / vision) only counts once because the same Slot instance is referenced from every _slots_by_group[group] list, with one shared UsageBucket." },
+          { type: "code", text: "system ceiling = Σ over unique (provider, model) :  spec.tpm × num_keys[provider]" },
+          { type: "p", text: "Production keys: groq=3, cerebras=3, sambanova=3, gemini=2, openrouter=3. Resulting ceiling:" },
+          { type: "code", text: "provider     per-key TPM   × keys    contribution\ngroq         70K           × 3       210K\ncerebras     120K          × 3       360K\nsambanova    300K          × 3       900K\ngemini       500K          × 2       1,000K\nopenrouter   40K           × 3       120K\n────────────────────────────────────────────\ntotal                                 2,590K TPM\n\ncorresponding RPM ceiling: 1,280" },
+          { type: "p", text: "Key observation: to saturate TPM and RPM simultaneously, the average request needs 2,023 tokens (2.59M / 1,280). Gemini's per-slot ratio is the most extreme — 250K TPM at 10 RPM means each request needs 25K tokens to push both in sync. Conversation-sized requests are a few hundred tokens, so Gemini will always hit RPM first." },
+          { type: "note", text: "Gemini same-project caveat: if both GEMINI_API_KEYS belong to the same GCP project, the quota is project-scoped and does not multiply. The theoretical ceiling drops to ~2.09M in that case. Configuration-dependent." },
+
+          { type: "h1", text: "2. Methodology" },
+          { type: "p", text: "Wrote stress_tpm.py (~260 lines). Three modes: theoretical (zero quota, prints config), single (each slot bypassing SmartRouter via direct litellm), aggregate / total (through router.completion). This run uses --mode total: all four groups in parallel, 30 in-flight per group, 90 seconds." },
+          { type: "p", text: "Key design decisions:" },
+          { type: "ul", items: [
+            "Reuses the prod SmartRouter singleton: imports services.llm_client.router. Slot picking, score, 429 retry, fallback chain — all prod logic. docker exec is a fresh process so UsageBucket state is independent, but provider-side quota is shared",
+            "Real token counts: read response.usage.prompt_tokens + completion_tokens (the same numbers the provider uses for quota accounting). No estimation",
+            "Request size control is estimated: pre-flight ~4 chars/token padding, actual prompt_tokens varies ±20% — but this only affects 'how much we thought we sent,' not 'how much actually went into the TPM bucket'",
+            "TPM bucketed by completion time: m = int(t // 60). Each minute bucket sums prompt_tokens + completion_tokens, successful requests only. 429s and errors do not contribute tokens",
+          ]},
+          { type: "p", text: "To probe both RPM-bound and TPM-bound boundaries, two configs:" },
+          { type: "ul", items: [
+            "Config A: input 400 / output 200, ~600 tok/req — typical conversation",
+            "Config B: input 4000 / output 1500, ~5500 tok/req — long context (attachments, merge, etc.)",
+          ]},
+
+          { type: "h1", text: "3. Config A — Conversation-Sized Requests" },
+          { type: "code", text: "min  rpm   in_tpm    out_tpm   total_tpm   429\n  0  691   249,751    25,606    275,357   473\n  1  248    87,524     6,217     93,741   264\n  2   95    35,807     4,287     40,094     0\n  3   10     3,583       217      3,800     0\n  4   14     5,022       491      5,513     0\n  6   30    10,880       983     11,863     0\n\n  peak TPM observed: 275,357   (11% of theoretical 2,590,000)\n  peak RPM observed:     691   (54% of theoretical 1,280)" },
+          { type: "p", text: "Peak TPM 275K (11% of theoretical), peak RPM 691 (54%). **RPM is the real bottleneck**; TPM utilization is only 11%. Matches intuition: 600 tok/req × 1,280 RPM = 768K TPM physical ceiling, far below the 2.59M theoretical — small requests always saturate RPM first." },
+          { type: "p", text: "Less obvious findings:" },
+          { type: "ul", items: [
+            "m=0 → m=2 sharp decay: 691 → 248 → 95 RPM. The first 60s burnt through many slots' rolling 60s windows; recovery in minutes 2–3 was incomplete",
+            "Vision wiped out: 737 × 429, 0 success. chat / merge fight over Gemini-flash + Groq-scout, and vision has no fallback chain (FALLBACK_CHAIN[\"vision\"] = []), so it gets nothing",
+            "Gemini severely under-utilized: 50 reqs / 21K tokens, well below the 25 RPM × 1.5min ≈ 37-req physical max. SmartRouter does pick Gemini, but occasional 503s + high latency drag down its score",
+            "SambaNova published RPD = 20, measured ran 84 reqs. Either docs are stale, or SN counts at org-level rather than per-key",
+          ]},
+
+          { type: "h2", text: "Per-slot contribution (top 8)" },
+          { type: "code", text: "slot                                  reqs   tokens   p50_ms\ncerebras/llama3.1-8b                   226   85,626      351\ngroq/llama-4-scout                     234   83,285      506\ngroq/llama-3.1-8b-instant              109   41,247      395\ngroq/llama-3.3-70b                      85   32,202      306\nsambanova/Meta-Llama-3.3                84   31,920      709\nsambanova/DeepSeek-V3.2                 55   21,120      863\nsambanova/Llama-4-Maverick              55   19,195      776\ngroq/openai/gpt-oss-20b                 38   21,778      442\ngemini/gemini-2.5-flash                 25   13,099    2,250  ← under-used\ngemini/gemini-2.5-flash-lite            25    8,481      607  ← under-used\ncerebras/qwen-3-235b                     8    2,820  226,931  ← latency blowup" },
+
+          { type: "h1", text: "4. Config B — Long-Context Requests" },
+          { type: "code", text: "min  rpm   in_tpm     out_tpm   total_tpm   429\n  0  258   812,546     9,978    822,524   407\n  1   63   191,476     1,232    192,708   269\n  2  112   346,489     3,893    350,382     0\n  3   18    54,752       289     55,041     0\n  4   12    36,501       646     37,147     0\n  5    2     6,066        26      6,092     0\n  6   36   109,657       398    110,055     0\n\n  peak TPM observed: 822,524   (32% of theoretical 2,590,000)\n  peak RPM observed:     258   (20% of theoretical 1,280)" },
+          { type: "p", text: "Peak TPM 822K (32% of theoretical, 3× over A); peak RPM 258 (lower because each request takes longer). Now **TPM is finally the bottleneck**, but still only 1/3 of theoretical." },
+          { type: "p", text: "Surprises:" },
+          { type: "ul", items: [
+            "m=2 rebound to 350K TPM: m=0 burnt the fast slots' rolling windows, by m=2 their windows fully reset and the long tail of large requests started landing. This is closer to the true sustained TPM",
+            "SambaNova p50 = 104s: content goes through, but each request takes 100+ seconds. Real users would have timed out long before. SN's quota at high-concurrency large-request load is effectively 'unusable capacity'",
+            "Cerebras qwen-3-235b p50 = 107s: same story as SN, looks like internal queueing",
+            "Vision wiped out again: 676 × 429. Missing fallback shows up consistently in both A and B",
+            "Gemini still under-used: 20 reqs / 64K tokens, while 250K TPM × 90s × 2 keys / 60 = 750K tokens physical max — 8.5% utilization",
+          ]},
+
+          { type: "h1", text: "5. Three Structural Bottlenecks" },
+
+          { type: "h2", text: "5.1 Vision has no fallback chain" },
+          { type: "code", text: "# backend/services/llm_client.py\nFALLBACK_CHAIN: dict[str, list[str]] = {\n    \"chat\": [\"summarizer\"],\n    \"merge\": [\"chat\", \"summarizer\"],\n    \"summarizer\": [\"chat\"],\n    \"vision\": [],     # ← here\n}" },
+          { type: "p", text: "Vision has only 2 slots: gemini-2.5-flash and groq/llama-4-scout. Both also serve chat and merge. Once chat / merge drain those slots, vision has nowhere to go. A single line — FALLBACK_CHAIN[\"vision\"] = [\"chat\"] — unlocks ~3M TPM of backup capacity (other vision-capable slots in the chat group)." },
+          { type: "note", text: "Needs verification first: which chat-group slots actually accept image input? If a slot we add as vision fallback doesn't support images, calls will 400 instead of working. The fix must be paired with a careful audit of ModelSpec.groups vision tagging." },
+
+          { type: "h2", text: "5.2 SambaNova latency explodes under load" },
+          { type: "p", text: "In Config B, sambanova/Meta-Llama-3.3 had p50 = 104 seconds. p50, not p99 — half the requests took 100+ seconds. SambaNova clearly has internal queueing under high concurrency (insufficient inference nodes), but it doesn't return 429 — it silently waits." },
+          { type: "p", text: "The current score function looks at quota dimensions only (rpm / tpm / rpd), not latency:" },
+          { type: "code", text: "def score(self, spec):\n    rpm_r = max(0, spec.rpm - self.rpm_used) / spec.rpm\n    tpm_r = max(0, spec.tpm - self.tpm_used) / spec.tpm\n    rpd_r = max(0, spec.rpd - self.rpd_used) / spec.rpd\n    return min(rpm_r, tpm_r, rpd_r)" },
+          { type: "p", text: "Result: SN looks like it has ample quota (high RPD, high TPM), so SmartRouter keeps dispatching to it — and every request takes 100s. Fix direction: track p95 latency in UsageBucket, multiply score by a penalty when it crosses a threshold (e.g., 10s). The threshold needs care, though: cold-start models can take 5–10s on the first request and you don't want to permanently exile them." },
+
+          { type: "h2", text: "5.3 Gemini is under-weighted in score routing" },
+          { type: "p", text: "Gemini has the largest per-slot capacity (250K TPM × 2 keys = 500K, 19% of system total), but in both runs it contributed only 2–3% of the total tokens. Quota was not the issue — Gemini's 250–1000 RPD is nowhere near depleted in 90s. SmartRouter's score simply ranked it low." },
+          { type: "p", text: "Three compounding factors:" },
+          { type: "ul", items: [
+            "Gemini's occasional 503 high-demand: record_failure sets _last_fail_ts to now, and the score gets multiplied by a penalty over a 30-second half-life",
+            "Gemini latency is structurally higher than Cerebras / Groq (2–3s vs 300–700ms)",
+            "Hard 10 RPM cap: 10 requests in a minute and score = 0; the remaining 50s is wasted",
+          ]},
+          { type: "p", text: "The compounding effect: Gemini gets picked occasionally, runs slowly, scores poorly, and combined with the very low RPM cap, SmartRouter's 'pick the best' machinery routes most traffic to Cerebras / Groq — neither of which has Gemini's headroom. Improvement direction: faster decay on fail penalty for high-TPM slots (10s half-life instead of 30s), or capacity-tiered grace periods." },
+
+          { type: "h1", text: "6. How to Read These Numbers" },
+          { type: "p", text: "'800K TPM peak' is not 'we can sustain 800K TPM in production.' Three translations are needed:" },
+          { type: "ul", items: [
+            "Burst vs sustained: m=0 is the 60-second burst peak; m=2 onward is closer to true sustained. Config B's m=2 of 350K TPM is the 'sustainable for >1 minute' ceiling",
+            "Test scenario vs real traffic: the test drives all four groups simultaneously, but real traffic is 90%+ chat. Merge / summarizer / vision rarely run hot at once",
+            "Usable vs nominal capacity: SambaNova nominally contributed 318K tokens under load, but p50 = 104s — to real users, that's effectively unusable capacity",
+          ]},
+          { type: "p", text: "Real usable estimate:" },
+          { type: "code", text: "actual sustainable TPM ≈\n  system steady-state 350K (Config B m=2)\n  × 0.7 (deduct SambaNova 'unusable' share)\n  × 0.9 (after fixing vision fallback)\n  ≈ 220K TPM sustained\n\nat ~2.5K tok/msg: ~5,300 msg/min sustained\nat 6 turn/user/day, peak hour = 20% of daily: ~440 peak-hour DAU" },
+          { type: "p", text: "This looks much smaller than the 9,000–15,000 DAU figure in free-tier-capacity — but that one assumed users spread evenly across 24 hours and counted total daily quota. This number is peak-hour concurrent users the system can handle without degradation. Both are correct; they answer different questions." },
+
+          { type: "h1", text: "7. Next Steps" },
+          { type: "ul", items: [
+            "Now (one-line change): FALLBACK_CHAIN[\"vision\"] = [\"chat\"], paired with validation of which chat-group slots are actually vision-capable",
+            "Short-term: add latency tracking to UsageBucket + a latency dimension in score, fixing the SambaNova queueing problem",
+            "Short-term: shorten fail-penalty decay for high-TPM slots like Gemini from 30s to 10s — should noticeably increase its actual utilization",
+            "Mid-term: run a daily check to remeasure SambaNova's real RPD, and update ModelSpec from published 20 to the measured value (if docs really are stale)",
+            "Mid-term: group-typed score weighting — latency-sensitive groups (chat) prefer fast slots; batch-style groups (merge) prefer high-TPM slots",
+            "Long-term: local quantized inference (llama.cpp) as ultimate fallback; a paid Gemini key in a separate GCP project to break past the 250K shared-project ceiling",
+          ]},
+          { type: "p", text: "A few observations deserve their own write-ups: 'why SmartRouter knows a slot is slow but can't down-rank it' (latency-blindness as a structural blind spot in the score), 'how big the gap is between provider documentation and actual enforced RPD' (compliance-as-published vs compliance-as-enforced), and the most counter-intuitive one — 'the bigger a slot's theoretical capacity, the lower its actual utilization tends to be' (the Gemini paradox). Next time." },
+        ],
+      },
+    },
+  },
+
 ];
