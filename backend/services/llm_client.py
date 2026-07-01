@@ -149,18 +149,22 @@ GROQ_MODELS = [
     ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,   rpd=14400, tpd=500_000,   groups=["summarizer"]),
 ]
 
-# Cerebras free tier (verified 2026-04-23 by hitting /chat/completions from
-# each of our 3 keys and reading x-ratelimit-* response headers):
-#   qwen-3-235b-a22b-instruct-2507: 30 RPM / 14.4K RPD / 60K TPM / 1M TPD
-#   llama3.1-8b:                    30 RPM / 14.4K RPD / 60K TPM / 1M TPD
-# gpt-oss-120b and zai-glm-4.7 both appear in /v1/models but return 404
-# "Model ... does not exist or you do not have access to it" on every one
-# of our free-tier keys — they're gated to paid plans, so they're not
-# added here even though the blog post announced "free-tier availability"
-# (that seems to be paid-only in practice as of 2026-04).
+# Cerebras free tier. Cerebras deprecated BOTH previously-configured IDs on
+# 2026-05-27 (qwen-3-235b-a22b-instruct-2507 and llama3.1-8b), so /v1/models
+# no longer lists them and /health/providers/keys flags model drift. Swapped
+# to the current catalog IDs:
+#   llama-3.3-70b: non-reasoning 70B, safe for chat/merge/summarizer alike
+#                  (a tight summarizer max_tokens can't be eaten by CoT).
+#   qwen-3-32b:    fast extra chat capacity.
+# Limits unchanged (30 RPM / 60K TPM / 14.4K RPD / 1M TPD per the published
+# free-tier caps). gpt-oss-120b and zai-glm-4.7 stay out: they appear in
+# /v1/models but 404 on our free-tier keys (paid-gated as of 2026-04).
+# NOTE: free-tier availability of llama-3.3-70b / qwen-3-32b on our own keys
+# still needs a GET /health/providers/keys run to confirm; if either 404s,
+# drop it here (Cerebras's free catalog has been shrinking).
 CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "qwen-3-235b-a22b-instruct-2507",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "merge"]),
-    ModelSpec("cerebras", "llama3.1-8b",                     rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["summarizer"]),
+    ModelSpec("cerebras", "llama-3.3-70b",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "merge", "summarizer"]),
+    ModelSpec("cerebras", "qwen-3-32b",     rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat"]),
 ]
 
 # SambaNova free tier (verified 2026-04-23 via docs.sambanova.ai):
@@ -168,10 +172,13 @@ CEREBRAS_MODELS = [
 # tpd=20_000_000 values were 50x / 100x too optimistic, which meant
 # SmartRouter kept picking SambaNova long after it had actually run out
 # of budget and fallbacks quietly covered the gap.
+# Llama-4-Maverick-17B-128E-Instruct dropped out of our keys' /v1/models
+# (flagged by /health/providers/keys on 2026-07-01) and is removed here. The
+# other two IDs are still in the catalog; DeepSeek-V3.2 covers the heavy
+# chat/merge slot Maverick used to fill.
 SAMBANOVA_MODELS = [
-    ModelSpec("sambanova", "Meta-Llama-3.3-70B-Instruct",           rpm=20, tpm=100000, rpd=20, tpd=200_000, groups=["chat", "merge"]),
-    ModelSpec("sambanova", "Llama-4-Maverick-17B-128E-Instruct",    rpm=20, tpm=100000, rpd=20, tpd=200_000, groups=["chat", "merge"]),
-    ModelSpec("sambanova", "DeepSeek-V3.2",                         rpm=20, tpm=100000, rpd=20, tpd=200_000, groups=["chat", "merge"]),
+    ModelSpec("sambanova", "Meta-Llama-3.3-70B-Instruct",  rpm=20, tpm=100000, rpd=20, tpd=200_000, groups=["chat", "merge"]),
+    ModelSpec("sambanova", "DeepSeek-V3.2",                rpm=20, tpm=100000, rpd=20, tpd=200_000, groups=["chat", "merge"]),
 ]
 
 # Gemini free tier (verified 2026-04-23, post the Dec-2025 quota cut):
