@@ -149,23 +149,22 @@ GROQ_MODELS = [
     ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,   rpd=14400, tpd=500_000,   groups=["summarizer"]),
 ]
 
-# Cerebras free tier. Cerebras deprecated BOTH previously-configured IDs on
-# 2026-05-27 (qwen-3-235b-a22b-instruct-2507 and llama3.1-8b), so /v1/models
-# no longer lists them and /health/providers/keys flags model drift. Swapped
-# to the current catalog IDs:
-#   llama-3.3-70b: non-reasoning 70B, safe for chat/merge/summarizer alike
-#                  (a tight summarizer max_tokens can't be eaten by CoT).
-#   qwen-3-32b:    fast extra chat capacity.
-# Limits unchanged (30 RPM / 60K TPM / 14.4K RPD / 1M TPD per the published
-# free-tier caps). gpt-oss-120b and zai-glm-4.7 stay out: they appear in
-# /v1/models but 404 on our free-tier keys (paid-gated as of 2026-04).
-# NOTE: free-tier availability of llama-3.3-70b / qwen-3-32b on our own keys
-# still needs a GET /health/providers/keys run to confirm; if either 404s,
-# drop it here (Cerebras's free catalog has been shrinking).
-CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "llama-3.3-70b",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "merge", "summarizer"]),
-    ModelSpec("cerebras", "qwen-3-32b",     rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat"]),
-]
+# Cerebras: DISABLED — no usable free-tier model as of 2026-07-01.
+# History: our two working free models (qwen-3-235b-a22b-instruct-2507 and
+# llama3.1-8b) were deprecated by Cerebras on 2026-05-27 and dropped from
+# /v1/models. The follow-up swap to llama-3.3-70b / qwen-3-32b turned out to
+# be absent from our free keys' catalog too (confirmed via
+# /health/providers/keys on 2026-07-01: available_count=3, neither present).
+# The 3 IDs the keys DO list are the paid-gated family (gpt-oss-120b /
+# zai-glm-4.7) that 404 at inference on free tier — configuring them would
+# make the zero-quota catalog check pass while real chat 404s at runtime,
+# which is strictly worse than leaving Cerebras out. Groq / Gemini /
+# SambaNova / OpenRouter already cover every group, so we ship no Cerebras
+# slot rather than a known-broken one.
+# To re-enable: run GET /health/providers/full (real inference per slot) to
+# find a free model that actually serves, then add it back here. CEREBRAS_API_KEYS
+# stays wired up (see create_smart_router), so re-adding is a one-line change.
+CEREBRAS_MODELS: list[ModelSpec] = []
 
 # SambaNova free tier (verified 2026-04-23 via docs.sambanova.ai):
 # RPM 20, RPD 20, TPD 200K per model. The previous rpd=1000 /
