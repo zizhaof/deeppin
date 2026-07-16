@@ -149,22 +149,20 @@ GROQ_MODELS = [
     ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,   rpd=14400, tpd=500_000,   groups=["summarizer"]),
 ]
 
-# Cerebras free tier. Cerebras deprecated BOTH previously-configured IDs on
-# 2026-05-27 (qwen-3-235b-a22b-instruct-2507 and llama3.1-8b), so /v1/models
-# no longer lists them and /health/providers/keys flags model drift. Swapped
-# to the current catalog IDs:
-#   llama-3.3-70b: non-reasoning 70B, safe for chat/merge/summarizer alike
-#                  (a tight summarizer max_tokens can't be eaten by CoT).
-#   qwen-3-32b:    fast extra chat capacity.
-# Limits unchanged (30 RPM / 60K TPM / 14.4K RPD / 1M TPD per the published
-# free-tier caps). gpt-oss-120b and zai-glm-4.7 stay out: they appear in
-# /v1/models but 404 on our free-tier keys (paid-gated as of 2026-04).
-# NOTE: free-tier availability of llama-3.3-70b / qwen-3-32b on our own keys
-# still needs a GET /health/providers/keys run to confirm; if either 404s,
-# drop it here (Cerebras's free catalog has been shrinking).
+# Cerebras free tier. The catalog keeps shrinking: llama-3.3-70b and
+# qwen-3-32b (configured by #27) both dropped out and /health/providers/keys
+# has flagged model drift on all 3 keys daily since 2026-05-27. Live probe of
+# GET /v1/models on 2026-07-15 shows only three IDs left on our free keys:
+# zai-glm-4.7, gemma-4-31b, gpt-oss-120b. Of these, a live chat/completions
+# smoke test showed only gemma-4-31b returns usable content — zai-glm-4.7 and
+# gpt-oss-120b are reasoning models that put their output in the `reasoning`
+# field with content=null, which our stream manager can't surface (same trap
+# as OpenRouter's nemotron-nano-vl). So gemma-4-31b is the only usable model.
+# Limits unchanged (30 RPM / 60K TPM / 14.4K RPD / 1M TPD published free-tier
+# caps). It's a 31B non-reasoning model — fine for both chat and summarizer
+# (a tight summarizer max_tokens can't be eaten by CoT).
 CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "llama-3.3-70b",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "merge", "summarizer"]),
-    ModelSpec("cerebras", "qwen-3-32b",     rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat"]),
+    ModelSpec("cerebras", "gemma-4-31b",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "summarizer"]),
 ]
 
 # SambaNova free tier (verified 2026-04-23 via docs.sambanova.ai):
@@ -209,9 +207,13 @@ GEMINI_MODELS = [
 # whole response in the `reasoning` field, which our stream manager
 # doesn't surface. Until we plumb reasoning-field support, it would
 # behave as an empty-reply model in prod.
+# openai/gpt-oss-120b:free was dropped from OpenRouter's free catalog
+# (flagged by /health/providers/keys on 2026-07-15; only paid gpt-oss-120b
+# and a smaller gpt-oss-20b:free remain). Not replaced with gpt-oss-20b:free
+# — it's the same reasoning-model family that hits the content=null trap
+# above. The other three :free models keep OpenRouter capacity alive.
 OPENROUTER_MODELS = [
     ModelSpec("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",       rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
-    ModelSpec("openrouter", "openai/gpt-oss-120b:free",                     rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
     ModelSpec("openrouter", "meta-llama/llama-3.3-70b-instruct:free",       rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
     ModelSpec("openrouter", "qwen/qwen3-next-80b-a3b-instruct:free",        rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
 ]
