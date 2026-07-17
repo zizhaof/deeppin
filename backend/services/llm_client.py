@@ -149,20 +149,24 @@ GROQ_MODELS = [
     ModelSpec("groq", "llama-3.1-8b-instant",                       rpm=30, tpm=6000,   rpd=14400, tpd=500_000,   groups=["summarizer"]),
 ]
 
-# Cerebras free tier. The catalog keeps shrinking: llama-3.3-70b and
-# qwen-3-32b (configured by #27) both dropped out and /health/providers/keys
-# has flagged model drift on all 3 keys daily since 2026-05-27. Live probe of
-# GET /v1/models on 2026-07-15 shows only three IDs left on our free keys:
-# zai-glm-4.7, gemma-4-31b, gpt-oss-120b. Of these, a live chat/completions
-# smoke test showed only gemma-4-31b returns usable content — zai-glm-4.7 and
-# gpt-oss-120b are reasoning models that put their output in the `reasoning`
-# field with content=null, which our stream manager can't surface (same trap
-# as OpenRouter's nemotron-nano-vl). So gemma-4-31b is the only usable model.
-# Limits unchanged (30 RPM / 60K TPM / 14.4K RPD / 1M TPD published free-tier
-# caps). It's a 31B non-reasoning model — fine for both chat and summarizer
-# (a tight summarizer max_tokens can't be eaten by CoT).
+# Cerebras free tier. GET /v1/models (2026-07-15) leaves three usable IDs on
+# our free keys: gemma-4-31b, gpt-oss-120b, zai-glm-4.7.
+# - gemma-4-31b: 31B non-reasoning. Small-model tier (30 RPM / 60K TPM /
+#   14.4K RPD / 1M TPD). Safe for chat + summarizer — a tight summarizer
+#   max_tokens can't be eaten by CoT.
+# - gpt-oss-120b, zai-glm-4.7: reasoning models. An earlier probe with
+#   max_tokens=16 saw content=null (reasoning ate the whole budget) and they
+#   were wrongly excluded; with a real budget both return usable content. The
+#   chat path sets no max_tokens cap and _strip_think_tags handles any inline
+#   <think>, so they're safe in "chat" — but NOT in "summarizer"/"merge"
+#   where a tight output budget could starve the answer. Large-model tier:
+#   x-ratelimit headers on gpt-oss-120b read 5 RPM / 150 RPH / 2400 RPD /
+#   30K TPM / 1M TPD. zai-glm-4.7 is the same large-model tier (headers not
+#   separately confirmed — it 429'd mid-probe, expected at 5 RPM).
 CEREBRAS_MODELS = [
-    ModelSpec("cerebras", "gemma-4-31b",  rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "summarizer"]),
+    ModelSpec("cerebras", "gemma-4-31b",   rpm=30, tpm=60000, rpd=14400, tpd=1_000_000, groups=["chat", "summarizer"]),
+    ModelSpec("cerebras", "gpt-oss-120b",  rpm=5,  tpm=30000, rpd=2400,  tpd=1_000_000, groups=["chat"]),
+    ModelSpec("cerebras", "zai-glm-4.7",   rpm=5,  tpm=30000, rpd=2400,  tpd=1_000_000, groups=["chat"]),
 ]
 
 # SambaNova free tier (verified 2026-04-23 via docs.sambanova.ai):
@@ -181,12 +185,19 @@ SAMBANOVA_MODELS = [
 
 # Gemini free tier (verified 2026-04-23, post the Dec-2025 quota cut):
 # 2.5 Flash is 10 RPM, 250 RPD, 250K TPM; Flash-Lite is 15 RPM, 1000 RPD,
-# 250K TPM. Both reset at Pacific Time 00:00, not UTC. 2.5 Pro is
-# paid-tier only and deliberately not added.
+# 250K TPM. Both reset at Pacific Time 00:00, not UTC. 2.5/3.x Pro are
+# paid-tier only (gemini-2.5-pro and gemini-3-pro-preview both 429 on our
+# free keys) and deliberately not added.
+# gemini-3.5-flash returns clean content on our free keys (2026-07-15 probe);
+# it's the newer flagship flash, added alongside 2.5-flash for chat/merge.
+# Gemini exposes no ratelimit headers, so its rpm/rpd here mirror 2.5-flash
+# as a conservative estimate — SmartRouter only uses them for scoring and the
+# 429 fallback covers reality. Not tagged "vision" until vision is probed.
 # Note: the failure mode we see most with Gemini is 503 "high demand"
 # (upstream capacity, not rate limit); rpd/rpm can't prevent those, only
 # SmartRouter fallback / score weighting can.
 GEMINI_MODELS = [
+    ModelSpec("gemini", "gemini-3.5-flash",      rpm=10, tpm=250000, rpd=250,  tpd=50_000_000, groups=["chat", "merge"],           reset_tz="America/Los_Angeles"),
     ModelSpec("gemini", "gemini-2.5-flash",      rpm=10, tpm=250000, rpd=250,  tpd=50_000_000, groups=["chat", "merge", "vision"], reset_tz="America/Los_Angeles"),
     ModelSpec("gemini", "gemini-2.5-flash-lite", rpm=15, tpm=250000, rpd=1000, tpd=50_000_000, groups=["chat", "summarizer"],       reset_tz="America/Los_Angeles"),
 ]
@@ -212,8 +223,12 @@ GEMINI_MODELS = [
 # and a smaller gpt-oss-20b:free remain). Not replaced with gpt-oss-20b:free
 # — it's the same reasoning-model family that hits the content=null trap
 # above. The other three :free models keep OpenRouter capacity alive.
+# nvidia/nemotron-3-ultra-550b-a55b:free added 2026-07-15 — a 550B model on
+# the free tier that returns clean content in a live probe; strong extra
+# chat capacity. Same :free limits (20 RPM / 50 RPD) as the others.
 OPENROUTER_MODELS = [
     ModelSpec("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",       rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
+    ModelSpec("openrouter", "nvidia/nemotron-3-ultra-550b-a55b:free",       rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
     ModelSpec("openrouter", "meta-llama/llama-3.3-70b-instruct:free",       rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
     ModelSpec("openrouter", "qwen/qwen3-next-80b-a3b-instruct:free",        rpm=20, tpm=10000, rpd=50, tpd=2_000_000, groups=["chat"]),
 ]
